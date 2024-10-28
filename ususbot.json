@@ -1,0 +1,16 @@
+{
+    "token_file": "../token-usus.txt",
+    "default_channel": "880900861692358696",
+    "startup_messages": {
+        "update": "I have been updated!",
+        "restart": "I have restarted!"
+    },
+    "bot_activity": {
+        "name": "in Munio's School",
+        "type": "TRAINING"
+    },
+    "modules_folder": "modules",
+    "log_folder": "logs",
+    "max_message_length": 2000,
+    "max_embed_desc_length": 1024
+}

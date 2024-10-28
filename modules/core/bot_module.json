@@ -1,0 +1,10 @@
+{
+    "name": "core",
+    "display_name": "Core",
+    "version": "1.0.0",
+    "enabled": true,
+    "commands_directory": "commands",
+    "command_prefix": ";",
+    "is_core": true,
+    "event_handler": false
+}
