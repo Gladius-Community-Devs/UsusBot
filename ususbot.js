@@ -35,7 +35,7 @@ logger.info("Event Registration Complete!");
 authClient();
 
 async function botInit () {
-    shell.exec('/home/bots/clean_logs.sh');
+    shell.exec('/home/bots/clean_usus_logs.sh');
     logger.info("Logs older than 3 days have been cleaned");
     logger.info("I am ready!");
 
