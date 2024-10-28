@@ -1,6 +1,6 @@
 module.exports = {
     name: 'modules',
-    description: 'Provides information about the modules ModBot has loaded. Optional second argument to filter modules. Default is \'all\'',
+    description: 'Provides information about the modules UsusBot has loaded. Optional second argument to filter modules. Default is \'all\'',
     syntax: 'modules [enabled|disabled|all]',
     num_args: 0,
     args_to_lower: false,

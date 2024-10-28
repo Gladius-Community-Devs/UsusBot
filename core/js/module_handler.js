@@ -174,7 +174,7 @@ class ModuleHandler {
      * If so, its {@link Command#execute} function will be run.
      *
      * If the module that the command belongs to is registered as a core module, this ModuleHandler will be passed as a parameter to the execute()
-     * function in 'extra.module_handler'. This allows core modules to access the internals of ModBot.
+     * function in 'extra.module_handler'. This allows core modules to access the internals of UsusBot.
      *
      * Additionally, if the message is of the format "//[module]:[command]", this function will ONLY check the provided {@link Module} for the {@link Command}
      * to run. This is helpful for commands from different modules that use the same name, because normally the bot would just pick the command from
@@ -205,7 +205,7 @@ class ModuleHandler {
                     name: current_module.config.name
                 });
 
-                if(respModule.modules.length == 0) { //Module exists in ModBot, but not in database
+                if(respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
                     message.channel.send("Sorry, the database does not contain a record of the module: " + spec_module);
                     return;
                 }
@@ -246,7 +246,7 @@ class ModuleHandler {
                             name: current_module.config.name
                         });
 
-                        if(respModule.modules.length == 0) { //Module exists in ModBot, but not in database
+                        if(respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
                             continue;
                         }
 

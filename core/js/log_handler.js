@@ -17,7 +17,7 @@ function build_logger(log_folder) {
                 handleRejections: true
             }),
             new (winston.transports.File)({
-                filename: log_folder + '/modbot_' + moment().format('YYYY_MM_DD_HH_mm_ss') + ".log",
+                filename: log_folder + '/ususbot_' + moment().format('YYYY_MM_DD_HH_mm_ss') + ".log",
                 handleExceptions: true,
                 handleRejections: true
             })

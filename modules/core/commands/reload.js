@@ -11,7 +11,7 @@ module.exports = {
     execute(message, args, extra) {
         var mod_handler = extra.module_handler;
 
-        var config = JSON.parse(fs.readFileSync(mod_handler.program_path + '/modbot.json'));
+        var config = JSON.parse(fs.readFileSync(mod_handler.program_path + '/ususbot.json'));
         mod_handler.discover_modules(mod_handler.program_path + "/" + config.modules_folder);
         mod_handler.discover_commands();
 
