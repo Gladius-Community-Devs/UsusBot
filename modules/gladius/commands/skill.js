@@ -79,7 +79,7 @@ module.exports = {
             }
 
             // Send the skill chunk to the channel
-            message.channel.send({ content: `Skill details for '${skillName}':
+            message.channel.send({ content: `Skill details for '${skillName}' in '${modName}':
 \`\`\`${skillChunk}\`\`\`` });
         } catch (error) {
             this.logger.error('Error finding the skill:', error);
