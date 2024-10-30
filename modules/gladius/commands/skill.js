@@ -36,19 +36,18 @@ module.exports = {
                     break;
                 }
             }
-
             // Define file paths
             const lookupFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'lookuptext_eng.txt');
             const skillsFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'skills.tok');
 
             // Check if files exist
             if (!fs.existsSync(lookupFilePath)) {
-                message.channel.send({ content: `Lookup file not found at path: ${lookupFilePath}` });
+                message.channel.send({ content: `That mod does not have files yet!` });
                 return;
             }
 
             if (!fs.existsSync(skillsFilePath)) {
-                message.channel.send({ content: `Skills file not found at path: ${skillsFilePath}` });
+                message.channel.send({ content: `That mod is missing its skills.tok file!` });
                 return;
             }
 
