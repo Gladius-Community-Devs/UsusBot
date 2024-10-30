@@ -22,8 +22,8 @@ module.exports = {
             // Fetch author names using Discord API
             const modListPromises = Object.entries(modders).map(async ([authorId, modName]) => {
                 try {
-                    const user = await message.client.users.fetch(authorId);
-                    return { modName, authorName: user.username };
+                    const member = await message.guild.members.fetch(authorId);
+                    return { modName, authorName: member.nickname || member.user.username };
                 } catch (err) {
                     this.logger.error(`Error fetching user with ID ${authorId}:`, err);
                     return { modName, authorName: 'Unknown' }; // Fallback if user not found
@@ -36,8 +36,10 @@ module.exports = {
             // Create an embed message
             const embed = new EmbedBuilder()
                 .setTitle('List of Mods and Their Authors')
-                .setColor('#00FF00')
-                .setDescription(modList.map(({ modName, authorName }) => `**${modName}** by ${authorName}`).join('\n'));
+                .setColor('#5865F2')
+                .setDescription('Below is a list of mods currently available and their respective authors:')
+                .addFields(modList.map(({ modName, authorName }) => ({ name: modName, value: `by ${authorName}`, inline: true })))
+                .setFooter({ text: 'Use the modlist command to stay updated!' });
 
             // Send the embed message
             message.channel.send({ embeds: [embed] });
