@@ -80,7 +80,7 @@ module.exports = {
             }
 
             if (!entryId) {
-                message.channel.send({ content: `Skill '${skillName}' not found in lookuptext_eng.txt for mod '${modName}'.` });
+                message.channel.send({ content: `Skill '${skillName}' not found in '${modName}'.` });
                 return;
             }
 
