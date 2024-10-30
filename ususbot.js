@@ -11,7 +11,7 @@ var shell = require('shelljs');
 require('dotenv/config')
 
 const {Client, GatewayIntentBits, Intents, Discord} = require('discord.js');
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent] });
 var config = JSON.parse(fs.readFileSync('ususbot.json'));
 
 var ModuleHandler = require('./core/js/module_handler.js');
