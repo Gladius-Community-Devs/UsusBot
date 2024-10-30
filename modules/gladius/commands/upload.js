@@ -45,6 +45,15 @@ module.exports = {
             const downloadPath = path.join(__dirname, `../../../uploads/${sanitizedModDisplayName}_data.zip`);
             const extractPath = path.join(__dirname, `../../../uploads/${sanitizedModDisplayName}`);
 
+            // Delete existing files if they exist
+            if (fs.existsSync(downloadPath)) {
+                fs.unlinkSync(downloadPath);
+            }
+            if (fs.existsSync(extractPath)) {
+                message.channel.send({ content: 'An existing data.zip file has been found and will be replaced.' });
+                fs.rmSync(extractPath, { recursive: true, force: true });
+            }
+
             // Download and save the file
             const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
             const buffer = Buffer.from(response.data);
