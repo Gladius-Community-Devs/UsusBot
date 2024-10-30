@@ -64,7 +64,7 @@ module.exports = {
                 return;
             }
 
-            // Collect all possible skill names
+            // Collect all possible skill names and map them to entry IDs
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
             const lookupLines = lookupContent.split(/\r?\n/);
 
@@ -81,7 +81,7 @@ module.exports = {
                 skillNameToEntryIds[name].push(parseInt(id));
             }
 
-            // Attempt to find the longest matching skill name starting from the end
+            // Attempt to find the longest matching skill name starting from the earliest point
             let foundSkillName = false;
             for (let i = args.length; i > index; i--) {
                 const potentialSkillName = args.slice(index, i).join(' ').trim().toLowerCase();
@@ -120,19 +120,29 @@ module.exports = {
             let matchingSkills = [];
             for (const entryId of entryIds) {
                 for (const chunk of skillsChunks) {
-                    if (chunk.includes('SKILLCREATE:') && chunk.includes(`SKILLDISPLAYNAMEID: ${entryId}`)) {
+                    if (chunk.includes('SKILLCREATE:')) {
                         const lines = chunk.trim().split(/\r?\n/);
+                        let hasEntryId = false;
                         let skillClass = 'Unknown';
                         for (const line of lines) {
                             const lineTrimmed = line.trim();
-                            const match = lineTrimmed.match(/^SKILLUSERCLASS:\s*(.+)$/i);
-                            if (match) {
-                                skillClass = match[1].trim();
-                                break;
+                            const matchKeyValue = lineTrimmed.match(/^(\w+):\s*(.+)$/);
+                            if (matchKeyValue) {
+                                const key = matchKeyValue[1].toUpperCase();
+                                const value = matchKeyValue[2].trim();
+                                if (key === 'SKILLDISPLAYNAMEID') {
+                                    if (parseInt(value) === entryId) {
+                                        hasEntryId = true;
+                                    }
+                                } else if (key === 'SKILLUSERCLASS') {
+                                    skillClass = value;
+                                }
                             }
                         }
-                        matchingSkills.push({ entryId, chunk: chunk.trim(), className: skillClass });
-                        // Do not break here; collect all matching skill chunks
+                        if (hasEntryId) {
+                            matchingSkills.push({ entryId, chunk: chunk.trim(), className: skillClass });
+                            // Do not break; collect all matching skill chunks
+                        }
                     }
                 }
             }
