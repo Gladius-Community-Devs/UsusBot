@@ -11,6 +11,9 @@ module.exports = {
         var mod_handler = extra.module_handler;
 
         var output = '```';
+        output += "Command                             | Module              | Description\n";
+        output += "------------------------------------|---------------------|-----------------------------------------\n";
+
         if(args.length > 1) {
             var module_name = args[1];
             
@@ -74,6 +77,8 @@ module.exports = {
                         output += "```";
                         message.channel.send({ content: output});
                         output = "```";
+                        output += "Command                             | Module              | Description\n";
+                        output += "------------------------------------|---------------------|-----------------------------------------\n";
                         num_lines = 0;
                     }
                 }
@@ -169,6 +174,8 @@ module.exports = {
                             output += "```";
                             message.channel.send({ content: output});
                             output = "```";
+                            output += "Command                             | Module              | Description\n";
+                            output += "------------------------------------|---------------------|-----------------------------------------\n";
                             num_lines = 0;
                         }
                     }
