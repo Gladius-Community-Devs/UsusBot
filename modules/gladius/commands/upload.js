@@ -47,7 +47,7 @@ module.exports = {
 
             message.channel.send({ content: `The data.zip file has been successfully uploaded for mod: ${modDisplayName}.` });
         } catch (error) {
-            console.error('Error handling the upload:', error);
+            this.logger.error('Error handling the upload:', error);
             message.channel.send({ content: 'An error occurred while processing the upload.' });
         }
     }
