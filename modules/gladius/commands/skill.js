@@ -16,7 +16,7 @@ module.exports = {
         }
 
         const modNameInput = args.length > 2 ? args[1] : 'Vanilla';
-        const skillName = args.length > 2 ? args.slice(2).join(' ') : args[1];
+        const skillName = args.length > 2 ? args.slice(2).join(' ') : args.slice(1).join(' ');
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = null;
 
@@ -46,8 +46,8 @@ module.exports = {
             let entryId = null;
             for (const line of lookupLines) {
                 const [id, ...nameParts] = line.split('^');
-                const name = nameParts.join('^');
-                if (name && name.trim().toLowerCase() === skillName.toLowerCase()) {
+                const name = nameParts.join('^').trim();
+                if (name.toLowerCase() === skillName.toLowerCase()) {
                     entryId = parseInt(id);
                     break;
                 }
