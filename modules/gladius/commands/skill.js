@@ -2,10 +2,10 @@ module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
     syntax: 'skill [mod name] [skill name]',
-    num_args: 2, //minimum amount of arguments to accept
-    args_to_lower: true, //if the arguments should be lower case
-    needs_api: false, //if this command needs access to the api
-    has_state: false, //if this command uses the state engine
+    num_args: 2, // minimum amount of arguments to accept
+    args_to_lower: true, // if the arguments should be lower case
+    needs_api: false, // if this command needs access to the api
+    has_state: false, // if this command uses the state engine
     async execute(message, args, extra) {
         const fs = require('fs');
         const path = require('path');
@@ -15,36 +15,62 @@ module.exports = {
             return;
         }
 
-        const modNameInput = args.length > 2 ? args[1] : 'Vanilla';
-        const skillName = args.length > 2 ? args.slice(2).join(' ') : args.slice(1).join(' ');
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = null;
+        let modNameInput = args[1];
+        let skillName = '';
 
         try {
-            // Check if mod exists in modders.json
+            // Load modders.json
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+
+            // Check if args[1] is a valid mod name
+            let isMod = false;
             for (const modder in moddersConfig) {
-                if (moddersConfig[modder].replace(/\s+/g, '_').toLowerCase() === modNameInput.toLowerCase()) {
+                const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
+                if (modConfigName === args[1].replace(/\s+/g, '_').toLowerCase()) {
+                    isMod = true;
                     modName = moddersConfig[modder].replace(/\s+/g, '_');
                     break;
                 }
             }
 
-            if (!modName) {
+            if (isMod) {
+                // args[1] is a mod name
+                if (args.length <= 2) {
+                    message.channel.send({ content: 'Please provide the skill name.' });
+                    return;
+                }
+                skillName = args.slice(2).join(' ');
+            } else {
+                // args[1] is not a mod name, default to Vanilla
                 modName = 'Vanilla';
+                skillName = args.slice(1).join(' ');
             }
 
             // Define file paths
             const lookupFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'lookuptext_eng.txt');
             const skillsFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'skills.tok');
 
+            // Check if files exist
+            if (!fs.existsSync(lookupFilePath)) {
+                message.channel.send({ content: `Lookup file not found at path: ${lookupFilePath}` });
+                return;
+            }
+
+            if (!fs.existsSync(skillsFilePath)) {
+                message.channel.send({ content: `Skills file not found at path: ${skillsFilePath}` });
+                return;
+            }
+
             // Read the lookuptext_eng.txt file
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const lookupLines = lookupContent.split('\n');
+            const lookupLines = lookupContent.split(/\r?\n/);
 
             // Find the entry ID for the skill name
             let entryId = null;
             for (const line of lookupLines) {
+                if (!line.trim()) continue;
                 const [id, ...nameParts] = line.split('^');
                 const name = nameParts.join('^').trim();
                 if (name.toLowerCase() === skillName.toLowerCase()) {
@@ -54,7 +80,7 @@ module.exports = {
             }
 
             if (!entryId) {
-                message.channel.send({ content: `Skill '${skillName}' not found in '${modName}'` });
+                message.channel.send({ content: `Skill '${skillName}' not found in lookuptext_eng.txt for mod '${modName}'.` });
                 return;
             }
 
@@ -82,7 +108,7 @@ module.exports = {
             message.channel.send({ content: `Skill details for '${skillName}' in '${modName}':
 \`\`\`${skillChunk}\`\`\`` });
         } catch (error) {
-            this.logger.error('Error finding the skill:', error);
+            console.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
         }
     }
