@@ -86,19 +86,19 @@ module.exports = {
             let matchingSkills = [];
 
             // Try all possible splits between class name and skill name
-            for (let splitIndex = index + 1; splitIndex <= args.length; splitIndex++) {
+            for (let splitIndex = index; splitIndex <= args.length; splitIndex++) {
                 let potentialClassName = args.slice(index, splitIndex).join(' ').trim();
                 let potentialSkillName = args.slice(splitIndex, args.length).join(' ').trim();
-
+            
                 if (!potentialSkillName) continue; // Skill name is required
-
+            
                 // Sanitize inputs
                 potentialClassName = sanitizeInput(potentialClassName);
                 potentialSkillName = sanitizeInput(potentialSkillName);
-
+            
                 // Get all entry IDs for the potential skill name
                 const entryIds = skillNameToEntryIds[potentialSkillName.toLowerCase()] || [];
-
+            
                 if (entryIds.length === 0) {
                     continue; // No skill with this name, try next split
                 }
