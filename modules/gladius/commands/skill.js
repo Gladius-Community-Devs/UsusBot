@@ -60,12 +60,14 @@ module.exports = {
 
             // Read the skills.tok file
             const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(':SNIPPET END');
+
+            // Split skills.tok file by empty lines
+            const skillsChunks = skillsContent.split(/\n\s*\n/);
 
             // Find the skill chunk with the matching SKILLDISPLAYNAMEID
             let skillChunk = null;
             for (const chunk of skillsChunks) {
-                if (chunk.includes(`SKILLDISPLAYNAMEID: ${entryId}`)) {
+                if (chunk.includes('SKILLCREATE:') && chunk.includes(`SKILLDISPLAYNAMEID: ${entryId}`)) {
                     skillChunk = chunk.trim();
                     break;
                 }
