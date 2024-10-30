@@ -28,7 +28,7 @@ module.exports = {
 
         var header_syntax_length = Math.max(longest_syntax.length, 7); // "Command" length
         var header_module_length = Math.max(longest_module_name.length, 6); // "Module" length
-        var desc_space = Math.max(50, 130 - header_syntax_length - header_module_length);
+        var desc_space = Math.max(50, 115 - header_syntax_length - header_module_length);
 
         var output = '```';
         output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description
