@@ -1,6 +1,6 @@
 module.exports = {
     name: 'upload',
-    description: 'Allows a modder to upload a data.zip file and associates it with their mod based on a config file.',
+    description: 'Allows a modder to upload a data.zip file',
     syntax: 'upload',
     num_args: 0,
     args_to_lower: false,
@@ -14,6 +14,7 @@ module.exports = {
         const fs = require('fs');
         const path = require('path');
         const axios = require('axios');
+        const unzipper = require('unzipper');
 
         if (message.attachments.size === 0) {
             message.channel.send({ content: 'Please attach a data.zip file.' });
@@ -39,13 +40,23 @@ module.exports = {
             }
 
             const downloadPath = path.join(__dirname, `../../../uploads/${modDisplayName}_data.zip`);
+            const extractPath = path.join(__dirname, `../../../uploads/${modDisplayName}`);
 
             // Download and save the file
             const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
             const buffer = Buffer.from(response.data);
             fs.writeFileSync(downloadPath, buffer);
 
-            message.channel.send({ content: `The data.zip file has been successfully uploaded for mod: ${modDisplayName}.` });
+            // Unzip the file
+            fs.createReadStream(downloadPath)
+                .pipe(unzipper.Extract({ path: extractPath }))
+                .on('close', () => {
+                    message.channel.send({ content: `The data.zip file has been successfully uploaded and extracted for mod: ${modDisplayName}.` });
+                })
+                .on('error', (err) => {
+                    this.logger.error('Error extracting the zip file:', err);
+                    message.channel.send({ content: 'An error occurred while extracting the uploaded file.' });
+                });
         } catch (error) {
             this.logger.error('Error handling the upload:', error);
             message.channel.send({ content: 'An error occurred while processing the upload.' });
