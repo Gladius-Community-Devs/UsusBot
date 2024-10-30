@@ -10,6 +10,10 @@ module.exports = {
         const fs = require('fs');
         const path = require('path');
 
+        const sanitizeInput = (input) => {
+            return input.replace(/[^a-zA-Z0-9_\s]/g, '').trim();
+        };
+
         if (args.length <= 1) {
             message.channel.send({ content: 'Please provide the skill name.' });
             return;
@@ -25,20 +29,29 @@ module.exports = {
             // Load modders.json
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
 
+            // Sanitize modNameInput
+            let modNameInput = sanitizeInput(args[1]);
+
             // Check if args[1] is a mod name
             let isMod = false;
             for (const modder in moddersConfig) {
                 const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                if (modConfigName === args[1].replace(/\s+/g, '_').toLowerCase()) {
+                if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
                     isMod = true;
                     modName = moddersConfig[modder].replace(/\s+/g, '_');
                     index = 2; // Move index to next argument
                     break;
                 }
             }
-            // Define file paths
-            const lookupFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'lookuptext_eng.txt');
-            const skillsFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'skills.tok');
+
+            // Sanitize modName
+            modName = path.basename(sanitizeInput(modName));
+
+            // Define file paths securely
+            const baseUploadsPath = path.join(__dirname, '../../../uploads');
+            const modPath = path.join(baseUploadsPath, modName);
+            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
+            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
 
             // Check if files exist
             if (!fs.existsSync(lookupFilePath)) {
@@ -51,11 +64,10 @@ module.exports = {
                 return;
             }
 
-            // Read the lookuptext_eng.txt file
+            // Collect all possible skill names
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
             const lookupLines = lookupContent.split(/\r?\n/);
 
-            // Collect all possible skill names
             const skillNamesSet = new Set();
             for (const line of lookupLines) {
                 if (!line.trim()) continue;
@@ -82,6 +94,10 @@ module.exports = {
                 return;
             }
 
+            // Sanitize className and skillName
+            className = sanitizeInput(className);
+            skillName = sanitizeInput(skillName);
+
             // Find all entry IDs for the skill name
             let entryIds = [];
             for (const line of lookupLines) {
@@ -105,7 +121,7 @@ module.exports = {
             // Split skills.tok file by empty lines
             const skillsChunks = skillsContent.split(/\n\s*\n/);
 
-            // For each entryId, find the corresponding skill chunks
+            // For each entryId, find all corresponding skill chunks
             let matchingSkills = [];
             for (const entryId of entryIds) {
                 for (const chunk of skillsChunks) {
@@ -119,7 +135,7 @@ module.exports = {
                             }
                         }
                         matchingSkills.push({ entryId, chunk: chunk.trim(), className: skillClass });
-                        break;
+                        // Do not break here; collect all matching skill chunks
                     }
                 }
             }
