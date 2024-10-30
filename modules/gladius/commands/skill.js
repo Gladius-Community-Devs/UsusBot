@@ -32,7 +32,7 @@ module.exports = {
             // Sanitize modNameInput
             let modNameInput = sanitizeInput(args[1]);
 
-            // Check if args[1] is a mod name
+            // Check if args[1] is a valid mod name
             let isMod = false;
             for (const modder in moddersConfig) {
                 const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
@@ -116,33 +116,34 @@ module.exports = {
             // Split skills.tok file by empty lines
             const skillsChunks = skillsContent.split(/\n\s*\n/);
 
+            // Function to parse a skill chunk into a key-value object
+            const parseSkillChunk = (chunk) => {
+                const lines = chunk.trim().split(/\r?\n/);
+                const skillData = {};
+                for (const line of lines) {
+                    const lineTrimmed = line.trim();
+                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
+                    if (match) {
+                        const key = match[1].toUpperCase();
+                        const value = match[2].trim();
+                        skillData[key] = value;
+                    }
+                }
+                return skillData;
+            };
+
             // For each entryId, find all corresponding skill chunks
             let matchingSkills = [];
-            for (const entryId of entryIds) {
-                for (const chunk of skillsChunks) {
-                    if (chunk.includes('SKILLCREATE:')) {
-                        const lines = chunk.trim().split(/\r?\n/);
-                        let hasEntryId = false;
-                        let skillClass = 'Unknown';
-                        for (const line of lines) {
-                            const lineTrimmed = line.trim();
-                            const matchKeyValue = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                            if (matchKeyValue) {
-                                const key = matchKeyValue[1].toUpperCase();
-                                const value = matchKeyValue[2].trim();
-                                if (key === 'SKILLDISPLAYNAMEID') {
-                                    if (parseInt(value) === entryId) {
-                                        hasEntryId = true;
-                                    }
-                                } else if (key === 'SKILLUSERCLASS') {
-                                    skillClass = value;
-                                }
-                            }
-                        }
-                        if (hasEntryId) {
-                            matchingSkills.push({ entryId, chunk: chunk.trim(), className: skillClass });
-                            // Do not break; collect all matching skill chunks
-                        }
+            for (const chunk of skillsChunks) {
+                if (chunk.includes('SKILLCREATE:')) {
+                    const skillData = parseSkillChunk(chunk);
+                    if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID']))) {
+                        const skillClass = skillData['SKILLUSERCLASS'] || 'Unknown';
+                        matchingSkills.push({
+                            entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                            chunk: chunk.trim(),
+                            className: skillClass
+                        });
                     }
                 }
             }
