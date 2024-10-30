@@ -1,6 +1,3 @@
-const fs = require('fs');
-const path = require('path');
-
 module.exports = {
     name: 'upload',
     description: 'Allows a modder to upload a data.zip file and associates it with their mod based on a config file.',
@@ -14,6 +11,9 @@ module.exports = {
             message.channel.send({ content: "You do not have permission to use this command." });
             return;
         }
+        const fs = require('fs');
+        const path = require('path');
+        const axios = require('axios');
 
         if (message.attachments.size === 0) {
             message.channel.send({ content: 'Please attach a data.zip file.' });
