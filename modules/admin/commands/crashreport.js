@@ -9,13 +9,13 @@ module.exports = {
     async execute(message, args, extra) {
         const fs = require('fs');
         const path = require('path');
-        
+
         if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
             message.channel.send({ content: "You do not have permission to use this command." });
             return;
         }
         try {
-            const logsDir = path.join(__dirname, '../../logs');
+            const logsDir = path.join(__dirname, '../../../logs');
             const files = fs.readdirSync(logsDir)
                 .filter(file => file.endsWith('.log'))
                 .map(file => ({ file, time: fs.statSync(path.join(logsDir, file)).mtime }))
