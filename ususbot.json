@@ -1,6 +1,6 @@
 {
     "token_file": "../ususbot_token.txt",
-    "default_channel": "753360878862205039",
+    "default_channel": "1300515981189451877",
     "startup_messages": {
         "update": "I have been updated!",
         "restart": "I have restarted!"
