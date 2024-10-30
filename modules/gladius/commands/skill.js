@@ -3,9 +3,9 @@ module.exports = {
     description: 'Finds and displays information for a specified skill.',
     syntax: 'skill [mod name (optional)] [class name (optional)] [skill name]',
     num_args: 1, // minimum number of arguments to accept
-    args_to_lower: true, // if the arguments should be lower case
-    needs_api: false, // if this command needs access to the api
-    has_state: false, // if this command uses the state engine
+    args_to_lower: true,
+    needs_api: false,
+    has_state: false,
     async execute(message, args, extra) {
         const fs = require('fs');
         const path = require('path');
@@ -126,23 +126,39 @@ module.exports = {
                     if (match) {
                         const key = match[1].toUpperCase();
                         const value = match[2].trim();
-                        skillData[key] = value;
+                        if (key === 'SKILLUSECLASS') {
+                            if (skillData[key]) {
+                                // Append to array if key already exists
+                                if (Array.isArray(skillData[key])) {
+                                    skillData[key].push(value);
+                                } else {
+                                    skillData[key] = [skillData[key], value];
+                                }
+                            } else {
+                                skillData[key] = value;
+                            }
+                        } else {
+                            skillData[key] = value;
+                        }
                     }
                 }
                 return skillData;
             };
 
-            // For each entryId, find all corresponding skill chunks
+            // For each skill chunk, collect matching skills
             let matchingSkills = [];
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
                     const skillData = parseSkillChunk(chunk);
                     if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID']))) {
-                        const skillClass = skillData['SKILLUSERCLASS'] || 'Unknown';
+                        let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
+                        if (!Array.isArray(skillClasses)) {
+                            skillClasses = [skillClasses];
+                        }
                         matchingSkills.push({
                             entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
                             chunk: chunk.trim(),
-                            className: skillClass
+                            classNames: skillClasses
                         });
                     }
                 }
@@ -151,7 +167,7 @@ module.exports = {
             // For debugging: log the collected matching skills
             console.log('Matching Skills:', matchingSkills.map(skill => ({
                 entryId: skill.entryId,
-                className: skill.className,
+                classNames: skill.classNames,
                 chunkSnippet: skill.chunk.substring(0, 50) // Short snippet for readability
             })));
 
@@ -162,7 +178,9 @@ module.exports = {
 
             // Filter by class name if provided
             if (className) {
-                const filteredSkills = matchingSkills.filter(skill => skill.className.toLowerCase() === className.toLowerCase());
+                const filteredSkills = matchingSkills.filter(skill =>
+                    skill.classNames.some(cls => cls.toLowerCase() === className.toLowerCase())
+                );
                 if (filteredSkills.length > 0) {
                     matchingSkills = filteredSkills;
                 } else {
@@ -173,16 +191,19 @@ module.exports = {
 
             // Prepare the response
             const firstSkill = matchingSkills[0];
-            const otherClasses = matchingSkills
-                .map(skill => skill.className)
-                .filter((cls, idx, arr) => cls.toLowerCase() !== firstSkill.className.toLowerCase() && arr.indexOf(cls) === idx && cls.toLowerCase() !== 'unknown');
-            const uniqueOtherClasses = [...new Set(otherClasses)].sort();
+
+            const allClassNames = matchingSkills.flatMap(skill => skill.classNames);
+            const uniqueClassNames = [...new Set(allClassNames.map(cls => cls.toLowerCase()))];
+
+            const firstSkillClassNames = firstSkill.classNames.map(cls => cls.toLowerCase());
+
+            const otherClasses = uniqueClassNames.filter(cls => !firstSkillClassNames.includes(cls) && cls !== 'unknown');
 
             let response = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:
 \`\`\`${firstSkill.chunk}\`\`\``;
 
-            if (uniqueOtherClasses.length > 0) {
-                response += `\nOther classes that share this skill name: ${uniqueOtherClasses.join(', ')}`;
+            if (otherClasses.length > 0) {
+                response += `\nOther classes that share this skill name: ${otherClasses.join(', ')}`;
             }
 
             // Send the response
