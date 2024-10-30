@@ -5,6 +5,5 @@
     "enabled": true,
     "commands_directory": "commands",
     "command_prefix": ";",
-    "is_core": false,
-    "event_handler": "events.js"
+    "is_core": false
 }
