@@ -1,20 +1,21 @@
 module.exports = {
     name: 'upload',
-    description: '(MODDER ONLY)Allows a modder to upload a data.zip file',
-    syntax: 'upload',
+    description: '(MODDER ONLY)Allows a modder to upload a data.zip file or allows an admin to upload on behalf of a modder',
+    syntax: 'upload [mod_name]',
     num_args: 0,
     args_to_lower: false,
     needs_api: false,
     has_state: false,
-    async execute(message) {
-        if (!message.member.roles.cache.some(role => role.name === 'Modder')) {
-            message.channel.send({ content: "You do not have permission to use this command." });
-            return;
-        }
+    async execute(message, args) {
         const fs = require('fs');
         const path = require('path');
         const axios = require('axios');
         const unzipper = require('unzipper');
+
+        if (!message.member.roles.cache.some(role => role.name === 'Modder') && !message.member.roles.cache.some(role => role.name === 'Admin')) {
+            message.channel.send({ content: "You do not have permission to use this command." });
+            return;
+        }
 
         if (message.attachments.size === 0) {
             message.channel.send({ content: 'Please attach a data.zip file.' });
@@ -31,12 +32,25 @@ module.exports = {
             const configPath = path.join(__dirname, '../modders.json');
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-            const modderId = message.author.id;
-            const modDisplayName = config[modderId];
+            let modDisplayName;
 
-            if (!modDisplayName) {
-                message.channel.send({ content: 'You are not listed as a modder in the configuration file.' });
-                return;
+            if (message.member.roles.cache.some(role => role.name === 'Admin') && args.length > 0) {
+                const modName = args.join(' ');
+                const modderId = Object.keys(config).find(key => config[key].toLowerCase() === modName.toLowerCase());
+                if (modderId) {
+                    modDisplayName = config[modderId];
+                } else {
+                    message.channel.send({ content: 'The specified mod name was not found in the configuration file.' });
+                    return;
+                }
+            } else if (message.member.roles.cache.some(role => role.name === 'Modder')) {
+                const modderId = message.author.id;
+                modDisplayName = config[modderId];
+
+                if (!modDisplayName) {
+                    message.channel.send({ content: 'You are not listed as a modder in the configuration file.' });
+                    return;
+                }
             }
 
             // Replace spaces with underscores in modDisplayName
