@@ -116,7 +116,13 @@ module.exports = {
                         const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
                         if (match) {
                             const key = match[1].toUpperCase();
-                            const value = match[2].trim();
+                            let value = match[2].trim();
+                
+                            // Remove surrounding quotes if present
+                            if (value.startsWith('"') && value.endsWith('"')) {
+                                value = value.substring(1, value.length - 1);
+                            }
+                
                             if (key === 'SKILLUSECLASS') {
                                 if (skillData[key]) {
                                     // Append to array if key already exists
