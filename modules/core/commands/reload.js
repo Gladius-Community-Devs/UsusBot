@@ -9,6 +9,10 @@ module.exports = {
     needs_api: false,
     has_state: false,
     execute(message, args, extra) {
+        if (!message.member.roles.cache.has(role => role.name === 'Admin')) {
+            message.channel.send({ content: "You do not have permission to use this command." });
+            return;
+        }
         var mod_handler = extra.module_handler;
 
         var config = JSON.parse(fs.readFileSync(mod_handler.program_path + '/ususbot.json'));

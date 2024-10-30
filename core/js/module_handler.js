@@ -269,7 +269,7 @@ class ModuleHandler {
             }
 
             if(matched_prefix && !found_command) {
-                message.channel.send("Sorry, I couldn't find that command! Try ,commands or ,help for a list of all commands!");
+                message.channel.send("Sorry, I couldn't find that command! Try ;help for a list of all commands!");
                 return;
             } else if(!matched_prefix) {
                 return;
