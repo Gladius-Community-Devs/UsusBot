@@ -87,7 +87,7 @@ module.exports = {
             var longest_module_name = "";
             for(var current_module_name of Array.from(mod_handler.modules.keys())) {
                 var current_module = mod_handler.modules.get(current_module_name);
-                
+
                 var respModule = await api.get('module', {
                     name: current_module_name
                 });
@@ -121,7 +121,9 @@ module.exports = {
 
             for(var current_module_name of Array.from(mod_handler.modules.keys())) {
                 var current_module = mod_handler.modules.get(current_module_name);
-
+                if(current_module.config.display_name == "Core" || current_module.config.display_name == "Admin") {
+                    continue;
+                }
                 var respModule = await api.get('module', {
                     name: current_module_name
                 });
