@@ -15,24 +15,23 @@ module.exports = {
             return;
         }
 
-        const modName = args.length > 2 ? args[1] : 'Vanilla';
+        const modNameInput = args.length > 2 ? args[1] : 'Vanilla';
         const skillName = args.length > 2 ? args.slice(2).join(' ') : args[1];
         const moddersConfigPath = path.join(__dirname, '../modders.json');
-        let modderFound = false;
+        let modName = null;
 
         try {
             // Check if mod exists in modders.json
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
             for (const modder in moddersConfig) {
-                if (moddersConfig[modder].replace(/\s+/g, '_').toLowerCase() === modName.toLowerCase()) {
-                    modderFound = true;
+                if (moddersConfig[modder].replace(/\s+/g, '_').toLowerCase() === modNameInput.toLowerCase()) {
+                    modName = moddersConfig[modder].replace(/\s+/g, '_');
                     break;
                 }
             }
 
-            if (!modderFound && modName !== 'Vanilla') {
-                message.channel.send({ content: `Mod '${modName}' not found in modders.json.` });
-                return;
+            if (!modName) {
+                modName = 'Vanilla';
             }
 
             // Define file paths
