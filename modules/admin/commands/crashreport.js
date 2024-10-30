@@ -40,7 +40,7 @@ module.exports = {
             // Attach the log file
             await message.channel.send({ files: [secondLatestLogFile] });
         } catch (error) {
-            console.error('Error reading log file:', error);
+            this.logger.error('Error reading log file:', error);
             message.channel.send({ content: 'An error occurred while trying to read the log file.' });
         }
     }
