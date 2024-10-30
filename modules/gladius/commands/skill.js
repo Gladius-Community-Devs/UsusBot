@@ -1,8 +1,8 @@
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
-    syntax: 'skill [skill name]',
-    num_args: 1, //minimum amount of arguments to accept
+    syntax: 'skill [mod name] [skill name]',
+    num_args: 2, //minimum amount of arguments to accept
     args_to_lower: true, //if the arguments should be lower case
     needs_api: false, //if this command needs access to the api
     has_state: false, //if this command uses the state engine
@@ -15,11 +15,30 @@ module.exports = {
             return;
         }
 
-        const skillName = args.slice(1).join(' ');
-        const lookupFilePath = path.join(__dirname, '../../../uploads', 'lookuptext_eng.txt');
-        const skillsFilePath = path.join(__dirname, '../../../uploads', 'config', 'skills.tok');
+        const modName = args.length > 2 ? args[1] : 'Vanilla';
+        const skillName = args.length > 2 ? args.slice(2).join(' ') : args[1];
+        const moddersConfigPath = path.join(__dirname, '../modders.json');
+        let modderFound = false;
 
         try {
+            // Check if mod exists in modders.json
+            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+            for (const modder in moddersConfig) {
+                if (moddersConfig[modder].replace(/\s+/g, '_').toLowerCase() === modName.toLowerCase()) {
+                    modderFound = true;
+                    break;
+                }
+            }
+
+            if (!modderFound && modName !== 'Vanilla') {
+                message.channel.send({ content: `Mod '${modName}' not found in modders.json.` });
+                return;
+            }
+
+            // Define file paths
+            const lookupFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'lookuptext_eng.txt');
+            const skillsFilePath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'skills.tok');
+
             // Read the lookuptext_eng.txt file
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
             const lookupLines = lookupContent.split('\n');
