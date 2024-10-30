@@ -9,7 +9,7 @@ module.exports = {
     needs_api: false,
     has_state: false,
     execute(message, args, extra) {
-        if (!message.member.roles.cache.has(role => role.name === 'Admin')) {
+        if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
             message.channel.send({ content: "You do not have permission to use this command." });
             return;
         }

@@ -7,7 +7,7 @@ module.exports = {
   needs_api: false, //Disabled because this command doesn't call the API
   has_state: true, //This is what tells the system that we want to use the state system
   async execute(message, args, extra) {
-    if (!message.member.roles.cache.has(role => role.name === 'Admin')) {
+    if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
       message.channel.send({ content: "You do not have permission to use this command." });
       return;
   }
