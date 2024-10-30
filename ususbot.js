@@ -10,7 +10,7 @@ var request = require('request');
 var shell = require('shelljs');
 require('dotenv/config')
 
-const {Client, GatewayIntentBits, Intents, Discord} = require('discord.js');
+const {Client, GatewayIntentBits, ClientUser} = require('discord.js');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent] });
 var config = JSON.parse(fs.readFileSync('ususbot.json'));
 
@@ -47,7 +47,7 @@ async function botInit () {
     } else {
         channel.send({ content: config.startup_messages.restart});
     }
-    client.user.setActivity(config.bot_activity.name, { type: config.bot_activity.type });
+    client.user.setActivity(config.bot_activity.name, { type: ClientUser.ActivityType.Watching });
 }
 
 client.on('ready', botInit);
