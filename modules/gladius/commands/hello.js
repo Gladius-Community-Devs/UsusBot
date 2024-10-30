@@ -1,7 +1,7 @@
 module.exports = {
     name: 'hello',
     description: 'Say hi to Usus! Used to test if the bot is working.',
-    syntax: 'ping [arbitrary argument for testing]',
+    syntax: 'hello',
     num_args: 0,
     args_to_lower: true,
     needs_api: false,
