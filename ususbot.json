@@ -6,8 +6,8 @@
         "restart": "I have restarted!"
     },
     "bot_activity": {
-        "name": "in Munio's School",
-        "type": "TRAINING"
+        "name": "the High Tournaments",
+        "type": "WATCHING"
     },
     "modules_folder": "modules",
     "log_folder": "logs",
