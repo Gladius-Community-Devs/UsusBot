@@ -1,6 +1,6 @@
 module.exports = {
     name: 'upload',
-    description: 'Allows a modder to upload a data.zip file',
+    description: '(MODDER ONLY)Allows a modder to upload a data.zip file',
     syntax: 'upload',
     num_args: 0,
     args_to_lower: false,

@@ -1,6 +1,6 @@
 module.exports = {
     name: 'add_modder',
-    description: 'Update the modders.json file with a modder Discord ID and mod name',
+    description: '(ADMIN ONLY)Update the modders.json file with a modder Discord ID and mod name',
     syntax: 'add_modder <Discord ID> <Mod Name>',
     num_args: 2, // minimum amount of arguments to accept (ID + Mod Name)
     args_to_lower: false, // do not convert arguments to lowercase
