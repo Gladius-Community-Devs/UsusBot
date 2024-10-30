@@ -233,11 +233,12 @@ class ModuleHandler {
         } else { //This section runs when user uses form '/[command]' (the module will be found automatically)
             var found_command = false;
             var matched_prefix = false;
-
+            this.logger.info("Checking for command: " + command_args[0]);
             for(var current_module_name of Array.from(this.modules.keys())) { //Iterate all modules
                 current_module = this.modules.get(current_module_name);
 
                 if(message.content.startsWith(current_module.config.command_prefix)) { //This module's command prefix matches the one used
+                    this.logger.info("Found module with matching prefix: " + current_module.config.command_prefix);
                     matched_prefix = true;
                     var command_name = command_args[0].substring(current_module.config.command_prefix.length);
 
@@ -245,7 +246,7 @@ class ModuleHandler {
                         var respModule = await api.get('module', {
                             name: current_module.config.name
                         });
-
+                        this.logger.info("Checking if module is enabled on server..." + respModule);
                         if(respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
                             continue;
                         }
