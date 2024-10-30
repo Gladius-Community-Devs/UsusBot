@@ -1,0 +1,14 @@
+echo "added gits"
+function gits() {
+    git pull
+    git add .
+    
+    # Check if commit was made successfully before proceeding
+    git commit -m "$1"
+    if [ $? -eq 0 ]; then
+        echo "Commit successful."
+        git push || echo "git push failed."
+    else
+        echo "No changes to commit."
+    fi
+}
