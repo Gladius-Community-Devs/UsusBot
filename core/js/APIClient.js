@@ -17,7 +17,7 @@ class APIClient {
 	 * access token. Once the APIClient has a token, it will fire an 'ApiReady' event on document.
 	 */
 	constructor() {
-        this.api_url = "https://budaslounge.com/usus_api/";
+        this.api_url = "https://budaslounge.com/usus_api_break/";
 		this.access_url = "UsusBot Server";
 		this.token = fs.readFileSync(__dirname + "/../../../usus_api_token.txt", "utf8");
 	}
