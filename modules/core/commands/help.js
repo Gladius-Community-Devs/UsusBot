@@ -28,11 +28,12 @@ module.exports = {
 
         var header_syntax_length = Math.max(longest_syntax.length, 7); // "Command" length
         var header_module_length = Math.max(longest_module_name.length, 6); // "Module" length
-        var desc_space = 134 - header_syntax_length - header_module_length;
+        var desc_space = 150 - header_syntax_length - header_module_length;
 
         var output = '```';
-        output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description\n`;
-        output += "-".repeat(header_syntax_length) + "|" + "-".repeat(header_module_length + 2) + "|-----------------------------------------\n";
+        output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description
+`;
+        output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(header_module_length) + "-+-" + "-".repeat(desc_space) + "\n";
 
         if(args.length > 1) {
             var module_name = args[1];
@@ -75,8 +76,9 @@ module.exports = {
                         output += "```";
                         message.channel.send({ content: output});
                         output = "```";
-                        output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description\n`;
-                        output += "-".repeat(header_syntax_length) + "|" + "-".repeat(header_module_length + 2) + "|-----------------------------------------\n";
+                        output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description
+`;
+                        output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(header_module_length) + "-+-" + "-".repeat(desc_space) + "\n";
                         num_lines = 0;
                     }
                 }
@@ -127,8 +129,9 @@ module.exports = {
                             output += "```";
                             message.channel.send({ content: output});
                             output = "```";
-                            output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description\n`;
-                            output += "-".repeat(header_syntax_length) + "|" + "-".repeat(header_module_length + 2) + "|-----------------------------------------\n";
+                            output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description
+`;
+                            output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(header_module_length) + "-+-" + "-".repeat(desc_space) + "\n";
                             num_lines = 0;
                         }
                     }
