@@ -34,24 +34,28 @@ module.exports = {
 
             let modDisplayName;
 
-            if (message.member.roles.cache.some(role => role.name === 'Admin') && args.length > 0) {
-                const modName = args.join(' ');
-                const modderId = Object.keys(config).find(key => config[key].toLowerCase() === modName.toLowerCase());
+            if (message.member.roles.cache.some(role => role.name === 'Admin') && args.length > 1) {
+                // Skip the first argument (the command name) and join the rest
+                const modName = args.slice(1).join(' ').toLowerCase().trim();
+                const modderId = Object.keys(config).find(key => config[key].toLowerCase() === modName);
                 if (modderId) {
                     modDisplayName = config[modderId];
                 } else {
-                    message.channel.send({ content: 'The specified mod name was not found in the configuration file.' });
+                    message.channel.send({ content: `The specified mod name "${modName}" was not found in the configuration file. Please make sure you have typed it correctly.` });
+                    this.logger.error(`Mod name "${modName}" was not found in the configuration.`);
                     return;
                 }
             } else if (message.member.roles.cache.some(role => role.name === 'Modder')) {
                 const modderId = message.author.id;
                 modDisplayName = config[modderId];
-
+            
                 if (!modDisplayName) {
                     message.channel.send({ content: 'You are not listed as a modder in the configuration file.' });
+                    this.logger.error(`Modder with ID "${modderId}" was not found in the configuration.`);
                     return;
                 }
             }
+            
 
             // Replace spaces with underscores in modDisplayName
             const sanitizedModDisplayName = modDisplayName.replace(/\s+/g, '_');
