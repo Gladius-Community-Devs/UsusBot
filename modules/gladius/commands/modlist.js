@@ -23,7 +23,7 @@ module.exports = {
             const modListPromises = Object.entries(modders).map(async ([authorId, modName]) => {
                 try {
                     const member = await message.guild.members.fetch(authorId);
-                    return { modName, authorName: member.nickname || member.user.username };
+                    return { modName, authorName: member.displayName || member.user.username };
                 } catch (err) {
                     this.logger.error(`Error fetching user with ID ${authorId}:`, err);
                     return { modName, authorName: 'Unknown' }; // Fallback if user not found
