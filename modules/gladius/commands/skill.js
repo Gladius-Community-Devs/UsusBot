@@ -71,8 +71,9 @@ module.exports = {
             let entryId = null;
             for (const line of lookupLines) {
                 if (!line.trim()) continue;
-                const [id, ...nameParts] = line.split('^');
-                const name = nameParts.join('^').trim();
+                const fields = line.split('^');
+                const id = fields[0];
+                const name = fields[fields.length - 1].trim();
                 if (name.toLowerCase() === skillName.toLowerCase()) {
                     entryId = parseInt(id);
                     break;
