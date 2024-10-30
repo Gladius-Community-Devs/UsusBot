@@ -1,8 +1,8 @@
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
-    syntax: 'skill [mod name] [skill name]',
-    num_args: 2, // minimum amount of arguments to accept
+    syntax: 'skill [mod name (optional)] [skill name]',
+    num_args: 1, // minimum amount of arguments to accept
     args_to_lower: true, // if the arguments should be lower case
     needs_api: false, // if this command needs access to the api
     has_state: false, // if this command uses the state engine
