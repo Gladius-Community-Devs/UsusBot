@@ -39,8 +39,11 @@ module.exports = {
                 return;
             }
 
-            const downloadPath = path.join(__dirname, `../../../uploads/${modDisplayName}_data.zip`);
-            const extractPath = path.join(__dirname, `../../../uploads/${modDisplayName}`);
+            // Replace spaces with underscores in modDisplayName
+            const sanitizedModDisplayName = modDisplayName.replace(/\s+/g, '_');
+
+            const downloadPath = path.join(__dirname, `../../../uploads/${sanitizedModDisplayName}_data.zip`);
+            const extractPath = path.join(__dirname, `../../../uploads/${sanitizedModDisplayName}`);
 
             // Download and save the file
             const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
@@ -51,7 +54,7 @@ module.exports = {
             fs.createReadStream(downloadPath)
                 .pipe(unzipper.Extract({ path: extractPath }))
                 .on('close', () => {
-                    message.channel.send({ content: `The data.zip file has been successfully uploaded and extracted for mod: ${modDisplayName}.` });
+                    message.channel.send({ content: `The data.zip file has been successfully uploaded and extracted for mod: ${sanitizedModDisplayName}.` });
                 })
                 .on('error', (err) => {
                     this.logger.error('Error extracting the zip file:', err);
