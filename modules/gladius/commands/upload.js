@@ -27,7 +27,7 @@ module.exports = {
         }
 
         try {
-            const configPath = path.join(__dirname, '../../modders.json');
+            const configPath = path.join(__dirname, '../modders.json');
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
             const modderId = message.author.id;
@@ -38,7 +38,7 @@ module.exports = {
                 return;
             }
 
-            const downloadPath = path.join(__dirname, `../../uploads/${modDisplayName}_data.zip`);
+            const downloadPath = path.join(__dirname, `../../../uploads/${modDisplayName}_data.zip`);
 
             // Download and save the file
             const response = await fetch(attachment.url);
