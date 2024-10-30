@@ -68,22 +68,26 @@ module.exports = {
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
             const lookupLines = lookupContent.split(/\r?\n/);
 
-            const skillNamesSet = new Set();
+            // Build a map of skill names to entry IDs
+            const skillNameToEntryIds = {};
             for (const line of lookupLines) {
                 if (!line.trim()) continue;
                 const fields = line.split('^');
-                const name = fields[fields.length - 1].trim();
-                skillNamesSet.add(name.toLowerCase());
+                const id = fields[0].trim();
+                const name = fields[fields.length - 1].trim().toLowerCase();
+                if (!skillNameToEntryIds[name]) {
+                    skillNameToEntryIds[name] = [];
+                }
+                skillNameToEntryIds[name].push(parseInt(id));
             }
-            const skillNames = Array.from(skillNamesSet);
 
             // Attempt to find the longest matching skill name starting from the end
             let foundSkillName = false;
             for (let i = args.length; i > index; i--) {
-                const potentialSkillName = args.slice(i - (args.length - index), args.length).join(' ').trim().toLowerCase();
-                if (skillNames.includes(potentialSkillName)) {
-                    skillName = args.slice(i - (args.length - index), args.length).join(' ').trim();
-                    className = args.slice(index, i - (args.length - index)).join(' ').trim();
+                const potentialSkillName = args.slice(index, i).join(' ').trim().toLowerCase();
+                if (skillNameToEntryIds[potentialSkillName]) {
+                    skillName = args.slice(index, i).join(' ').trim();
+                    className = args.slice(i, args.length).join(' ').trim();
                     foundSkillName = true;
                     break;
                 }
@@ -98,17 +102,8 @@ module.exports = {
             className = sanitizeInput(className);
             skillName = sanitizeInput(skillName);
 
-            // Find all entry IDs for the skill name
-            let entryIds = [];
-            for (const line of lookupLines) {
-                if (!line.trim()) continue;
-                const fields = line.split('^');
-                const id = fields[0];
-                const name = fields[fields.length - 1].trim();
-                if (name.toLowerCase() === skillName.toLowerCase()) {
-                    entryIds.push(parseInt(id));
-                }
-            }
+            // Get all entry IDs for the skill name
+            const entryIds = skillNameToEntryIds[skillName.toLowerCase()] || [];
 
             if (entryIds.length === 0) {
                 message.channel.send({ content: `Skill '${skillName}' not found in '${modName}'.` });
@@ -129,8 +124,10 @@ module.exports = {
                         const lines = chunk.trim().split(/\r?\n/);
                         let skillClass = 'Unknown';
                         for (const line of lines) {
-                            if (line.startsWith('SKILLUSERCLASS:')) {
-                                skillClass = line.split(':')[1].trim();
+                            const lineTrimmed = line.trim();
+                            const match = lineTrimmed.match(/^SKILLUSERCLASS:\s*(.+)$/i);
+                            if (match) {
+                                skillClass = match[1].trim();
                                 break;
                             }
                         }
@@ -139,6 +136,13 @@ module.exports = {
                     }
                 }
             }
+
+            // For debugging: log the collected matching skills
+            console.log('Matching Skills:', matchingSkills.map(skill => ({
+                entryId: skill.entryId,
+                className: skill.className,
+                chunkSnippet: skill.chunk.substring(0, 50) // Short snippet for readability
+            })));
 
             if (matchingSkills.length === 0) {
                 message.channel.send({ content: `No skills found for '${skillName}' in '${modName}'.` });
@@ -160,7 +164,7 @@ module.exports = {
             const firstSkill = matchingSkills[0];
             const otherClasses = matchingSkills
                 .map(skill => skill.className)
-                .filter(cls => cls.toLowerCase() !== firstSkill.className.toLowerCase());
+                .filter((cls, idx, arr) => cls.toLowerCase() !== firstSkill.className.toLowerCase() && arr.indexOf(cls) === idx && cls.toLowerCase() !== 'unknown');
             const uniqueOtherClasses = [...new Set(otherClasses)].sort();
 
             let response = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:
