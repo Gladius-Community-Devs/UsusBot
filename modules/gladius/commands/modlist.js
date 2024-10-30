@@ -38,7 +38,7 @@ module.exports = {
                 .setTitle('List of Mods and Their Authors')
                 .setColor('#5865F2')
                 .setDescription('Below is a list of mods currently available and their respective authors:')
-                .addFields(modList.map(({ modName, authorName }) => ({ name: modName, value: `by ${authorName}`, inline: true })))
+                .addFields(modList.map(({ modName, authorName }) => ({ name: `**${modName}**`, value: `by ${authorName}` })))
                 .setFooter({ text: 'Use the modlist command to stay updated!' });
 
             // Send the embed message
