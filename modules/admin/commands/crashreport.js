@@ -29,7 +29,7 @@ module.exports = {
             const secondLatestLogFile = path.join(logsDir, files[1].file);
             const logContent = fs.readFileSync(secondLatestLogFile, 'utf8');
 
-            const filteredLines = logContent.split('\n').filter(line => !line.startsWith('level'));
+            const filteredLines = logContent.split('\n').filter(line => !line.startsWith('{"level'));
             const output = filteredLines.join('\n');
 
             if (output.length === 0) {
