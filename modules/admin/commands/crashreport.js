@@ -7,6 +7,9 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async execute(message, args, extra) {
+        const fs = require('fs');
+        const path = require('path');
+        
         if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
             message.channel.send({ content: "You do not have permission to use this command." });
             return;
