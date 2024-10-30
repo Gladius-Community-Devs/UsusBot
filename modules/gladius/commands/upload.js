@@ -41,8 +41,8 @@ module.exports = {
             const downloadPath = path.join(__dirname, `../../../uploads/${modDisplayName}_data.zip`);
 
             // Download and save the file
-            const response = await fetch(attachment.url);
-            const buffer = await response.buffer();
+            const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+            const buffer = Buffer.from(response.data);
             fs.writeFileSync(downloadPath, buffer);
 
             message.channel.send({ content: `The data.zip file has been successfully uploaded for mod: ${modDisplayName}.` });
