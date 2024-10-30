@@ -10,9 +10,29 @@ module.exports = {
         var api = extra.api;
         var mod_handler = extra.module_handler;
 
+        var longest_syntax = "";
+        var longest_module_name = "";
+        for (var current_module_name of Array.from(mod_handler.modules.keys())) {
+            var current_module = mod_handler.modules.get(current_module_name);
+
+            for (var current_command_name of Array.from(current_module.commands.keys())) {
+                var current_command = current_module.commands.get(current_command_name);
+                if (current_command.syntax.length > longest_syntax.length) {
+                    longest_syntax = current_command.syntax;
+                }
+                if (current_module.config.display_name.length > longest_module_name.length) {
+                    longest_module_name = current_module.config.display_name;
+                }
+            }
+        }
+
+        var header_syntax_length = Math.max(longest_syntax.length, 7); // "Command" length
+        var header_module_length = Math.max(longest_module_name.length, 6); // "Module" length
+        var desc_space = 134 - header_syntax_length - header_module_length;
+
         var output = '```';
-        output += "Command                             | Module                             | Description\n";
-        output += "------------------------------------|------------------------------------|-----------------------------------------\n";
+        output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description\n`;
+        output += "-".repeat(header_syntax_length) + "|" + "-".repeat(header_module_length + 2) + "|-----------------------------------------\n";
 
         if(args.length > 1) {
             var module_name = args[1];
@@ -33,37 +53,15 @@ module.exports = {
             
             if(mod_handler.modules.has(module_name) && respModEnabled.enabled_modules.length > 0) {
                 var selected_module = mod_handler.modules.get(module_name);
-
-                var longest_syntax = "";
-                var longest_module_name = module_name;
-                for(var current_command_name of Array.from(selected_module.commands.keys())) {
-                    var current_command = selected_module.commands.get(current_command_name);
-                    if(current_command.syntax.length > longest_syntax.length) {
-                        longest_syntax = current_command.syntax;
-                    }
-                }
-
-                var desc_space = 134 - longest_syntax.length - longest_module_name.length;
-                var numLines = 0;
+                var num_lines = 0;
 
                 for(var current_command_name of Array.from(selected_module.commands.keys())) {
                     var current_command = selected_module.commands.get(current_command_name);
 
-                    output += current_command.syntax;
-                    if(current_command.syntax.length < longest_syntax.length) {
-                        for(var i=current_command.syntax.length; i < longest_syntax.length; i++) {
-                            output += " ";
-                        }
-                    }
-
-                    output += " | " + selected_module.config.display_name;
-                    if(selected_module.config.display_name.length < longest_module_name.length) {
-                        for(var i=selected_module.config.display_name.length; i < longest_module_name.length; i++) {
-                            output += " ";
-                        }
-                    }
-
+                    output += current_command.syntax + " ".repeat(header_syntax_length - current_command.syntax.length);
+                    output += " | " + selected_module.config.display_name + " ".repeat(header_module_length - selected_module.config.display_name.length);
                     output += " | ";
+
                     if(current_command.description.length > desc_space) {
                         output += current_command.description.substring(0, desc_space - 3) + "...";
                     } else {
@@ -77,8 +75,8 @@ module.exports = {
                         output += "```";
                         message.channel.send({ content: output});
                         output = "```";
-                        output += "Command                             | Module                             | Description\n";
-                        output += "------------------------------------|------------------------------------|-----------------------------------------\n";
+                        output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description\n`;
+                        output += "-".repeat(header_syntax_length) + "|" + "-".repeat(header_module_length + 2) + "|-----------------------------------------\n";
                         num_lines = 0;
                     }
                 }
@@ -88,40 +86,6 @@ module.exports = {
                 message.channel.send({ content: "Sorry, I couldn't find that module!"});
             }
         } else {
-            var longest_syntax = "";
-            var longest_module_name = "";
-            for(var current_module_name of Array.from(mod_handler.modules.keys())) {
-                var current_module = mod_handler.modules.get(current_module_name);
-
-                var respModule = await api.get('module', {
-                    name: current_module_name
-                });
-
-                if(respModule.modules.length <= 0) {
-                    message.channel.send({ content: "Oops, something went wrong!"});
-                    return;
-                }
-
-                var respModEnabled = await api.get('enabled_module', {
-                    module_id: parseInt(respModule.modules[0].module_id)
-                });
-
-                if(respModEnabled.enabled_modules.length > 0) {
-                    if(current_module.config.display_name.length > longest_module_name.length) {
-                        longest_module_name = current_module.config.display_name;
-                    }
-
-                    for(var current_command_name of Array.from(current_module.commands.keys())) {
-                        var current_command = current_module.commands.get(current_command_name);
-                        this.logger.info({ command: current_command.name });
-                        if(current_command.syntax.length > longest_syntax.length) {
-                            longest_syntax = current_command.syntax;
-                        }
-                    }
-                }
-            }
-
-            var desc_space = 134 - longest_syntax.length - longest_module_name.length;
             var num_lines = 0;
 
             for(var current_module_name of Array.from(mod_handler.modules.keys())) {
@@ -146,21 +110,10 @@ module.exports = {
                     for(var current_command_name of Array.from(current_module.commands.keys())) {
                         var current_command = current_module.commands.get(current_command_name);
 
-                        output += current_command.syntax;
-                        if(current_command.syntax.length < longest_syntax.length) {
-                            for(var i=current_command.syntax.length; i < longest_syntax.length; i++) {
-                                output += " ";
-                            }
-                        }
-
-                        output += " | " + current_module.config.display_name;
-                        if(current_module.config.display_name.length < longest_module_name.length) {
-                            for(var i=current_module.config.display_name.length; i < longest_module_name.length; i++) {
-                                output += " ";
-                            }
-                        }
-
+                        output += current_command.syntax + " ".repeat(header_syntax_length - current_command.syntax.length);
+                        output += " | " + current_module.config.display_name + " ".repeat(header_module_length - current_module.config.display_name.length);
                         output += " | ";
+
                         if(current_command.description.length > desc_space) {
                             output += current_command.description.substring(0, desc_space - 3) + "...";
                         } else {
@@ -174,8 +127,8 @@ module.exports = {
                             output += "```";
                             message.channel.send({ content: output});
                             output = "```";
-                            output += "Command                             | Module                             | Description\n";
-                            output += "------------------------------------|------------------------------------|-----------------------------------------\n";
+                            output += `Command${" ".repeat(header_syntax_length - 7)} | Module${" ".repeat(header_module_length - 6)} | Description\n`;
+                            output += "-".repeat(header_syntax_length) + "|" + "-".repeat(header_module_length + 2) + "|-----------------------------------------\n";
                             num_lines = 0;
                         }
                     }
