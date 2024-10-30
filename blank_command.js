@@ -26,26 +26,8 @@ messageChunks.forEach(async chunk => {
 
 
 //<message>.reference.messageId - references a message if it is replied to
-//Code to check if the user has admin perms. Temp until I can make some extra headers.
-var api = extra.api;
-var respAdminID = "";
-try{
-    respAdminID = await api.get("discord_server",{
-        server_id:message.guild.id
-    });
-}catch(err){
-    this.logger.error(err.message);
-}
-if(respAdminID.discord_servers[0]){
-    if(respAdminID.discord_servers[0].admin_role_id === ""){
-        message.channel.send({ content: "This command requires an admin role but no main admin role has been selected for this server."});
-        return;
-    }
-    else if(!message.member.roles.cache.has(respAdminID.discord_servers[0].admin_role_id)){
-        message.channel.send({ content: "You do not have permission to use this command."});
-        return;
-    }
-}else{
-    message.channel.send({ content: "This command requires an admin role but no main admin role has been selected for this server."});
+//Code to check if the user has admin perms.
+if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
+    message.channel.send({ content: "You do not have permission to use this command." });
     return;
 }
