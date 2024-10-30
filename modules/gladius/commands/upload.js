@@ -26,7 +26,7 @@ module.exports = {
             message.channel.send({ content: 'The attached file must be a .zip file.' });
             return;
         }
-
+        message.channel.send({ content: 'Processing the uploaded file...' });
         try {
             const configPath = path.join(__dirname, '../modders.json');
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
