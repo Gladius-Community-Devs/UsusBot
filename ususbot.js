@@ -47,7 +47,7 @@ async function botInit () {
     } else {
         channel.send({ content: config.startup_messages.restart});
     }
-    client.user.setActivity(config.bot_activity.name, { type: ClientUser.ActivityType.Watching });
+    client.user.setActivity(config.bot_activity.name, { type: config.bot_activity.type });
 }
 
 client.on('ready', botInit);
