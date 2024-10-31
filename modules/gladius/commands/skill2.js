@@ -307,20 +307,21 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     // Multi-Hit Data
     if (hasMultiHitAttribute && skillData['SKILLMULTIHITDATA']) {
         const multiHitData = skillData['SKILLMULTIHITDATA'].split(',').map(part => part.trim());
-        const hitDescriptions = multiHitData.map((hit, index) => {
-            switch (hit) {
-                case 'A': return 'front-left';
-                case 'B': return 'in front';
-                case 'C': return 'front-right';
-                case 'D': return 'right';
-                case 'E': return 'back-right';
-                case 'F': return 'behind';
-                case 'G': return 'back-left';
-                case 'H': return 'left';
-                default: return 'unknown';
-            }
+        const numberOfHits = multiHitData.length;
+        const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
+        const hitDescriptions = multiHitData.map(hit => {
+            let description = '';
+            if (hit.includes('A')) description += 'front-left, ';
+            if (hit.includes('B')) description += 'in front, ';
+            if (hit.includes('C')) description += 'front-right, ';
+            if (hit.includes('D')) description += 'right, ';
+            if (hit.includes('E')) description += 'back-right, ';
+            if (hit.includes('F')) description += 'behind, ';
+            if (hit.includes('G')) description += 'back-left, ';
+            if (hit.includes('H')) description += 'left, ';
+            return description.slice(0, -2);
         });
-        description += `**Multi-Hit:** This skill hits ${hitDescriptions.length} times: ${hitDescriptions.join(', ')}\n`;
+        description += `**Multi-Hit:** This skill hits ${numberOfHits} times for ${numberOfHits * 100}% ${damageType}, hitting: ${hitDescriptions.join('; ')}\n`;
     }
 
     // Range
