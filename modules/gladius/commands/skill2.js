@@ -308,22 +308,23 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     // Multi-Hit Data
     if (hasMultiHitAttribute && skillData['SKILLMULTIHITDATA']) {
         const multiHitData = skillData['SKILLMULTIHITDATA'].split(',').map(part => part.trim());
-        const numberOfHits = multiHitData.reduce((acc, hit) => acc + hit.length, 0);
+        const numberOfHits = multiHitData.length;
+        const numberOfUnitsHit = multiHitData.reduce((acc, hit) => acc + hit.length, 0);
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
-        const totalDamage = baseDamageModifier * numberOfHits * 100;
-        const hitDescriptions = multiHitData.map(hit => {
+        const totalDamage = baseDamageModifier * numberOfUnitsHit * 100;
+        const hitDescriptions = multiHitData.map((hit, index) => {
             let description = '';
-            if (hit.includes('A')) description += 'front-left and ';
-            if (hit.includes('B')) description += 'in-front and ';
-            if (hit.includes('C')) description += 'front-right and ';
-            if (hit.includes('D')) description += 'right and ';
-            if (hit.includes('E')) description += 'back-right and ';
-            if (hit.includes('F')) description += 'behind and ';
-            if (hit.includes('G')) description += 'back-left and ';
-            if (hit.includes('H')) description += 'left and ';
-            return description.slice(0, -5);
-        });
-        description += `**Multi-Hit:** This skill hits ${numberOfHits} times for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions.join(' | ')}\n`;
+            if (hit.includes('A')) description += 'front-left, ';
+            if (hit.includes('B')) description += 'in front, ';
+            if (hit.includes('C')) description += 'front-right, ';
+            if (hit.includes('D')) description += 'right, ';
+            if (hit.includes('E')) description += 'back-right, ';
+            if (hit.includes('F')) description += 'behind, ';
+            if (hit.includes('G')) description += 'back-left, ';
+            if (hit.includes('H')) description += 'left, ';
+            return `Hit ${index + 1}: ${description.slice(0, -2)}`;
+        }).join('; ');
+        description += `**Multi-Hit:** Hits ${numberOfUnitsHit} total people across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}\n`;
     }
 
 
