@@ -10,14 +10,12 @@ module.exports = {
         var mod_handler = extra.module_handler;
 
         var longest_syntax = "";
-        for (var current_module_name of Array.from(mod_handler.modules.keys())) {
-            var current_module = mod_handler.modules.get(current_module_name);
+        var gladius_module = mod_handler.modules.get('gladius');
 
-            for (var current_command_name of Array.from(current_module.commands.keys())) {
-                var current_command = current_module.commands.get(current_command_name);
-                if (current_command.syntax.length > longest_syntax.length) {
-                    longest_syntax = current_command.syntax;
-                }
+        for (var current_command_name of Array.from(gladius_module.commands.keys())) {
+            var current_command = gladius_module.commands.get(current_command_name);
+            if (current_command.syntax.length > longest_syntax.length) {
+                longest_syntax = current_command.syntax;
             }
         }
 
@@ -31,32 +29,33 @@ module.exports = {
 
         var num_lines = 0;
 
-        for (var current_module_name of Array.from(mod_handler.modules.keys())) {
-            var current_module = mod_handler.modules.get(current_module_name);
-            for (var current_command_name of Array.from(current_module.commands.keys())) {
-                var current_command = current_module.commands.get(current_command_name);
+        for (var current_command_name of Array.from(gladius_module.commands.keys())) {
+            var current_command = gladius_module.commands.get(current_command_name);
 
-                output += current_command.syntax + " ".repeat(header_syntax_length - current_command.syntax.length);
-                output += " | ";
+            if (current_command.module === 'Core' || current_command.module === 'Admin') {
+                continue;
+            }
 
-                if (current_command.description.length > desc_space) {
-                    output += current_command.description.substring(0, desc_space - 3) + "...";
-                } else {
-                    output += current_command.description;
-                }
+            output += current_command.syntax + " ".repeat(header_syntax_length - current_command.syntax.length);
+            output += " | ";
 
-                output += "\n";
+            if (current_command.description.length > desc_space) {
+                output += current_command.description.substring(0, desc_space - 3) + "...";
+            } else {
+                output += current_command.description;
+            }
 
-                num_lines++;
-                if (num_lines >= 14) {
-                    output += "```";
-                    message.channel.send({ content: output });
-                    output = "```";
-                    output += `Command${" ".repeat(header_syntax_length - 7)} | Description
+            output += "\n";
+
+            num_lines++;
+            if (num_lines >= 14) {
+                output += "```";
+                message.channel.send({ content: output });
+                output = "```";
+                output += `Command${" ".repeat(header_syntax_length - 7)} | Description
 `;
-                    output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(desc_space) + "\n";
-                    num_lines = 0;
-                }
+                output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(desc_space) + "\n";
+                num_lines = 0;
             }
         }
         output += "```";
