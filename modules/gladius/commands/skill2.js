@@ -333,7 +333,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     if (hasMoveToAttackAttribute && skillData['SKILLMOVETOATTACKMOD']) {
         const moveToAttackMod = parseInt(skillData['SKILLMOVETOATTACKMOD'], 10);
         const movementText = moveToAttackMod > 0 ? `${moveToAttackMod} more` : `${Math.abs(moveToAttackMod)} less`;
-        description += `**Move to Attack:** This unit can move to attack with ${movementText} ${movementText === 1 ? 'space' : 'spaces'} of movement\n`;
+        description += `**Move to Attack:** This unit can move to attack with ${movementText} ${moveToAttackMod === 1 ? 'space' : 'spaces'} of movement\n`;
     }
 
     // Range
