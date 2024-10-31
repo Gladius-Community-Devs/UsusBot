@@ -313,7 +313,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const totalDamage = baseDamageModifier * numberOfHits * 100;
         const hitDescriptions = multiHitData.map(hit => {
             let description = '';
-            if (hit.includes('A')) description += 'front-left, ';
+            if (hit.includes('A')) description += 'front-left *and* ';
             if (hit.includes('B')) description += 'in front, ';
             if (hit.includes('C')) description += 'front-right, ';
             if (hit.includes('D')) description += 'right, ';
