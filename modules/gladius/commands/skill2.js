@@ -214,10 +214,8 @@ module.exports = {
             const skillDescription = generateSkillDescription(skillData, lookupTextMap);
 
             // Prepare the response
-            let response = `Skill details for '${skillName}' in '${modName}'`;
-            if (className) {
-                response += ` for class '${className}'`;
-            }
+            let response = `Skill details for '${skillName}' in '${modName}' for class '${className}'`;
+            
             response += `:\n${skillDescription}`;
 
             const allClassNames = matchingSkills.flatMap(skill => skill.classNames);
@@ -253,7 +251,9 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     const skillDescId = skillData['SKILLDESCRIPTIONID'];
     const skillDesc = lookupTextMap[skillDescId] || '';
     if (skillDesc) {
-        description += `*${skillDesc}*\n\n`;
+        description += `*${skillDesc}*
+
+`;
     }
     description += '-# Skills.tok Information:\n';
     // Skill Type and Category
@@ -293,7 +293,19 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const skillCostsParts = skillData['SKILLCOSTS'].split(',').map(part => part.trim());
         const turns = skillCostsParts[0];
         const sp = skillCostsParts[1] / 10;
-        description += `**Costs:** The skill costs ${turns} turn${turns !== '1' ? 's' : ''} and uses ${sp}SP\n`;
+        let costDescription = `The skill costs ${turns} turn${turns !== '1' ? 's' : ''}`;
+        if (sp > 0) {
+            costDescription += ` and uses ${sp}SP`;
+        }
+        if (skillData['SKILLAFFCOST']) {
+            const affinityOrbs = skillData['SKILLAFFCOST'] / 20;
+            costDescription += ` and ${affinityOrbs} affinity orb${affinityOrbs !== 1 ? 's' : ''}`;
+            if (skillData['SKILLAFFINITY']) {
+                const affinityType = skillData['SKILLAFFINITY'].toLowerCase();
+                costDescription += ` (${affinityType})`;
+            }
+        }
+        description += `**Costs:** ${costDescription}\n`;
     }
 
     // Combat Modifiers
@@ -326,8 +338,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             if (hit.includes('H')) description += 'left, ';
             return `Hit ${index + 1}: ${description.slice(0, -2)}`;
         }).join(' | ');
-        description += `**Multi-Hit:** Hits ${uniqueUnitsHit} total ${uniqueUnitsHit === 1 ? 'person' : 'people'} across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}
-`;
+        description += `**Multi-Hit:** Hits ${uniqueUnitsHit} total ${uniqueUnitsHit === 1 ? 'person' : 'people'} across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}\n`;
     }
 
     // Move to Attack
