@@ -23,7 +23,7 @@ module.exports = {
         var header_desc_length = 85; // Remaining space for description based on total width
 
         var output = '```';
-        output += `Command (o) = optional${" ".repeat(header_syntax_length - 18)} | Description
+        output += `Command (o) = optional${" ".repeat(header_syntax_length - 22)} | Description
 `;
         output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(header_desc_length) + "\n";
 
