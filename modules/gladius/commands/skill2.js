@@ -362,11 +362,9 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
                     effectCondition = 'all enemies';
                     break;
             }
-            description += `**Range:** The skill casts from the user and affects all ${effectCondition} in a ${effectRange} range ${effectPattern}
-`;
+            description += `**Range:** The skill casts from the user and affects ${effectCondition} in a ${effectRange} range ${effectPattern}\n`;
         } else {
-            description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}
-`;
+            description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}\n`;
         }
     }
 
