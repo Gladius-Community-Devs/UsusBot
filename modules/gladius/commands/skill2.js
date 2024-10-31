@@ -58,94 +58,7 @@ module.exports = {
             return skillData;
         };
 
-        // Function to generate natural language description of a skill
-        const generateSkillDescription = (skillData, lookupTextMap) => {
-            let description = '';
-
-            // Skill Name
-            const skillNameId = skillData['SKILLDISPLAYNAMEID'];
-            const skillName = lookupTextMap[skillNameId] || 'Unknown Skill';
-            description += `**${skillName}**\n`;
-
-            // Skill Description
-            const skillDescId = skillData['SKILLDESCRIPTIONID'];
-            const skillDesc = lookupTextMap[skillDescId] || '';
-            if (skillDesc) {
-                description += `*${skillDesc}*\n\n`;
-            }
-
-            // Skill Type and Category
-            if (skillData['SKILLCREATE']) {
-                const skillCreateParts = skillData['SKILLCREATE'].split(',');
-                const skillType = skillCreateParts[1]?.trim().replace(/"/g, '');
-                const skillCategory = skillCreateParts[2]?.trim().replace(/"/g, '');
-                if (skillType && skillCategory) {
-                    description += `**Type:** ${skillType} (${skillCategory})\n`;
-                } else if (skillType) {
-                    description += `**Type:** ${skillType}\n`;
-                }
-            }
-
-            // Required Level
-            if (skillData['SKILLLEVEL']) {
-                description += `**Required Level:** ${skillData['SKILLLEVEL']}\n`;
-            }
-
-            // Job Point Cost
-            if (skillData['SKILLJOBPOINTCOST']) {
-                description += `**Job Point Cost:** ${skillData['SKILLJOBPOINTCOST']}\n`;
-            }
-
-            // Skill Attributes
-            if (skillData['SKILLATTRIBUTE']) {
-                let attributes = skillData['SKILLATTRIBUTE'];
-                if (!Array.isArray(attributes)) {
-                    attributes = [attributes];
-                }
-                description += `**Attributes:** ${attributes.join(', ')}\n`;
-            }
-
-            // Skill Costs
-            if (skillData['SKILLCOSTS']) {
-                description += `**Costs:** ${skillData['SKILLCOSTS']}\n`;
-            }
-
-            // Combat Modifiers
-            if (skillData['SKILLCOMBATMODS']) {
-                description += `**Combat Modifiers:** ${skillData['SKILLCOMBATMODS']}\n`;
-            }
-
-            // Range
-            if (skillData['SKILLRANGE']) {
-                description += `**Range:** ${skillData['SKILLRANGE']}\n`;
-            }
-
-            // Prerequisites
-            if (skillData['SKILLPREREQ']) {
-                description += `**Prerequisites:** ${skillData['SKILLPREREQ']}\n`;
-            }
-
-            // Effects
-            if (skillData['SKILLEFFECT']) {
-                let effects = skillData['SKILLEFFECT'];
-                if (!Array.isArray(effects)) {
-                    effects = [effects];
-                }
-                description += `**Effects:** ${effects.join(', ')}\n`;
-            }
-
-            // Status Effects
-            if (skillData['SKILLSTATUS']) {
-                let statuses = skillData['SKILLSTATUS'];
-                if (!Array.isArray(statuses)) {
-                    statuses = [statuses];
-                }
-                description += `**Status Effects:** ${statuses.join(', ')}\n`;
-            }
-
-            return description;
-        };
-
+        
         if (args.length <= 1) {
             message.channel.send({ content: 'Please provide the skill name.' });
             return;
@@ -326,4 +239,89 @@ module.exports = {
             message.channel.send({ content: 'An error occurred while finding the skill.' });
         }
     }
+};
+// Function to generate natural language description of a skill
+const generateSkillDescription = (skillData, lookupTextMap) => {
+    let description = '-# In game description:\n';
+
+    // Skill Name
+    const skillNameId = skillData['SKILLDISPLAYNAMEID'];
+    const skillName = lookupTextMap[skillNameId] || 'Unknown Skill';
+    description += `**${skillName}**\n`;
+
+    // Skill Description
+    const skillDescId = skillData['SKILLDESCRIPTIONID'];
+    const skillDesc = lookupTextMap[skillDescId] || '';
+    if (skillDesc) {
+        description += `*${skillDesc}*\n\n`;
+    }
+    description += '-# Skills.tok Information:\n';
+    // Skill Type and Category
+    if (skillData['SKILLCREATE']) {
+        const skillCreateParts = skillData['SKILLCREATE'].split(',');
+        const skillType = skillCreateParts[1]?.trim().replace(/"/g, '');
+        const skillCategory = skillCreateParts[2]?.trim().replace(/"/g, '');
+        if (skillType && skillCategory) {
+            description += `**Type:** ${skillType} (${skillCategory})\n`;
+        } else if (skillType) {
+            description += `**Type:** ${skillType}\n`;
+        }
+    }
+
+    // Job Point Cost
+    if (skillData['SKILLJOBPOINTCOST']) {
+        description += `**Job Point Cost:** ${skillData['SKILLJOBPOINTCOST']}\n`;
+    }
+
+    // Skill Attributes
+    if (skillData['SKILLATTRIBUTE']) {
+        let attributes = skillData['SKILLATTRIBUTE'];
+        if (!Array.isArray(attributes)) {
+            attributes = [attributes];
+        }
+        description += `**Attributes:** ${attributes.join(', ')}\n`;
+    }
+
+    // Skill Costs
+    if (skillData['SKILLCOSTS']) {
+        const skillCostsParts = skillData['SKILLCOSTS'].split(',').map(part => part.trim());
+        const turns = skillCostsParts[0];
+        const sp = skillCostsParts[1];
+        description += `**Costs:** The skill costs ${turns} turn${turns !== '1' ? 's' : ''} and uses ${sp}SP\n`;
+    }
+
+    // Combat Modifiers
+    if (skillData['SKILLCOMBATMODS']) {
+        description += `**Combat Modifiers:** ${skillData['SKILLCOMBATMODS']}\n`;
+    }
+
+    // Range
+    if (skillData['SKILLRANGE']) {
+        description += `**Range:** ${skillData['SKILLRANGE']}\n`;
+    }
+
+    // Prerequisites
+    if (skillData['SKILLPREREQ']) {
+        description += `**Prerequisites:** ${skillData['SKILLPREREQ']}\n`;
+    }
+
+    // Effects
+    if (skillData['SKILLEFFECT']) {
+        let effects = skillData['SKILLEFFECT'];
+        if (!Array.isArray(effects)) {
+            effects = [effects];
+        }
+        description += `**Effects:** ${effects.join(', ')}\n`;
+    }
+
+    // Status Effects
+    if (skillData['SKILLSTATUS']) {
+        let statuses = skillData['SKILLSTATUS'];
+        if (!Array.isArray(statuses)) {
+            statuses = [statuses];
+        }
+        description += `**Status Effects:** ${statuses.join(', ')}\n`;
+    }
+
+    return description;
 };
