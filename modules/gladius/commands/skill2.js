@@ -313,14 +313,14 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const totalDamage = baseDamageModifier * numberOfHits * 100;
         const hitDescriptions = multiHitData.map(hit => {
             let description = '';
-            if (hit.includes('A')) description += 'front-left -# and ';
-            if (hit.includes('B')) description += 'in front, ';
-            if (hit.includes('C')) description += 'front-right, ';
-            if (hit.includes('D')) description += 'right, ';
-            if (hit.includes('E')) description += 'back-right, ';
-            if (hit.includes('F')) description += 'behind, ';
-            if (hit.includes('G')) description += 'back-left, ';
-            if (hit.includes('H')) description += 'left, ';
+            if (hit.includes('A')) description += 'front-left and ';
+            if (hit.includes('B')) description += 'in front and ';
+            if (hit.includes('C')) description += 'front-right and ';
+            if (hit.includes('D')) description += 'right and ';
+            if (hit.includes('E')) description += 'back-right and ';
+            if (hit.includes('F')) description += 'behind and ';
+            if (hit.includes('G')) description += 'back-left and ';
+            if (hit.includes('H')) description += 'left and ';
             return description.slice(0, -2);
         });
         description += `**Multi-Hit:** This skill hits ${numberOfHits} times for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions.join(' | ')}\n`;
