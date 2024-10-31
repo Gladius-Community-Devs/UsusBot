@@ -341,7 +341,16 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const skillRangeParts = skillData['SKILLRANGE'].split(',').map(part => part.trim());
         const range = skillRangeParts[0];
         const pattern = skillRangeParts[1]?.replace(/"/g, '');
-        description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}`;
+
+        if (parseInt(range) === 0 && skillData['SKILLEFFECTRANGE'] && skillData['SKILLEFFECTCONDITION']) {
+            const effectRangeParts = skillData['SKILLEFFECTRANGE'].split(',').map(part => part.trim());
+            const effectRange = effectRangeParts[0];
+            const effectPattern = effectRangeParts[1]?.replace(/"/g, '');
+            const effectCondition = skillData['SKILLEFFECTCONDITION'].replace(/"/g, '');
+            description += `**Range:** The skill casts from the user and affects all ${effectCondition} in a ${effectRange} range ${effectPattern}\n`;
+        } else {
+            description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}\n`;
+        }
     }
 
     // Prerequisites
