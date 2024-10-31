@@ -25,7 +25,7 @@ module.exports = {
         var output = '```';
         output += `Command (o) = optional${" ".repeat(header_syntax_length - 20)} | Description\n`;
 
-        output += "-".repeat(header_syntax_length + 13) + "-+-" + "-".repeat(header_desc_length) + "\n";
+        output += "-".repeat(header_syntax_length + 13) + "-+-" + "-".repeat(desc_space) + "\n";
 
 
         var num_lines = 0;
