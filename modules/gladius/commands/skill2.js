@@ -284,11 +284,10 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         hasWeaponAttribute = attributes.includes('weapon');
     }
 
-    // Skill Costs
     if (skillData['SKILLCOSTS']) {
         const skillCostsParts = skillData['SKILLCOSTS'].split(',').map(part => part.trim());
         const turns = skillCostsParts[0];
-        const sp = skillCostsParts[1];
+        const sp = skillCostsParts[1] / 10;
         description += `**Costs:** The skill costs ${turns} turn${turns !== '1' ? 's' : ''} and uses ${sp}SP\n`;
     }
 
