@@ -321,7 +321,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             if (hit.includes('F')) description += 'behind and ';
             if (hit.includes('G')) description += 'back-left and ';
             if (hit.includes('H')) description += 'left and ';
-            return description.slice(0, -2);
+            return description.slice(0, -5);
         });
         description += `**Multi-Hit:** This skill hits ${numberOfHits} times for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions.join(' | ')}\n`;
     }
