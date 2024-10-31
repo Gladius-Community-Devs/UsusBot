@@ -10,6 +10,7 @@ module.exports = {
         var mod_handler = extra.module_handler;
 
         var longest_syntax = "";
+        var longest_description = "";
         var gladius_module = mod_handler.modules.get('gladius');
 
         for (var current_command_name of Array.from(gladius_module.commands.keys())) {
@@ -17,16 +18,17 @@ module.exports = {
             if (current_command.syntax.length > longest_syntax.length) {
                 longest_syntax = current_command.syntax;
             }
+            if (current_command.description.length > longest_description.length) {
+                longest_description = current_command.description;
+            }
         }
 
-        var header_syntax_length = Math.max(longest_syntax.length, 7); // "Command" length
-        var desc_space = Math.max(50, 115 - header_syntax_length);
+        var header_syntax_length = Math.max(longest_syntax.length, 20); // "Command (o) = optional" length
+        var header_desc_length = Math.max(longest_description.length, 11); // "Description" length
 
         var output = '```';
         output += `Command (o) = optional${" ".repeat(header_syntax_length - 20)} | Description\n`;
-
-        output += "-".repeat(header_syntax_length + 13) + "-+-" + "-".repeat(desc_space) + "\n";
-
+        output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(header_desc_length) + "\n";
 
         var num_lines = 0;
 
@@ -40,11 +42,7 @@ module.exports = {
             output += current_command.syntax + " ".repeat(header_syntax_length - current_command.syntax.length);
             output += " | ";
 
-            if (current_command.description.length > desc_space) {
-                output += current_command.description.substring(0, desc_space - 3) + "...";
-            } else {
-                output += current_command.description;
-            }
+            output += current_command.description;
 
             output += "\n";
 
@@ -53,9 +51,8 @@ module.exports = {
                 output += "```";
                 message.channel.send({ content: output });
                 output = "```";
-                output += `Command${" ".repeat(header_syntax_length - 7)} | Description
-`;
-                output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(desc_space) + "\n";
+                output += `Command (o) = optional${" ".repeat(header_syntax_length - 20)} | Description\n`;
+                output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(header_desc_length) + "\n";
                 num_lines = 0;
             }
         }
