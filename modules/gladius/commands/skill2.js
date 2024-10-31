@@ -295,13 +295,14 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     }
 
     // Combat Modifiers
+    let baseDamageModifier = 0;
     if (skillData['SKILLCOMBATMODS']) {
         const combatModsParts = skillData['SKILLCOMBATMODS'].split(',').map(part => part.trim());
         const accuracyModifier = combatModsParts[0];
-        const damageModifier = combatModsParts[1];
+        baseDamageModifier = parseFloat(combatModsParts[1]);
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
         const accuracyText = parseFloat(accuracyModifier) === 0 ? 'with no changes to accuracy' : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
-        description += `**Combat Modifiers:** This skill deals ${parseFloat(damageModifier) * 100}% ${damageType} ${accuracyText}\n`;
+        description += `**Combat Modifiers:** This skill deals ${baseDamageModifier * 100}% ${damageType} ${accuracyText}\n`;
     }
 
     // Multi-Hit Data
@@ -309,6 +310,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const multiHitData = skillData['SKILLMULTIHITDATA'].split(',').map(part => part.trim());
         const numberOfHits = multiHitData.reduce((acc, hit) => acc + hit.length, 0);
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
+        const totalDamage = baseDamageModifier * numberOfHits * 100;
         const hitDescriptions = multiHitData.map(hit => {
             let description = '';
             if (hit.includes('A')) description += 'front-left, ';
@@ -321,8 +323,9 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             if (hit.includes('H')) description += 'left, ';
             return description.slice(0, -2);
         });
-        description += `**Multi-Hit:** This skill hits ${numberOfHits} times for ${numberOfHits * 100}% ${damageType}, hitting: ${hitDescriptions.join('; ')}\n`;
+        description += `**Multi-Hit:** This skill hits ${numberOfHits} times for ${totalDamage}% ${damageType}, hitting: ${hitDescriptions.join('; ')}\n`;
     }
+
 
     // Range
     if (skillData['SKILLRANGE']) {
