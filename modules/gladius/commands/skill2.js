@@ -310,10 +310,10 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     // Multi-Hit Data
     if (hasMultiHitAttribute && skillData['SKILLMULTIHITDATA']) {
         const multiHitData = skillData['SKILLMULTIHITDATA'].split(',').map(part => part.trim());
-        const numberOfHits = multiHitData.length;
-        const numberOfUnitsHit = multiHitData.reduce((acc, hit) => acc + hit.length, 0);
+        const numberOfHits = multiHitData.reduce((acc, hit) => acc + hit.length, 0);
+        const uniqueUnitsHit = new Set(multiHitData.join('')).size;
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
-        const totalDamage = baseDamageModifier * numberOfUnitsHit * 100;
+        const totalDamage = baseDamageModifier * numberOfHits * 100;
         const hitDescriptions = multiHitData.map((hit, index) => {
             let description = '';
             if (hit.includes('A')) description += 'front-left, ';
@@ -326,7 +326,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             if (hit.includes('H')) description += 'left, ';
             return `Hit ${index + 1}: ${description.slice(0, -2)}`;
         }).join(' | ');
-        description += `**Multi-Hit:** Hits ${numberOfUnitsHit} total people across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}\n`;
+        description += `**Multi-Hit:** Hits ${uniqueUnitsHit} total people across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}\n`;
     }
 
     // Move to Attack
