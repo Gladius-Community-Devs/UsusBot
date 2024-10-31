@@ -307,7 +307,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     // Multi-Hit Data
     if (hasMultiHitAttribute && skillData['SKILLMULTIHITDATA']) {
         const multiHitData = skillData['SKILLMULTIHITDATA'].split(',').map(part => part.trim());
-        const numberOfHits = multiHitData.length;
+        const numberOfHits = multiHitData.reduce((acc, hit) => acc + hit.length, 0);
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
         const hitDescriptions = multiHitData.map(hit => {
             let description = '';
