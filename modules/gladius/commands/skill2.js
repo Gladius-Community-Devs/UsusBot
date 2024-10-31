@@ -347,20 +347,24 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             const effectRangeParts = skillData['SKILLEFFECTRANGE'].split(',').map(part => part.trim());
             const effectRange = effectRangeParts[0];
             const effectPattern = effectRangeParts[1]?.replace(/"/g, '');
-            let effectCondition = skillData['SKILLEFFECTCONDITION'].replace(/"/g, '');
-            switch (effectCondition) {
-                case 'friend only not self':
-                    effectCondition = 'all allies but not themselves';
-                    break;
-                case 'friend only':
-                    effectCondition = 'all allies';
-                    break;
-                case 'all units not self':
-                    effectCondition = 'everyone but themselves';
-                    break;
-                case 'enemy only':
-                    effectCondition = 'all enemies';
-                    break;
+            let effectConditions = Array.isArray(skillData['SKILLEFFECTCONDITION']) ? skillData['SKILLEFFECTCONDITION'] : [skillData['SKILLEFFECTCONDITION']];
+            effectConditions = effectConditions.map(cond => cond.replace(/"/g, ''));
+            let effectCondition = effectConditions.find(cond => ['friend only not self', 'friend only', 'all units not self', 'enemy only'].includes(cond)) || '';
+            if (effectCondition) {
+                switch (effectCondition) {
+                    case 'friend only not self':
+                        effectCondition = 'all allies but not themselves';
+                        break;
+                    case 'friend only':
+                        effectCondition = 'all allies';
+                        break;
+                    case 'all units not self':
+                        effectCondition = 'everyone but themselves';
+                        break;
+                    case 'enemy only':
+                        effectCondition = 'all enemies';
+                        break;
+                }
             }
             description += `**Range:** The skill casts from the user and affects ${effectCondition} in a ${effectRange} range ${effectPattern}\n`;
         } else {
