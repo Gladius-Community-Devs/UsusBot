@@ -214,7 +214,7 @@ module.exports = {
             const skillDescription = generateSkillDescription(skillData, lookupTextMap);
 
             // Prepare the response
-            let response = `Skill details for '${skillName}' in '${modName}' for class '${className}'`;
+            let response = `Skill details for '${skillName}' in '${modName}' for class '${skillData['SKILLUSECLASS']}'`;
             
             response += `:\n${skillDescription}`;
 
