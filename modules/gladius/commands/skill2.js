@@ -314,7 +314,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const hitDescriptions = multiHitData.map(hit => {
             let description = '';
             if (hit.includes('A')) description += 'front-left and ';
-            if (hit.includes('B')) description += 'in front and ';
+            if (hit.includes('B')) description += 'in-front and ';
             if (hit.includes('C')) description += 'front-right and ';
             if (hit.includes('D')) description += 'right and ';
             if (hit.includes('E')) description += 'back-right and ';
