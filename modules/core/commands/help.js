@@ -19,8 +19,8 @@ module.exports = {
             }
         }
 
-        var header_syntax_length = Math.max(longest_syntax.length, 42); // Set to fit within display width
-        var header_desc_length = 87; // Remaining space for description based on total width
+        var header_syntax_length = Math.max(longest_syntax.length, 40); // Set to fit within display width
+        var header_desc_length = 85; // Remaining space for description based on total width
 
         var output = '```';
         output += `Command (o) = optional${" ".repeat(header_syntax_length - 20)} | Description
