@@ -274,12 +274,14 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     }
 
     // Skill Attributes
+    let hasWeaponAttribute = false;
     if (skillData['SKILLATTRIBUTE']) {
         let attributes = skillData['SKILLATTRIBUTE'];
         if (!Array.isArray(attributes)) {
             attributes = [attributes];
         }
         description += `**Attributes:** ${attributes.join(', ')}\n`;
+        hasWeaponAttribute = attributes.includes('weapon');
     }
 
     // Skill Costs
@@ -292,7 +294,10 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     // Combat Modifiers
     if (skillData['SKILLCOMBATMODS']) {
-        description += `**Combat Modifiers:** ${skillData['SKILLCOMBATMODS']}\n`;
+        const combatModsParts = skillData['SKILLCOMBATMODS'].split(',').map(part => part.trim());
+        const damageModifier = combatModsParts[1];
+        const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
+        description += `**Combat Modifiers:** This skill deals ${parseFloat(damageModifier) * 100}% ${damageType}\n`;
     }
 
     // Range
@@ -325,3 +330,4 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     return description;
 };
+
