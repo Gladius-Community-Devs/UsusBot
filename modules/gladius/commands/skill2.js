@@ -338,7 +338,10 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     // Range
     if (skillData['SKILLRANGE']) {
-        description += `**Range:** ${skillData['SKILLRANGE']}\n`;
+        const skillRangeParts = skillData['SKILLRANGE'].split(',').map(part => part.trim());
+        const range = skillRangeParts[0];
+        const pattern = skillRangeParts[1]?.replace(/"/g, '');
+        description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}`;
     }
 
     // Prerequisites
