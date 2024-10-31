@@ -275,6 +275,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     // Skill Attributes
     let hasWeaponAttribute = false;
+    let hasMultiHitAttribute = false;
     if (skillData['SKILLATTRIBUTE']) {
         let attributes = skillData['SKILLATTRIBUTE'];
         if (!Array.isArray(attributes)) {
@@ -282,8 +283,10 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         }
         description += `**Attributes:** ${attributes.join(', ')}\n`;
         hasWeaponAttribute = attributes.includes('weapon');
+        hasMultiHitAttribute = attributes.includes('multihit');
     }
 
+    // Skill Costs
     if (skillData['SKILLCOSTS']) {
         const skillCostsParts = skillData['SKILLCOSTS'].split(',').map(part => part.trim());
         const turns = skillCostsParts[0];
@@ -299,6 +302,25 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
         const accuracyText = parseFloat(accuracyModifier) === 0 ? 'with no changes to accuracy' : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
         description += `**Combat Modifiers:** This skill deals ${parseFloat(damageModifier) * 100}% ${damageType} ${accuracyText}\n`;
+    }
+
+    // Multi-Hit Data
+    if (hasMultiHitAttribute && skillData['SKILLMULTIHITDATA']) {
+        const multiHitData = skillData['SKILLMULTIHITDATA'].split(',').map(part => part.trim());
+        const hitDescriptions = multiHitData.map((hit, index) => {
+            switch (hit) {
+                case 'A': return 'front-left';
+                case 'B': return 'in front';
+                case 'C': return 'front-right';
+                case 'D': return 'right';
+                case 'E': return 'back-right';
+                case 'F': return 'behind';
+                case 'G': return 'back-left';
+                case 'H': return 'left';
+                default: return 'unknown';
+            }
+        });
+        description += `**Multi-Hit:** This skill hits ${hitDescriptions.length} times: ${hitDescriptions.join(', ')}\n`;
     }
 
     // Range
@@ -331,3 +353,4 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     return description;
 };
+
