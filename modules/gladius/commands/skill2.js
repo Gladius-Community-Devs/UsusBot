@@ -326,7 +326,8 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             if (hit.includes('H')) description += 'left, ';
             return `Hit ${index + 1}: ${description.slice(0, -2)}`;
         }).join(' | ');
-        description += `**Multi-Hit:** Hits ${uniqueUnitsHit} total ${uniqueUnitsHit === 1 ? 'person' : 'people'} across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}\n`;
+        description += `**Multi-Hit:** Hits ${uniqueUnitsHit} total ${uniqueUnitsHit === 1 ? 'person' : 'people'} across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}
+`;
     }
 
     // Move to Attack
@@ -346,10 +347,26 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             const effectRangeParts = skillData['SKILLEFFECTRANGE'].split(',').map(part => part.trim());
             const effectRange = effectRangeParts[0];
             const effectPattern = effectRangeParts[1]?.replace(/"/g, '');
-            const effectCondition = skillData['SKILLEFFECTCONDITION'].replace(/"/g, '');
-            description += `**Range:** The skill casts from the user and affects all ${effectCondition} in a ${effectRange} range ${effectPattern}\n`;
+            let effectCondition = skillData['SKILLEFFECTCONDITION'].replace(/"/g, '');
+            switch (effectCondition) {
+                case 'friend only not self':
+                    effectCondition = 'all allies but not themselves';
+                    break;
+                case 'friend only':
+                    effectCondition = 'all allies';
+                    break;
+                case 'all units not self':
+                    effectCondition = 'everyone but themselves';
+                    break;
+                case 'enemy only':
+                    effectCondition = 'all enemies';
+                    break;
+            }
+            description += `**Range:** The skill casts from the user and affects all ${effectCondition} in a ${effectRange} range ${effectPattern}
+`;
         } else {
-            description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}\n`;
+            description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}
+`;
         }
     }
 
@@ -378,5 +395,3 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     return description;
 };
-
-
