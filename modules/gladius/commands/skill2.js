@@ -276,6 +276,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     // Skill Attributes
     let hasWeaponAttribute = false;
     let hasMultiHitAttribute = false;
+    let hasMoveToAttackAttribute = false;
     if (skillData['SKILLATTRIBUTE']) {
         let attributes = skillData['SKILLATTRIBUTE'];
         if (!Array.isArray(attributes)) {
@@ -284,6 +285,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         description += `**Attributes:** ${attributes.join(', ')}\n`;
         hasWeaponAttribute = attributes.includes('weapon');
         hasMultiHitAttribute = attributes.includes('multihit');
+        hasMoveToAttackAttribute = attributes.includes('movetoattack');
     }
 
     // Skill Costs
@@ -323,10 +325,16 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             if (hit.includes('G')) description += 'back-left, ';
             if (hit.includes('H')) description += 'left, ';
             return `Hit ${index + 1}: ${description.slice(0, -2)}`;
-        }).join('| ');
+        }).join(' | ');
         description += `**Multi-Hit:** Hits ${numberOfUnitsHit} total people across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}\n`;
     }
 
+    // Move to Attack
+    if (hasMoveToAttackAttribute && skillData['SKILLMOVETOATTACKMOD']) {
+        const moveToAttackMod = parseInt(skillData['SKILLMOVETOATTACKMOD'], 10);
+        const movementText = moveToAttackMod > 0 ? `${moveToAttackMod} more` : `${Math.abs(moveToAttackMod)} less`;
+        description += `**Move to Attack:** This unit can move to attack with ${movementText} spaces of movement\n`;
+    }
 
     // Range
     if (skillData['SKILLRANGE']) {
@@ -358,4 +366,5 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     return description;
 };
+
 
