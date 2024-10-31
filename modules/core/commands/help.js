@@ -23,7 +23,7 @@ module.exports = {
         var desc_space = Math.max(50, 115 - header_syntax_length);
 
         var output = '```';
-        output += `Command${" ".repeat(header_syntax_length - 7)} | Description
+        output += `Command (o) = optional${" ".repeat(header_syntax_length - 7)} | Description
 `;
         output += "-".repeat(header_syntax_length) + "-+-" + "-".repeat(desc_space) + "\n";
 
