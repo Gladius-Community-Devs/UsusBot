@@ -295,9 +295,11 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     // Combat Modifiers
     if (skillData['SKILLCOMBATMODS']) {
         const combatModsParts = skillData['SKILLCOMBATMODS'].split(',').map(part => part.trim());
+        const accuracyModifier = combatModsParts[0];
         const damageModifier = combatModsParts[1];
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
-        description += `**Combat Modifiers:** This skill deals ${parseFloat(damageModifier) * 100}% ${damageType}\n`;
+        const accuracyText = parseFloat(accuracyModifier) === 0 ? 'with no changes to accuracy' : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
+        description += `**Combat Modifiers:** This skill deals ${parseFloat(damageModifier) * 100}% ${damageType} ${accuracyText}\n`;
     }
 
     // Range
@@ -330,4 +332,3 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     return description;
 };
-
