@@ -24,9 +24,9 @@ module.exports = {
             }
 
             embed.addFields({
-                name: current_command.syntax,
-                value: current_command.description.length > 85 ? current_command.description.substring(0, 82) + '...' : current_command.description,
-                inline: true
+                name: `**${current_command.name}**`,
+                value: `**Args:** ${current_command.syntax}\n**Description:** ${current_command.description.length > 85 ? current_command.description.substring(0, 82) + '...' : current_command.description}`,
+                inline: false
             });
         }
 
