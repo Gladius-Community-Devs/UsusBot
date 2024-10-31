@@ -1,7 +1,7 @@
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
-    syntax: 'skill [mod name (o)] [class name (o)] [skill name]',
+    syntax: 'skill [mod (o)] [class (o)] [skill name]',
     num_args: 1,
     args_to_lower: true,
     needs_api: false,
