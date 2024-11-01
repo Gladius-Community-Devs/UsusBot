@@ -282,10 +282,66 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         if (!Array.isArray(attributes)) {
             attributes = [attributes];
         }
-        description += `**Attributes:** ${attributes.join(', ')}\n`;
-        hasWeaponAttribute = attributes.includes('weapon');
-        hasMultiHitAttribute = attributes.includes('multihit');
-        hasMoveToAttackAttribute = attributes.includes('movetoattack');
+        const relevantAttributes = attributes.filter(attr => [
+            'affinity',
+            'cantmiss',
+            'charge',
+            'melee',
+            'movetoattack',
+            'noninterface',
+            'okwithnotargets',
+            'piercing',
+            'ranged',
+            'shield',
+            'spell',
+            'suicide',
+            'weapon'
+        ].includes(attr));
+        relevantAttributes.forEach(attr => {
+            switch (attr) {
+                case 'affinity':
+                    description += 'This skill is an affinity attack.\n';
+                    break;
+                case 'cantmiss':
+                    description += 'This skill cannot miss or be blocked.\n';
+                    break;
+                case 'charge':
+                    description += 'This skill moves the user to the target.\n';
+                    break;
+                case 'melee':
+                    description += 'This skill requires the user to be in melee range.\n';
+                    break;
+                case 'movetoattack':
+                    description += 'This skill allows the user to move before making their attack.\n';
+                    hasMoveToAttackAttribute = true;
+                    break;
+                case 'noninterface':
+                    description += 'This skill triggers automatically based on an event.\n';
+                    break;
+                case 'okwithnotargets':
+                    description += 'This skill can be cast even if there are no targets available.\n';
+                    break;
+                case 'piercing':
+                    description += 'This skill is counted as **piercing** and deals reduced damage to Fleshless Targets.\n';
+                    break;
+                case 'ranged':
+                    description += 'This skill can be used from range.\n';
+                    break;
+                case 'shield':
+                    description += 'This skill uses the equipped shield to hit. It can apply effects that the shield inflicts.\n';
+                    break;
+                case 'spell':
+                    description += 'This skill is counted as a spell and deals bonus damage to Fleshless Targets.\n';
+                    break;
+                case 'suicide':
+                    description += 'This skill kills the user after applying its effect.\n';
+                    break;
+                case 'weapon':
+                    description += 'This skill uses the equipped weapon to hit. It can apply effects that the weapon inflicts.\n';
+                    hasWeaponAttribute = true;
+                    break;
+            }
+        });
     }
 
     // Skill Costs
