@@ -367,7 +367,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     if (skillData['SKILLCOMBATMODS']) {
         const combatModsParts = skillData['SKILLCOMBATMODS'].split(',').map(part => part.trim());
         const accuracyModifier = combatModsParts[0];
-        baseDamageModifier = parseFloat(combatModsParts[1]);
+        baseDamageModifier = parseFloat(combatModsParts[1]).toFixed(2);
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
         const accuracyText = parseFloat(accuracyModifier) === 0 ? 'with no changes to accuracy' : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
         description += `**Combat Modifiers:** This skill deals ${baseDamageModifier * 100}% ${damageType} per hit ${accuracyText}\n`;
