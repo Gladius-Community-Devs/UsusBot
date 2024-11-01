@@ -362,7 +362,8 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             const affinityOrbs = skillData['SKILLAFFCOST'] / 20;
             costDescription += ` and ${affinityOrbs} affinity orb${affinityOrbs !== 1 ? 's' : ''}`;
             if (skillData['SKILLAFFINITY']) {
-                const affinityType = skillData['SKILLAFFINITY'].toLowerCase();
+                let affinityType = skillData['SKILLAFFINITY'].toLowerCase();
+                affinityType = affinityType === 'none' ? 'any' : affinityType;
                 costDescription += ` (${affinityType})`;
             }
         }
