@@ -443,7 +443,8 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             description += `**Exclusion Range:** The user cannot attack within ${excludeRange} tile${excludeRange !== '1' ? 's' : ''} in a ${excludePattern} around themselves\n`;
         }
 
-        if (skillData['SKILLPROJECTILEATTR'] && skillData['SKILLPROJECTILEATTR'] === '"indirect"') {
+        // Projectile Attribute
+        if (skillData['SKILLPROJECTILEATTR'] && skillData['SKILLPROJECTILEATTR'].trim().replace(/"/g, '') === 'indirect') {
             description += '**Projectile Attribute:** The user does not need line of sight of their target to hit them\n';
         }
     }
