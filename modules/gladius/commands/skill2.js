@@ -370,7 +370,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         baseDamageModifier = parseFloat(combatModsParts[1]).toFixed(2);
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
         const accuracyText = parseFloat(accuracyModifier) === 0 ? 'with no changes to accuracy' : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
-        description += `**Combat Modifiers:** This skill deals ${baseDamageModifier * 100}% ${damageType} per hit ${accuracyText}\n`;
+        description += `**Combat Modifiers:** This skill deals ${(baseDamageModifier * 100).toFixed(2)}% ${damageType} per hit ${accuracyText}\n`;
     }
 
     // Multi-Hit Data
@@ -379,7 +379,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const numberOfHits = multiHitData.reduce((acc, hit) => acc + hit.length, 0);
         const uniqueUnitsHit = new Set(multiHitData.join('')).size;
         const damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
-        const totalDamage = baseDamageModifier * numberOfHits * 100;
+        const totalDamage = (baseDamageModifier * numberOfHits * 100).toFixed(2);
         const hitDescriptions = multiHitData.map((hit, index) => {
             let description = '';
             if (hit.includes('A')) description += 'front-left, ';
