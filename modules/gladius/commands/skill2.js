@@ -251,7 +251,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     const skillDescId = skillData['SKILLDESCRIPTIONID'];
     const skillDesc = lookupTextMap[skillDescId] || '';
     if (skillDesc) {
-        description += `*${skillDesc}*\n`;
+        description += `*${skillDesc}*\n\n`;
     }
     description += '-# Skills.tok Information:\n';
     // Skill Type and Category
