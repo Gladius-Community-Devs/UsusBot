@@ -407,20 +407,47 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         const skillRangeParts = skillData['SKILLRANGE'].split(',').map(part => part.trim());
         const range = skillRangeParts[0];
         const pattern = skillRangeParts[1]?.replace(/"/g, '');
-        let rangeDescription = `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}`;
 
-        if (skillData['SKILLEXCLUDERANGE']) {
-            const skillExcludeRangeParts = skillData['SKILLEXCLUDERANGE'].split(',').map(part => part.trim());
-            const excludeRange = skillExcludeRangeParts[0];
-            const excludePattern = skillExcludeRangeParts[1]?.replace(/"/g, '');
-            rangeDescription += ` and cannot attack within ${excludeRange} tile${excludeRange !== '1' ? 's' : ''} in a ${excludePattern} around themselves`;
+        if (parseInt(range) === 0 && skillData['SKILLEFFECTRANGE'] && skillData['SKILLEFFECTCONDITION']) {
+            const effectRangeParts = skillData['SKILLEFFECTRANGE'].split(',').map(part => part.trim());
+            const effectRange = effectRangeParts[0];
+            const effectPattern = effectRangeParts[1]?.replace(/"/g, '');
+            let effectConditions = Array.isArray(skillData['SKILLEFFECTCONDITION']) ? skillData['SKILLEFFECTCONDITION'] : [skillData['SKILLEFFECTCONDITION']];
+            effectConditions = effectConditions.map(cond => cond.replace(/"/g, ''));
+            let effectCondition = effectConditions.find(cond => ['friend only not self', 'friend only', 'all units not self', 'enemy only'].includes(cond)) || '';
+            if (effectCondition) {
+                switch (effectCondition) {
+                    case 'friend only not self':
+                        effectCondition = 'all allies but not themselves';
+                        break;
+                    case 'friend only':
+                        effectCondition = 'all allies';
+                        break;
+                    case 'all units not self':
+                        effectCondition = 'everyone but themselves';
+                        break;
+                    case 'enemy only':
+                        effectCondition = 'all enemies';
+                        break;
+                }
+            }
+            description += `**Range:** The skill casts from the user and affects ${effectCondition} in a ${effectRange} range ${effectPattern}\n`;
+        } else {
+            let rangeDescription = `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}`;
+
+            if (skillData['SKILLEXCLUDERANGE']) {
+                const skillExcludeRangeParts = skillData['SKILLEXCLUDERANGE'].split(',').map(part => part.trim());
+                const excludeRange = skillExcludeRangeParts[0];
+                const excludePattern = skillExcludeRangeParts[1]?.replace(/"/g, '');
+                rangeDescription += ` and cannot attack within ${excludeRange} tile${excludeRange !== '1' ? 's' : ''} in a ${excludePattern} around themselves`;
+            }
+
+            if (skillData['SKILLPROJECTILEATTR'] && skillData['SKILLPROJECTILEATTR'].trim().replace(/"/g, '') === 'indirect') {
+                rangeDescription += ' and does not need line of sight';
+            }
+
+            description += `${rangeDescription}\n`;
         }
-
-        if (skillData['SKILLPROJECTILEATTR'] && skillData['SKILLPROJECTILEATTR'].trim().replace(/"/g, '') === 'indirect') {
-            rangeDescription += ' and does not need line of sight';
-        }
-
-        description += `${rangeDescription}\n`;
     }
 
     // Prerequisites
