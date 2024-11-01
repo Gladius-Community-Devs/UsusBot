@@ -251,9 +251,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     const skillDescId = skillData['SKILLDESCRIPTIONID'];
     const skillDesc = lookupTextMap[skillDescId] || '';
     if (skillDesc) {
-        description += `*${skillDesc}*
-
-`;
+        description += `*${skillDesc}*\n`;
     }
     description += '-# Skills.tok Information:\n';
     // Skill Type and Category
@@ -437,6 +435,13 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
         } else {
             description += `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}\n`;
         }
+
+        if (skillData['SKILLEXCLUDERANGE']) {
+            const skillExcludeRangeParts = skillData['SKILLEXCLUDERANGE'].split(',').map(part => part.trim());
+            const excludeRange = skillExcludeRangeParts[0];
+            const excludePattern = skillExcludeRangeParts[1]?.replace(/"/g, '');
+            description += `**Exclusion Range:** The user cannot attack within ${excludeRange} tile${excludeRange !== '1' ? 's' : ''} in a ${excludePattern} around themselves\n`;
+        }
     }
 
     // Prerequisites
@@ -464,3 +469,4 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     return description;
 };
+
