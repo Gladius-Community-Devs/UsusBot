@@ -251,9 +251,9 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     const skillDescId = skillData['SKILLDESCRIPTIONID'];
     const skillDesc = lookupTextMap[skillDescId] || '';
     if (skillDesc) {
-        description += `*${skillDesc}*\n\n`;
+        description += `*${skillDesc}*\n`;
     }
-    description += '-# Skills.tok Information:\n';
+    description += '\n-# Skills.tok Information:\n';
     // Skill Type and Category
     if (skillData['SKILLCREATE']) {
         const skillCreateParts = skillData['SKILLCREATE'].split(',');
