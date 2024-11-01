@@ -251,9 +251,11 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     const skillDescId = skillData['SKILLDESCRIPTIONID'];
     const skillDesc = lookupTextMap[skillDescId] || '';
     if (skillDesc) {
-        description += `*${skillDesc}*\n`;
+        description += `*${skillDesc}*
+
+`;
     }
-    description += '\n-# Skills.tok Information:\n';
+    description += '-# Skills.tok Information:\n';
     // Skill Type and Category
     if (skillData['SKILLCREATE']) {
         const skillCreateParts = skillData['SKILLCREATE'].split(',');
@@ -275,6 +277,7 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
     let hasWeaponAttribute = false;
     let hasMultiHitAttribute = false;
     let hasMoveToAttackAttribute = false;
+    let hasTeleportAttribute = false;
     if (skillData['SKILLATTRIBUTE']) {
         let attributes = skillData['SKILLATTRIBUTE'];
         if (!Array.isArray(attributes)) {
@@ -293,7 +296,8 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             'shield',
             'spell',
             'suicide',
-            'weapon'
+            'weapon',
+            'teleport'
         ].includes(attr));
         relevantAttributes.forEach(attr => {
             switch (attr) {
@@ -337,6 +341,9 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
                 case 'weapon':
                     description += 'This skill uses the equipped weapon to hit. It can apply effects that the weapon inflicts.\n';
                     hasWeaponAttribute = true;
+                    break;
+                case 'teleport':
+                    hasTeleportAttribute = true;
                     break;
             }
         });
@@ -414,8 +421,8 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
             const effectPattern = effectRangeParts[1]?.replace(/"/g, '');
             let effectConditions = Array.isArray(skillData['SKILLEFFECTCONDITION']) ? skillData['SKILLEFFECTCONDITION'] : [skillData['SKILLEFFECTCONDITION']];
             effectConditions = effectConditions.map(cond => cond.replace(/"/g, ''));
-            let effectCondition = effectConditions.find(cond => ['friend only not self', 'friend only', 'all units not self', 'enemy only'].includes(cond)) || '';
-            if (effectCondition) {
+            let effectCondition = '';
+            effectConditions.forEach(cond => {
                 if (cond.startsWith('targetstatus ign')) {
                     const status = cond.split(' ')[2];
                     effectCondition += `units who are not ${status}, `;
@@ -438,7 +445,8 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
                             break;
                     }
                 }
-            }
+            });
+            effectCondition = effectCondition.slice(0, -2); // Remove trailing comma and space
             description += `**Range:** The skill casts from the user and affects ${effectCondition} in a ${effectRange} range ${effectPattern}\n`;
         } else {
             let rangeDescription = `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}`;
@@ -456,6 +464,14 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
             description += `${rangeDescription}\n`;
         }
+    }
+
+    // Teleport Range
+    if (hasTeleportAttribute && skillData['SKILLMOVERANGE']) {
+        const moveRangeParts = skillData['SKILLMOVERANGE'].split(',').map(part => part.trim());
+        const moveRange = moveRangeParts[0];
+        const movePattern = moveRangeParts[1]?.replace(/"/g, '');
+        description += `**Teleport Range:** Teleports the user within ${moveRange} tile${moveRange !== '1' ? 's' : ''} in a ${movePattern}\n`;
     }
 
     // Prerequisites
@@ -483,4 +499,3 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     return description;
 };
-
