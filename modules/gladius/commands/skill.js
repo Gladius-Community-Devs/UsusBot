@@ -1,3 +1,5 @@
+const { Util } = require('discord.js');
+
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
@@ -89,16 +91,16 @@ module.exports = {
             for (let splitIndex = index; splitIndex <= args.length; splitIndex++) {
                 let potentialClassName = args.slice(index, splitIndex).join(' ').trim();
                 let potentialSkillName = args.slice(splitIndex, args.length).join(' ').trim();
-            
+
                 if (!potentialSkillName) continue; // Skill name is required
-            
+
                 // Sanitize inputs
                 potentialClassName = sanitizeInput(potentialClassName);
                 potentialSkillName = sanitizeInput(potentialSkillName);
-            
+
                 // Get all entry IDs for the potential skill name
                 const entryIds = skillNameToEntryIds[potentialSkillName.toLowerCase()] || [];
-            
+
                 if (entryIds.length === 0) {
                     continue; // No skill with this name, try next split
                 }
@@ -117,12 +119,12 @@ module.exports = {
                         if (match) {
                             const key = match[1].toUpperCase();
                             let value = match[2].trim();
-                
+
                             // Remove surrounding quotes if present
                             if (value.startsWith('"') && value.endsWith('"')) {
                                 value = value.substring(1, value.length - 1);
                             }
-                
+
                             if (key === 'SKILLUSECLASS') {
                                 if (skillData[key]) {
                                     // Append to array if key already exists
@@ -135,7 +137,16 @@ module.exports = {
                                     skillData[key] = value;
                                 }
                             } else {
-                                skillData[key] = value;
+                                // Handle multiple keys that can have multiple values
+                                if (skillData[key]) {
+                                    if (Array.isArray(skillData[key])) {
+                                        skillData[key].push(value);
+                                    } else {
+                                        skillData[key] = [skillData[key], value];
+                                    }
+                                } else {
+                                    skillData[key] = value;
+                                }
                             }
                         }
                     }
@@ -187,24 +198,36 @@ module.exports = {
             }
 
             // Prepare the response
-            const firstSkill = matchingSkills[0];
+            let response = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:\n\n`;
 
+            // Collect all classNames from matchingSkills
             const allClassNames = matchingSkills.flatMap(skill => skill.classNames);
             const uniqueClassNames = [...new Set(allClassNames.map(cls => cls.toLowerCase()))];
 
-            const firstSkillClassNames = firstSkill.classNames.map(cls => cls.toLowerCase());
+            // If a className was specified, exclude it from otherClasses
+            let specifiedClassNames = [];
+            if (className) {
+                specifiedClassNames.push(className.toLowerCase());
+            }
+            const otherClasses = uniqueClassNames.filter(cls => !specifiedClassNames.includes(cls) && cls !== 'unknown');
 
-            const otherClasses = uniqueClassNames.filter(cls => !firstSkillClassNames.includes(cls) && cls !== 'unknown');
-
-            let response = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:
-\`\`\`${firstSkill.chunk}\`\`\``;
-
-            if (otherClasses.length > 0) {
-                response += `\nOther classes that share this skill name: ${otherClasses.join(', ')}`;
+            for (const skill of matchingSkills) {
+                response += `\`\`\`${skill.chunk}\`\`\`\n`;
             }
 
-            // Send the response
-            message.channel.send({ content: response });
+            if (otherClasses.length > 0) {
+                response += `Other classes that share this skill name: ${otherClasses.join(', ')}`;
+            }
+
+            // Use the utility function to split and send the message
+            const messageChunks = Util.splitMessage(response, {
+                maxLength: 2000,
+                char: '\n'
+            });
+
+            for (const chunk of messageChunks) {
+                await message.channel.send({ content: chunk });
+            }
 
         } catch (error) {
             console.error('Error finding the skill:', error);
