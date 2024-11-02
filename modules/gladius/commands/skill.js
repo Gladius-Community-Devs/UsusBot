@@ -1,7 +1,7 @@
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
-    syntax: 'skill [mod (optional)] [class (optional)] [skill name]',
+    syntax: 'skill [mod (o)] [class (o)] [skill name]',
     num_args: 1,
     args_to_lower: true,
     needs_api: false,
@@ -66,45 +66,18 @@ module.exports = {
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
             const lookupLines = lookupContent.split(/\r?\n/);
 
-            // Build a mapping from entry IDs to skill names
-            const entryIdToSkillName = {};
+            // Build a map of skill names to entry IDs
+            const skillNameToEntryIds = {};
             for (const line of lookupLines) {
                 if (!line.trim()) continue;
                 const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
+                const id = fields[0].trim();
                 const name = fields[fields.length - 1].trim().toLowerCase();
-                entryIdToSkillName[id] = name;
-            }
-
-            // Read the skills.tok file
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
-
-            // Function to parse a skill chunk into a key-value object
-            const parseSkillChunk = (chunk) => {
-                const lines = chunk.trim().split(/\r?\n/);
-                const skillData = {};
-                for (const line of lines) {
-                    const lineTrimmed = line.trim();
-                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                    if (match) {
-                        const key = match[1].toUpperCase();
-                        let value = match[2].trim();
-
-                        // Remove surrounding quotes if present
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substring(1, value.length - 1);
-                        }
-
-                        // Store all values as arrays
-                        if (!skillData[key]) {
-                            skillData[key] = [];
-                        }
-                        skillData[key].push(value);
-                    }
+                if (!skillNameToEntryIds[name]) {
+                    skillNameToEntryIds[name] = [];
                 }
-                return skillData;
-            };
+                skillNameToEntryIds[name].push(parseInt(id));
+            }
 
             // Initialize variables
             let className = '';
@@ -116,51 +89,85 @@ module.exports = {
             for (let splitIndex = index; splitIndex <= args.length; splitIndex++) {
                 let potentialClassName = args.slice(index, splitIndex).join(' ').trim();
                 let potentialSkillName = args.slice(splitIndex, args.length).join(' ').trim();
-
+            
                 if (!potentialSkillName) continue; // Skill name is required
-
+            
                 // Sanitize inputs
                 potentialClassName = sanitizeInput(potentialClassName);
                 potentialSkillName = sanitizeInput(potentialSkillName);
-
-                skillName = potentialSkillName;
-
-                // Collect all entry IDs for the potential skill name
-                const entryIdsForSkillName = [];
-                for (const id in entryIdToSkillName) {
-                    if (entryIdToSkillName[id] === potentialSkillName.toLowerCase()) {
-                        entryIdsForSkillName.push(parseInt(id));
-                    }
-                }
-
-                if (entryIdsForSkillName.length === 0) {
+            
+                // Get all entry IDs for the potential skill name
+                const entryIds = skillNameToEntryIds[potentialSkillName.toLowerCase()] || [];
+            
+                if (entryIds.length === 0) {
                     continue; // No skill with this name, try next split
                 }
 
-                // Collect matching skills
+                // Read the skills.tok file
+                const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
+                const skillsChunks = skillsContent.split(/\n\s*\n/);
+
+                // Function to parse a skill chunk into a key-value object
+                const parseSkillChunk = (chunk) => {
+                    const lines = chunk.trim().split(/\r?\n/);
+                    const skillData = {};
+                    for (const line of lines) {
+                        const lineTrimmed = line.trim();
+                        const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
+                        if (match) {
+                            const key = match[1].toUpperCase();
+                            let value = match[2].trim();
+                
+                            // Remove surrounding quotes if present
+                            if (value.startsWith('"') && value.endsWith('"')) {
+                                value = value.substring(1, value.length - 1);
+                            }
+                
+                            if (key === 'SKILLUSECLASS') {
+                                if (skillData[key]) {
+                                    // Append to array if key already exists
+                                    if (Array.isArray(skillData[key])) {
+                                        skillData[key].push(value);
+                                    } else {
+                                        skillData[key] = [skillData[key], value];
+                                    }
+                                } else {
+                                    skillData[key] = value;
+                                }
+                            } else {
+                                skillData[key] = value;
+                            }
+                        }
+                    }
+                    return skillData;
+                };
+
+                // For each skill chunk, collect matching skills
                 matchingSkills = [];
                 for (const chunk of skillsChunks) {
                     if (chunk.includes('SKILLCREATE:')) {
                         const skillData = parseSkillChunk(chunk);
-                        if (skillData['SKILLDISPLAYNAMEID']) {
-                            const entryId = parseInt(skillData['SKILLDISPLAYNAMEID'][0]);
-                            if (entryIdsForSkillName.includes(entryId)) {
-                                let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
-                                if (className) {
-                                    if (skillClasses.some(cls => cls.toLowerCase() === potentialClassName.toLowerCase())) {
-                                        matchingSkills.push({
-                                            entryId: entryId,
-                                            chunk: chunk.trim(),
-                                            classNames: skillClasses
-                                        });
-                                    }
-                                } else {
+                        if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID']))) {
+                            let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
+                            if (!Array.isArray(skillClasses)) {
+                                skillClasses = [skillClasses];
+                            }
+                            // Check if the skill matches the potential class name (if provided)
+                            if (potentialClassName) {
+                                if (skillClasses.some(cls => cls.toLowerCase() === potentialClassName.toLowerCase())) {
                                     matchingSkills.push({
-                                        entryId: entryId,
+                                        entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
                                         chunk: chunk.trim(),
                                         classNames: skillClasses
                                     });
                                 }
+                            } else {
+                                // No class name specified, collect all matching skills
+                                matchingSkills.push({
+                                    entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                                    chunk: chunk.trim(),
+                                    classNames: skillClasses
+                                });
                             }
                         }
                     }
@@ -168,6 +175,7 @@ module.exports = {
 
                 if (matchingSkills.length > 0) {
                     className = potentialClassName;
+                    skillName = potentialSkillName;
                     foundMatchingSkills = true;
                     break; // Exit the loop as we've found matching skills
                 }
@@ -178,67 +186,25 @@ module.exports = {
                 return;
             }
 
-            // Collect all classes that have the skill name
-            let allClassesWithSkillName = new Set();
-
-            for (const chunk of skillsChunks) {
-                if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseSkillChunk(chunk);
-                    if (skillData['SKILLDISPLAYNAMEID']) {
-                        const entryId = parseInt(skillData['SKILLDISPLAYNAMEID'][0]);
-                        const skillNameFromEntryId = entryIdToSkillName[entryId];
-                        if (skillNameFromEntryId === skillName.toLowerCase()) {
-                            let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
-                            for (const cls of skillClasses) {
-                                allClassesWithSkillName.add(cls.toLowerCase());
-                            }
-                        }
-                    }
-                }
-            }
-
             // Prepare the response
-            let messages = [];
-            let header = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:\n\n`;
-            let currentMessage = header;
+            const firstSkill = matchingSkills[0];
 
-            // Collect classNames from matchingSkills
-            const matchingSkillClassNames = matchingSkills.flatMap(skill => skill.classNames.map(cls => cls.toLowerCase()));
+            const allClassNames = matchingSkills.flatMap(skill => skill.classNames);
+            const uniqueClassNames = [...new Set(allClassNames.map(cls => cls.toLowerCase()))];
 
-            // Prepare 'otherClasses' by excluding classes already in matchingSkills
-            const otherClasses = [...allClassesWithSkillName].filter(cls => !matchingSkillClassNames.includes(cls) && cls !== 'unknown');
+            const firstSkillClassNames = firstSkill.classNames.map(cls => cls.toLowerCase());
 
-            for (const skill of matchingSkills) {
-                const skillText = `\`\`\`\n${skill.chunk}\n\`\`\`\n`;
+            const otherClasses = uniqueClassNames.filter(cls => !firstSkillClassNames.includes(cls) && cls !== 'unknown');
 
-                if (currentMessage.length + skillText.length > 2000) {
-                    // Send currentMessage and start a new one with the skillText
-                    messages.push(currentMessage);
-                    currentMessage = skillText;
-                } else {
-                    currentMessage += skillText;
-                }
-            }
+            let response = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:
+\`\`\`${firstSkill.chunk}\`\`\``;
 
-            // Add other classes info
             if (otherClasses.length > 0) {
-                const classesText = `Other classes that have a skill with the same name: ${otherClasses.join(', ')}`;
-                if (currentMessage.length + classesText.length > 2000) {
-                    messages.push(currentMessage);
-                    currentMessage = classesText;
-                } else {
-                    currentMessage += classesText;
-                }
+                response += `\nOther classes that share this skill name: ${otherClasses.join(', ')}`;
             }
 
-            if (currentMessage.length > 0) {
-                messages.push(currentMessage);
-            }
-
-            // Send the messages
-            for (const msg of messages) {
-                await message.channel.send({ content: msg });
-            }
+            // Send the response
+            message.channel.send({ content: response });
 
         } catch (error) {
             console.error('Error finding the skill:', error);
