@@ -14,8 +14,6 @@ module.exports = {
             return input.replace(/[^a-zA-Z0-9_\s]/g, '').trim();
         };
 
-        // Custom splitMessage function (not needed anymore since we're handling splits manually)
-
         if (args.length <= 1) {
             message.channel.send({ content: 'Please provide the skill name.' });
             return;
@@ -192,7 +190,7 @@ module.exports = {
                     // Collect all SKILLDISPLAYNAMEIDs from initial matching skills
                     const matchingEntryIds = [...new Set(initialMatchingSkills.map(skill => skill.entryId))];
 
-                    // Now, collect all skills that have these SKILLDISPLAYNAMEIDs
+                    // Now, collect matching skills based on whether className is specified
                     matchingSkills = [];
                     for (const chunk of skillsChunks) {
                         if (chunk.includes('SKILLCREATE:')) {
@@ -202,11 +200,23 @@ module.exports = {
                                 if (!Array.isArray(skillClasses)) {
                                     skillClasses = [skillClasses];
                                 }
-                                matchingSkills.push({
-                                    entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
-                                    chunk: chunk.trim(),
-                                    classNames: skillClasses
-                                });
+                                if (className) {
+                                    // Only include skills with the specified class
+                                    if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                                        matchingSkills.push({
+                                            entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                                            chunk: chunk.trim(),
+                                            classNames: skillClasses
+                                        });
+                                    }
+                                } else {
+                                    // No class specified, include all skills with matchingEntryIds
+                                    matchingSkills.push({
+                                        entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                                        chunk: chunk.trim(),
+                                        classNames: skillClasses
+                                    });
+                                }
                             }
                         }
                     }
