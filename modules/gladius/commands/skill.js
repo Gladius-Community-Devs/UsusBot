@@ -1,7 +1,7 @@
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
-    syntax: 'skill [mod (o)] [class (o)] [skill name]',
+    syntax: 'skill [mod (optional)] [class (optional)] [skill name]',
     num_args: 1,
     args_to_lower: true,
     needs_api: false,
@@ -76,6 +76,36 @@ module.exports = {
                 entryIdToSkillName[id] = name;
             }
 
+            // Read the skills.tok file
+            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
+            const skillsChunks = skillsContent.split(/\n\s*\n/);
+
+            // Function to parse a skill chunk into a key-value object
+            const parseSkillChunk = (chunk) => {
+                const lines = chunk.trim().split(/\r?\n/);
+                const skillData = {};
+                for (const line of lines) {
+                    const lineTrimmed = line.trim();
+                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
+                    if (match) {
+                        const key = match[1].toUpperCase();
+                        let value = match[2].trim();
+
+                        // Remove surrounding quotes if present
+                        if (value.startsWith('"') && value.endsWith('"')) {
+                            value = value.substring(1, value.length - 1);
+                        }
+
+                        // Store all values as arrays
+                        if (!skillData[key]) {
+                            skillData[key] = [];
+                        }
+                        skillData[key].push(value);
+                    }
+                }
+                return skillData;
+            };
+
             // Initialize variables
             let className = '';
             let skillName = '';
@@ -106,36 +136,6 @@ module.exports = {
                 if (entryIdsForSkillName.length === 0) {
                     continue; // No skill with this name, try next split
                 }
-
-                // Read the skills.tok file
-                const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-                const skillsChunks = skillsContent.split(/\n\s*\n/);
-
-                // Function to parse a skill chunk into a key-value object
-                const parseSkillChunk = (chunk) => {
-                    const lines = chunk.trim().split(/\r?\n/);
-                    const skillData = {};
-                    for (const line of lines) {
-                        const lineTrimmed = line.trim();
-                        const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                        if (match) {
-                            const key = match[1].toUpperCase();
-                            let value = match[2].trim();
-
-                            // Remove surrounding quotes if present
-                            if (value.startsWith('"') && value.endsWith('"')) {
-                                value = value.substring(1, value.length - 1);
-                            }
-
-                            // Store all values as arrays
-                            if (!skillData[key]) {
-                                skillData[key] = [];
-                            }
-                            skillData[key].push(value);
-                        }
-                    }
-                    return skillData;
-                };
 
                 // Collect matching skills
                 matchingSkills = [];
@@ -241,7 +241,7 @@ module.exports = {
             }
 
         } catch (error) {
-            this.logger.error('Error finding the skill:', error);
+            console.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
         }
     }
