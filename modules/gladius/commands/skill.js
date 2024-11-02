@@ -14,23 +14,7 @@ module.exports = {
             return input.replace(/[^a-zA-Z0-9_\s]/g, '').trim();
         };
 
-        // Custom splitMessage function
-        function splitMessage(text, { maxLength = 2000, char = '\n' } = {}) {
-            if (text.length <= maxLength) return [text];
-            const splitText = text.split(char);
-            if (splitText.some(chunk => chunk.length > maxLength)) throw new RangeError('A chunk is too big!');
-            const messages = [];
-            let msg = '';
-            for (const chunk of splitText) {
-                if (msg && (msg + char + chunk).length > maxLength) {
-                    messages.push(msg);
-                    msg = '';
-                }
-                msg += (msg ? char : '') + chunk;
-            }
-            messages.push(msg);
-            return messages;
-        }
+        // Custom splitMessage function (not needed anymore since we're handling splits manually)
 
         if (args.length <= 1) {
             message.channel.send({ content: 'Please provide the skill name.' });
@@ -237,7 +221,9 @@ module.exports = {
             }
 
             // Prepare the response
-            let response = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:\n\n`;
+            let messages = [];
+            let header = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:\n\n`;
+            let currentMessage = header;
 
             // Collect all classNames from matchingSkills
             const allClassNames = matchingSkills.flatMap(skill => skill.classNames);
@@ -251,21 +237,35 @@ module.exports = {
             const otherClasses = uniqueClassNames.filter(cls => !specifiedClassNames.includes(cls) && cls !== 'unknown');
 
             for (const skill of matchingSkills) {
-                response += `\`\`\`${skill.chunk}\`\`\`\n`;
+                const skillText = `\`\`\`\n${skill.chunk}\n\`\`\`\n`;
+
+                if (currentMessage.length + skillText.length > 2000) {
+                    // Send currentMessage and start a new one with the skillText
+                    messages.push(currentMessage);
+                    currentMessage = skillText;
+                } else {
+                    currentMessage += skillText;
+                }
             }
 
+            // Add other classes info
             if (otherClasses.length > 0) {
-                response += `Other classes that share this skill: ${otherClasses.join(', ')}`;
+                const classesText = `Other classes that share this skill: ${otherClasses.join(', ')}`;
+                if (currentMessage.length + classesText.length > 2000) {
+                    messages.push(currentMessage);
+                    currentMessage = classesText;
+                } else {
+                    currentMessage += classesText;
+                }
             }
 
-            // Use the custom splitMessage function to split and send the message
-            const messageChunks = splitMessage(response, {
-                maxLength: 2000,
-                char: '\n'
-            });
+            if (currentMessage.length > 0) {
+                messages.push(currentMessage);
+            }
 
-            for (const chunk of messageChunks) {
-                await message.channel.send({ content: chunk });
+            // Send the messages
+            for (const msg of messages) {
+                await message.channel.send({ content: msg });
             }
 
         } catch (error) {
