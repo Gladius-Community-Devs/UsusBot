@@ -241,7 +241,7 @@ module.exports = {
             }
 
         } catch (error) {
-            console.error('Error finding the skill:', error);
+            this.logger.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
         }
     }
