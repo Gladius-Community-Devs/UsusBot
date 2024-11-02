@@ -187,15 +187,22 @@ module.exports = {
                     skillName = potentialSkillName;
                     foundMatchingSkills = true;
 
-                    // Collect all SKILLDISPLAYNAMEIDs from initial matching skills
-                    const matchingEntryIds = [...new Set(initialMatchingSkills.map(skill => skill.entryId))];
+                    // Now, pick the SKILLDISPLAYNAMEID to use
+                    let selectedEntryId;
+                    if (className) {
+                        // We have a class name specified
+                        selectedEntryId = initialMatchingSkills[0].entryId;
+                    } else {
+                        // No class name specified, pick the first SKILLDISPLAYNAMEID
+                        selectedEntryId = initialMatchingSkills[0].entryId;
+                    }
 
-                    // Now, collect matching skills based on whether className is specified
+                    // Now, collect all skills that have this selectedEntryId
                     matchingSkills = [];
                     for (const chunk of skillsChunks) {
                         if (chunk.includes('SKILLCREATE:')) {
                             const skillData = parseSkillChunk(chunk);
-                            if (skillData['SKILLDISPLAYNAMEID'] && matchingEntryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID']))) {
+                            if (skillData['SKILLDISPLAYNAMEID'] && parseInt(skillData['SKILLDISPLAYNAMEID']) === selectedEntryId) {
                                 let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                                 if (!Array.isArray(skillClasses)) {
                                     skillClasses = [skillClasses];
@@ -204,15 +211,15 @@ module.exports = {
                                     // Only include skills with the specified class
                                     if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
                                         matchingSkills.push({
-                                            entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                                            entryId: selectedEntryId,
                                             chunk: chunk.trim(),
                                             classNames: skillClasses
                                         });
                                     }
                                 } else {
-                                    // No class specified, include all skills with matchingEntryIds
+                                    // No class specified, include all skills with selectedEntryId
                                     matchingSkills.push({
-                                        entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                                        entryId: selectedEntryId,
                                         chunk: chunk.trim(),
                                         classNames: skillClasses
                                     });
@@ -225,7 +232,7 @@ module.exports = {
                 }
             }
 
-            if (!foundMatchingSkills) {
+            if (!foundMatchingSkills || matchingSkills.length === 0) {
                 message.channel.send({ content: `No skill named '${args.slice(index).join(' ')}' found in '${modName}'.` });
                 return;
             }

@@ -15,13 +15,24 @@ module.exports = {
 message.channel.send({ content: ""});
 
 //Use This to send a message with more than 2000 characters(Create your string and then name it 'output'):
-const messageChunks = Util.splitMessage(output, {
-    maxLength: 2000,
-    char:'\n'
-});
-messageChunks.forEach(async chunk => {
-    await message.channel.send(chunk);
-})
+// Custom splitMessage function
+function splitMessage(text, { maxLength = 2000, char = '\n' } = {}) {
+    if (text.length <= maxLength) return [text];
+    const splitText = text.split(char);
+    if (splitText.some(chunk => chunk.length > maxLength)) throw new RangeError('A chunk is too big!');
+    const messages = [];
+    let msg = '';
+    for (const chunk of splitText) {
+        if (msg && (msg + char + chunk).length > maxLength) {
+            messages.push(msg);
+            msg = '';
+        }
+        msg += (msg ? char : '') + chunk;
+    }
+    messages.push(msg);
+    return messages;
+}
+
 
 
 
