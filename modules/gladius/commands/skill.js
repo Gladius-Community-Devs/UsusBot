@@ -66,17 +66,14 @@ module.exports = {
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
             const lookupLines = lookupContent.split(/\r?\n/);
 
-            // Build a map of skill names to entry IDs
-            const skillNameToEntryIds = {};
+            // Build a mapping from entry IDs to skill names
+            const entryIdToSkillName = {};
             for (const line of lookupLines) {
                 if (!line.trim()) continue;
                 const fields = line.split('^');
-                const id = fields[0].trim();
+                const id = parseInt(fields[0].trim());
                 const name = fields[fields.length - 1].trim().toLowerCase();
-                if (!skillNameToEntryIds[name]) {
-                    skillNameToEntryIds[name] = [];
-                }
-                skillNameToEntryIds[name].push(parseInt(id));
+                entryIdToSkillName[id] = name;
             }
 
             // Initialize variables
@@ -96,10 +93,17 @@ module.exports = {
                 potentialClassName = sanitizeInput(potentialClassName);
                 potentialSkillName = sanitizeInput(potentialSkillName);
 
-                // Get all entry IDs for the potential skill name
-                const entryIds = skillNameToEntryIds[potentialSkillName.toLowerCase()] || [];
+                skillName = potentialSkillName;
 
-                if (entryIds.length === 0) {
+                // Collect all entry IDs for the potential skill name
+                const entryIdsForSkillName = [];
+                for (const id in entryIdToSkillName) {
+                    if (entryIdToSkillName[id] === potentialSkillName.toLowerCase()) {
+                        entryIdsForSkillName.push(parseInt(id));
+                    }
+                }
+
+                if (entryIdsForSkillName.length === 0) {
                     continue; // No skill with this name, try next split
                 }
 
@@ -123,103 +127,36 @@ module.exports = {
                                 value = value.substring(1, value.length - 1);
                             }
 
-                            if (key === 'SKILLUSECLASS') {
-                                if (skillData[key]) {
-                                    // Append to array if key already exists
-                                    if (Array.isArray(skillData[key])) {
-                                        skillData[key].push(value);
-                                    } else {
-                                        skillData[key] = [skillData[key], value];
-                                    }
-                                } else {
-                                    skillData[key] = value;
-                                }
-                            } else {
-                                // Handle multiple keys that can have multiple values
-                                if (skillData[key]) {
-                                    if (Array.isArray(skillData[key])) {
-                                        skillData[key].push(value);
-                                    } else {
-                                        skillData[key] = [skillData[key], value];
-                                    }
-                                } else {
-                                    skillData[key] = value;
-                                }
+                            // Store all values as arrays
+                            if (!skillData[key]) {
+                                skillData[key] = [];
                             }
+                            skillData[key].push(value);
                         }
                     }
                     return skillData;
                 };
 
-                // For each skill chunk, collect initial matching skills based on skill name and optional class name
-                let initialMatchingSkills = [];
+                // Collect matching skills
+                matchingSkills = [];
                 for (const chunk of skillsChunks) {
                     if (chunk.includes('SKILLCREATE:')) {
                         const skillData = parseSkillChunk(chunk);
-                        if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID']))) {
-                            let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
-                            if (!Array.isArray(skillClasses)) {
-                                skillClasses = [skillClasses];
-                            }
-                            // Check if the skill matches the potential class name (if provided)
-                            if (potentialClassName) {
-                                if (skillClasses.some(cls => cls.toLowerCase() === potentialClassName.toLowerCase())) {
-                                    initialMatchingSkills.push({
-                                        entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
-                                        chunk: chunk.trim(),
-                                        classNames: skillClasses
-                                    });
-                                }
-                            } else {
-                                // No class name specified, collect all matching skills
-                                initialMatchingSkills.push({
-                                    entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
-                                    chunk: chunk.trim(),
-                                    classNames: skillClasses
-                                });
-                            }
-                        }
-                    }
-                }
-
-                if (initialMatchingSkills.length > 0) {
-                    className = potentialClassName;
-                    skillName = potentialSkillName;
-                    foundMatchingSkills = true;
-
-                    // Now, pick the SKILLDISPLAYNAMEID to use
-                    let selectedEntryId;
-                    if (className) {
-                        // We have a class name specified
-                        selectedEntryId = initialMatchingSkills[0].entryId;
-                    } else {
-                        // No class name specified, pick the first SKILLDISPLAYNAMEID
-                        selectedEntryId = initialMatchingSkills[0].entryId;
-                    }
-
-                    // Now, collect all skills that have this selectedEntryId
-                    matchingSkills = [];
-                    for (const chunk of skillsChunks) {
-                        if (chunk.includes('SKILLCREATE:')) {
-                            const skillData = parseSkillChunk(chunk);
-                            if (skillData['SKILLDISPLAYNAMEID'] && parseInt(skillData['SKILLDISPLAYNAMEID']) === selectedEntryId) {
+                        if (skillData['SKILLDISPLAYNAMEID']) {
+                            const entryId = parseInt(skillData['SKILLDISPLAYNAMEID'][0]);
+                            if (entryIdsForSkillName.includes(entryId)) {
                                 let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
-                                if (!Array.isArray(skillClasses)) {
-                                    skillClasses = [skillClasses];
-                                }
                                 if (className) {
-                                    // Only include skills with the specified class
-                                    if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                                    if (skillClasses.some(cls => cls.toLowerCase() === potentialClassName.toLowerCase())) {
                                         matchingSkills.push({
-                                            entryId: selectedEntryId,
+                                            entryId: entryId,
                                             chunk: chunk.trim(),
                                             classNames: skillClasses
                                         });
                                     }
                                 } else {
-                                    // No class specified, include all skills with selectedEntryId
                                     matchingSkills.push({
-                                        entryId: selectedEntryId,
+                                        entryId: entryId,
                                         chunk: chunk.trim(),
                                         classNames: skillClasses
                                     });
@@ -227,14 +164,37 @@ module.exports = {
                             }
                         }
                     }
+                }
 
+                if (matchingSkills.length > 0) {
+                    className = potentialClassName;
+                    foundMatchingSkills = true;
                     break; // Exit the loop as we've found matching skills
                 }
             }
 
-            if (!foundMatchingSkills || matchingSkills.length === 0) {
+            if (!foundMatchingSkills) {
                 message.channel.send({ content: `No skill named '${args.slice(index).join(' ')}' found in '${modName}'.` });
                 return;
+            }
+
+            // Collect all classes that have the skill name
+            let allClassesWithSkillName = new Set();
+
+            for (const chunk of skillsChunks) {
+                if (chunk.includes('SKILLCREATE:')) {
+                    const skillData = parseSkillChunk(chunk);
+                    if (skillData['SKILLDISPLAYNAMEID']) {
+                        const entryId = parseInt(skillData['SKILLDISPLAYNAMEID'][0]);
+                        const skillNameFromEntryId = entryIdToSkillName[entryId];
+                        if (skillNameFromEntryId === skillName.toLowerCase()) {
+                            let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
+                            for (const cls of skillClasses) {
+                                allClassesWithSkillName.add(cls.toLowerCase());
+                            }
+                        }
+                    }
+                }
             }
 
             // Prepare the response
@@ -242,16 +202,11 @@ module.exports = {
             let header = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:\n\n`;
             let currentMessage = header;
 
-            // Collect all classNames from matchingSkills
-            const allClassNames = matchingSkills.flatMap(skill => skill.classNames);
-            const uniqueClassNames = [...new Set(allClassNames.map(cls => cls.toLowerCase()))];
+            // Collect classNames from matchingSkills
+            const matchingSkillClassNames = matchingSkills.flatMap(skill => skill.classNames.map(cls => cls.toLowerCase()));
 
-            // If a className was specified, exclude it from otherClasses
-            let specifiedClassNames = [];
-            if (className) {
-                specifiedClassNames.push(className.toLowerCase());
-            }
-            const otherClasses = uniqueClassNames.filter(cls => !specifiedClassNames.includes(cls) && cls !== 'unknown');
+            // Prepare 'otherClasses' by excluding classes already in matchingSkills
+            const otherClasses = [...allClassesWithSkillName].filter(cls => !matchingSkillClassNames.includes(cls) && cls !== 'unknown');
 
             for (const skill of matchingSkills) {
                 const skillText = `\`\`\`\n${skill.chunk}\n\`\`\`\n`;
@@ -267,7 +222,7 @@ module.exports = {
 
             // Add other classes info
             if (otherClasses.length > 0) {
-                const classesText = `Other classes that share this skill: ${otherClasses.join(', ')}`;
+                const classesText = `Other classes that have a skill with the same name: ${otherClasses.join(', ')}`;
                 if (currentMessage.length + classesText.length > 2000) {
                     messages.push(currentMessage);
                     currentMessage = classesText;
