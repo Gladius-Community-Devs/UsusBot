@@ -31,11 +31,32 @@ module.exports = {
                         value = value.substring(1, value.length - 1);
                     }
 
-                    // Store all values as arrays
-                    if (!skillData[key]) {
-                        skillData[key] = [];
+                    // Keys that can have multiple values
+                    const multiValueKeys = [
+                        'SKILLATTRIBUTE',
+                        'SKILLSTATUS',
+                        'SKILLEFFECT',
+                        'SKILLUSECLASS',
+                        'SKILLMULTIHITDATA',
+                        'SKILLEFFECTCONDITION',
+                        // Add any other keys that can have multiple values
+                    ];
+
+                    if (multiValueKeys.includes(key)) {
+                        if (skillData[key]) {
+                            // Append to array if key already exists
+                            if (Array.isArray(skillData[key])) {
+                                skillData[key].push(value);
+                            } else {
+                                skillData[key] = [skillData[key], value];
+                            }
+                        } else {
+                            skillData[key] = value;
+                        }
+                    } else {
+                        // Store single value keys as strings
+                        skillData[key] = value;
                     }
-                    skillData[key].push(value);
                 }
             }
             return skillData;
@@ -141,7 +162,8 @@ module.exports = {
                 for (const chunk of skillsChunks) {
                     if (chunk.includes('SKILLCREATE:')) {
                         const skillData = parseSkillChunk(chunk);
-                        if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID'][0]))) {
+                        const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
+                        if (skillDisplayNameId && entryIds.includes(parseInt(skillDisplayNameId))) {
                             let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                             if (!Array.isArray(skillClasses)) {
                                 skillClasses = [skillClasses];
@@ -150,7 +172,7 @@ module.exports = {
                             if (potentialClassName) {
                                 if (skillClasses.some(cls => cls.toLowerCase() === potentialClassName.toLowerCase())) {
                                     matchingSkills.push({
-                                        entryId: parseInt(skillData['SKILLDISPLAYNAMEID'][0]),
+                                        entryId: parseInt(skillDisplayNameId),
                                         chunk: chunk.trim(),
                                         classNames: skillClasses,
                                         skillData: skillData // Include skillData for later use
@@ -159,7 +181,7 @@ module.exports = {
                             } else {
                                 // No class name specified, collect all matching skills
                                 matchingSkills.push({
-                                    entryId: parseInt(skillData['SKILLDISPLAYNAMEID'][0]),
+                                    entryId: parseInt(skillDisplayNameId),
                                     chunk: chunk.trim(),
                                     classNames: skillClasses,
                                     skillData: skillData // Include skillData for later use
@@ -182,7 +204,8 @@ module.exports = {
                     for (const chunk of skillsChunks) {
                         if (chunk.includes('SKILLCREATE:')) {
                             const skillData = parseSkillChunk(chunk);
-                            if (skillData['SKILLDISPLAYNAMEID'] && parseInt(skillData['SKILLDISPLAYNAMEID'][0]) === targetSKILLDISPLAYNAMEID) {
+                            const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
+                            if (skillDisplayNameId && parseInt(skillDisplayNameId) === targetSKILLDISPLAYNAMEID) {
                                 let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                                 if (!Array.isArray(skillClasses)) {
                                     skillClasses = [skillClasses];
@@ -216,8 +239,9 @@ module.exports = {
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
                     const skillData = parseSkillChunk(chunk);
-                    if (skillData['SKILLDISPLAYNAMEID']) {
-                        const entryId = parseInt(skillData['SKILLDISPLAYNAMEID'][0]);
+                    const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
+                    if (skillDisplayNameId) {
+                        const entryId = parseInt(skillDisplayNameId);
                         const skillEntryIds = skillNameToEntryIds[skillName.toLowerCase()] || [];
                         if (skillEntryIds.includes(entryId)) {
                             let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
@@ -287,7 +311,7 @@ module.exports = {
             }
 
         } catch (error) {
-            this.logger.error('Error finding the skill:', error);
+            console.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
         }
     }
@@ -295,7 +319,7 @@ module.exports = {
 
 // Function to generate natural language description of a skill
 const generateSkillDescription = (skillData, lookupTextMap) => {
-    let description = '-# In game description:\n';
+    let description = '';
 
     // Skill Name
     const skillNameId = skillData['SKILLDISPLAYNAMEID'];
@@ -304,12 +328,11 @@ const generateSkillDescription = (skillData, lookupTextMap) => {
 
     // Skill Description
     const skillDescId = skillData['SKILLDESCRIPTIONID'];
-    const skillDesc = lookupTextMap[skillDescId] || '';
+    const skillDesc = skillDescId ? lookupTextMap[skillDescId] || '' : '';
     if (skillDesc) {
-        description += `*${skillDesc}*
-
-`;
+        description += `*${skillDesc}*\n\n`;
     }
+
     description += '-# Skills.tok Information:\n';
     // Skill Type and Category
     if (skillData['SKILLCREATE']) {
