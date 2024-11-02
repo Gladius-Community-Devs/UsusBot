@@ -1,7 +1,7 @@
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
-    syntax: 'skill [mod (o)] [class (o)] [skill name]',
+    syntax: 'skill [mod (optional)] [class (optional)] [skill name]',
     num_args: 1,
     args_to_lower: true,
     needs_api: false,
@@ -13,6 +13,24 @@ module.exports = {
         const sanitizeInput = (input) => {
             return input.replace(/[^a-zA-Z0-9_\s]/g, '').trim();
         };
+
+        // Custom splitMessage function
+        function splitMessage(text, { maxLength = 2000, char = '\n' } = {}) {
+            if (text.length <= maxLength) return [text];
+            const splitText = text.split(char);
+            if (splitText.some(chunk => chunk.length > maxLength)) throw new RangeError('A chunk is too big!');
+            const messages = [];
+            let msg = '';
+            for (const chunk of splitText) {
+                if (msg && (msg + char + chunk).length > maxLength) {
+                    messages.push(msg);
+                    msg = '';
+                }
+                msg += (msg ? char : '') + chunk;
+            }
+            messages.push(msg);
+            return messages;
+        }
 
         if (args.length <= 1) {
             message.channel.send({ content: 'Please provide the skill name.' });
@@ -151,8 +169,8 @@ module.exports = {
                     return skillData;
                 };
 
-                // For each skill chunk, collect matching skills
-                matchingSkills = [];
+                // For each skill chunk, collect initial matching skills based on skill name and optional class name
+                let initialMatchingSkills = [];
                 for (const chunk of skillsChunks) {
                     if (chunk.includes('SKILLCREATE:')) {
                         const skillData = parseSkillChunk(chunk);
@@ -164,7 +182,7 @@ module.exports = {
                             // Check if the skill matches the potential class name (if provided)
                             if (potentialClassName) {
                                 if (skillClasses.some(cls => cls.toLowerCase() === potentialClassName.toLowerCase())) {
-                                    matchingSkills.push({
+                                    initialMatchingSkills.push({
                                         entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
                                         chunk: chunk.trim(),
                                         classNames: skillClasses
@@ -172,7 +190,7 @@ module.exports = {
                                 }
                             } else {
                                 // No class name specified, collect all matching skills
-                                matchingSkills.push({
+                                initialMatchingSkills.push({
                                     entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
                                     chunk: chunk.trim(),
                                     classNames: skillClasses
@@ -182,10 +200,33 @@ module.exports = {
                     }
                 }
 
-                if (matchingSkills.length > 0) {
+                if (initialMatchingSkills.length > 0) {
                     className = potentialClassName;
                     skillName = potentialSkillName;
                     foundMatchingSkills = true;
+
+                    // Collect all SKILLDISPLAYNAMEIDs from initial matching skills
+                    const matchingEntryIds = [...new Set(initialMatchingSkills.map(skill => skill.entryId))];
+
+                    // Now, collect all skills that have these SKILLDISPLAYNAMEIDs
+                    matchingSkills = [];
+                    for (const chunk of skillsChunks) {
+                        if (chunk.includes('SKILLCREATE:')) {
+                            const skillData = parseSkillChunk(chunk);
+                            if (skillData['SKILLDISPLAYNAMEID'] && matchingEntryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID']))) {
+                                let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
+                                if (!Array.isArray(skillClasses)) {
+                                    skillClasses = [skillClasses];
+                                }
+                                matchingSkills.push({
+                                    entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                                    chunk: chunk.trim(),
+                                    classNames: skillClasses
+                                });
+                            }
+                        }
+                    }
+
                     break; // Exit the loop as we've found matching skills
                 }
             }
@@ -214,7 +255,7 @@ module.exports = {
             }
 
             if (otherClasses.length > 0) {
-                response += `Other classes that share this skill name: ${otherClasses.join(', ')}`;
+                response += `Other classes that share this skill: ${otherClasses.join(', ')}`;
             }
 
             // Use the custom splitMessage function to split and send the message
@@ -231,23 +272,5 @@ module.exports = {
             console.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
         }
-    },
-};
-
-// Custom splitMessage function
-function splitMessage(text, { maxLength = 2000, char = '\n' } = {}) {
-    if (text.length <= maxLength) return [text];
-    const splitText = text.split(char);
-    if (splitText.some(chunk => chunk.length > maxLength)) throw new RangeError('A chunk is too big!');
-    const messages = [];
-    let msg = '';
-    for (const chunk of splitText) {
-        if (msg && (msg + char + chunk).length > maxLength) {
-            messages.push(msg);
-            msg = '';
-        }
-        msg += (msg ? char : '') + chunk;
     }
-    messages.push(msg);
-    return messages;
-}
+};
