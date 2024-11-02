@@ -26,7 +26,7 @@ module.exports = {
             const args = current_command.syntax.replace(current_command.name, '').trim();
             embed.addFields({
                 name: `**${current_command.name}**`,
-                value: `${args ? `**Args:** ${args}\n` : ''}${current_command.description.length > 85 ? current_command.description.substring(0, 82) + '...' : current_command.description}`,
+                value: `${args ? `**Inputs:** ${args}\n` : ''}${current_command.description.length > 85 ? current_command.description.substring(0, 82) + '...' : current_command.description}`,
                 inline: true
             });
         }
