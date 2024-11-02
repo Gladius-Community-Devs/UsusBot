@@ -10,8 +10,9 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async execute(message, args, extra) {
+        // Adjusted sanitizeInput to allow apostrophes and hyphens
         const sanitizeInput = (input) => {
-            return input.replace(/[^a-zA-Z0-9_\s]/g, '').trim();
+            return input.replace(/[^\w\s'’-]/g, '').trim();
         };
 
         if (args.length <= 1) {
@@ -170,10 +171,11 @@ module.exports = {
                     className = potentialClassName;
                     foundMatchingSkills = true;
 
-                    // Now, get the target SKILLDISPLAYNAMEID
+                    // Now, get the target SKILLDISPLAYNAMEID and SKILLUSECLASS of the first matching skill
                     const targetSKILLDISPLAYNAMEID = matchingSkills[0].entryId;
+                    const targetSKILLUSECLASS = matchingSkills[0].classNames[0];
 
-                    // Now collect all skill chunks that have this SKILLDISPLAYNAMEID
+                    // Now collect all skill chunks that have this SKILLDISPLAYNAMEID and SKILLUSECLASS
                     let allMatchingSkills = [];
                     for (const chunk of skillsChunks) {
                         if (chunk.includes('SKILLCREATE:')) {
@@ -183,16 +185,7 @@ module.exports = {
                                 if (!Array.isArray(skillClasses)) {
                                     skillClasses = [skillClasses];
                                 }
-                                if (className) {
-                                    if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
-                                        allMatchingSkills.push({
-                                            entryId: targetSKILLDISPLAYNAMEID,
-                                            chunk: chunk.trim(),
-                                            classNames: skillClasses
-                                        });
-                                    }
-                                } else {
-                                    // Include all skills with that SKILLDISPLAYNAMEID
+                                if (skillClasses.some(cls => cls.toLowerCase() === targetSKILLUSECLASS.toLowerCase())) {
                                     allMatchingSkills.push({
                                         entryId: targetSKILLDISPLAYNAMEID,
                                         chunk: chunk.trim(),
@@ -214,7 +207,7 @@ module.exports = {
                 return;
             }
 
-            // Collect all classes that have the skill name
+            // Collect all classes that have the skill name, regardless of SKILLDISPLAYNAMEID
             let allClassesWithSkillName = new Set();
 
             for (const chunk of skillsChunks) {
