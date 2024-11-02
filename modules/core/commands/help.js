@@ -13,7 +13,7 @@ module.exports = {
         var gladius_module = mod_handler.modules.get('gladius');
 
         const embed = new EmbedBuilder()
-            .setTitle('Help - List of Commands ( (o) = optional argument )')
+            .setTitle('Help - List of Commands ( (o) = optional input )')
             .setColor(0x00AE86);
 
         for (var current_command_name of Array.from(gladius_module.commands.keys())) {
