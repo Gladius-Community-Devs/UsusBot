@@ -9,7 +9,7 @@ module.exports = {
     async execute(message, args, extra) {
         const fs = require('fs');
         const path = require('path');
-        const { Util } = require('discord.js');
+
         const sanitizeInput = (input) => {
             return input.replace(/[^a-zA-Z0-9_\s]/g, '').trim();
         };
@@ -217,8 +217,8 @@ module.exports = {
                 response += `Other classes that share this skill name: ${otherClasses.join(', ')}`;
             }
 
-            // Use the utility function to split and send the message
-            const messageChunks = Util.splitMessage(response, {
+            // Use the custom splitMessage function to split and send the message
+            const messageChunks = splitMessage(response, {
                 maxLength: 2000,
                 char: '\n'
             });
@@ -228,8 +228,26 @@ module.exports = {
             }
 
         } catch (error) {
-            this.logger.error('Error finding the skill:', error);
+            console.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
         }
-    }
+    },
 };
+
+// Custom splitMessage function
+function splitMessage(text, { maxLength = 2000, char = '\n' } = {}) {
+    if (text.length <= maxLength) return [text];
+    const splitText = text.split(char);
+    if (splitText.some(chunk => chunk.length > maxLength)) throw new RangeError('A chunk is too big!');
+    const messages = [];
+    let msg = '';
+    for (const chunk of splitText) {
+        if (msg && (msg + char + chunk).length > maxLength) {
+            messages.push(msg);
+            msg = '';
+        }
+        msg += (msg ? char : '') + chunk;
+    }
+    messages.push(msg);
+    return messages;
+}
