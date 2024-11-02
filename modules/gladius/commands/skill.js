@@ -1,5 +1,3 @@
-const { Util } = require('discord.js');
-
 module.exports = {
     name: 'skill',
     description: 'Finds and displays information for a specified skill.',
@@ -11,7 +9,7 @@ module.exports = {
     async execute(message, args, extra) {
         const fs = require('fs');
         const path = require('path');
-
+        const { Util } = require('discord.js');
         const sanitizeInput = (input) => {
             return input.replace(/[^a-zA-Z0-9_\s]/g, '').trim();
         };
