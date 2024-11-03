@@ -264,7 +264,7 @@ module.exports = {
 
             // Prepare the response
             let messages = [];
-            let header = `Skill details for '${skillName}' in '${modName}' for class '${matchingSkills[0].classNames[0]}'` + ':\n\n';
+            let header = `This is **WIP** and is missing some details. Try ;skill\n\n\nSkill details for '${skillName}' in '${modName}' for class '${matchingSkills[0].classNames[0]}'` + ':\n\n';
             let currentMessage = header;
 
             // Build a map of IDs to text from lookuptext_eng.txt
