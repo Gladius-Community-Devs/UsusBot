@@ -146,8 +146,8 @@ async function onInteractionCreate(interaction) {
                 messages.push(currentMessage);
             }
 
-            // Defer reply to indicate processing
-            await interaction.deferReply({ ephemeral: false });
+            // Defer update to acknowledge the interaction without sending a new reply
+            await interaction.deferUpdate();
 
             // Edit the original message with the updated content and retain the dropdown menus
             await interaction.editReply({ content: messages[0], components: interaction.message.components });
