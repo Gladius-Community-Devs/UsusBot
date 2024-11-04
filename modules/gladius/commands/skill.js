@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { MessageActionRow, MessageSelectMenu } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 
 module.exports = {
     name: 'skill',
@@ -268,12 +268,12 @@ module.exports = {
             }));
 
             // Create the select menu with the modName and skillName in customId
-            const row = new MessageActionRow().addComponents(
-                new MessageSelectMenu()
-                    .setCustomId(`class-select|${encodedModName}|${encodedSkillName}`)
-                    .setPlaceholder('Select a class')
-                    .addOptions(classOptions)
-            );
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId(`class-select|${encodedModName}|${encodedSkillName}`)
+                .setPlaceholder('Select a class')
+                .addOptions(classOptions);
+
+            const row = new ActionRowBuilder().addComponents(selectMenu);
 
             if (currentMessage.length > 0) {
                 messages.push(currentMessage);

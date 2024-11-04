@@ -1,9 +1,9 @@
-const Discord = require('discord.js');
+const { InteractionType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 async function onInteractionCreate(interaction) {
-    if (!interaction.isSelectMenu()) return;
+    if (interaction.type !== InteractionType.MessageComponent) return;
 
     const customId = interaction.customId;
 
