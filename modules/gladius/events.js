@@ -149,13 +149,12 @@ async function onInteractionCreate(interaction) {
             // Defer the interaction to allow time for processing
             await interaction.deferUpdate();
 
-            // Edit the original message with the updated content
-            for (const [index, msg] of messages.entries()) {
-                if (index === 0) {
-                    await interaction.editReply({ content: msg, components: interaction.message.components });
-                } else {
-                    await interaction.followUp({ content: msg, ephemeral: false });
-                }
+            // Edit the original message with the updated content and keep the dropdown menus
+            await interaction.editReply({ content: messages[0], components: interaction.message.components });
+
+            // Send follow-up messages if the content exceeds the character limit of a single message
+            for (let i = 1; i < messages.length; i++) {
+                await interaction.followUp({ content: messages[i], ephemeral: false });
             }
         } catch (error) {
             this.logger.error('Error processing the interaction:', error);
