@@ -33,7 +33,7 @@ async function onInteractionCreate(interaction) {
         const classNameSanitized = sanitizeInput(selectedClass);
 
         // Define file paths securely
-        const baseUploadsPath = path.join(__dirname, '../../../uploads');
+        const baseUploadsPath = path.join(__dirname, '../../uploads');
         const modPath = path.join(baseUploadsPath, modNameSanitized);
         const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
         const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
