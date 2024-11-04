@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { MessageActionRow, MessageSelectMenu } = require('discord.js');
 
 module.exports = {
     name: 'skill',
@@ -152,7 +153,8 @@ module.exports = {
                                     matchingSkills.push({
                                         entryId: parseInt(skillData['SKILLDISPLAYNAMEID'][0]),
                                         chunk: chunk.trim(),
-                                        classNames: skillClasses
+                                        classNames: skillClasses,
+                                        skillData: skillData // Include skillData for later use
                                     });
                                 }
                             } else {
@@ -160,7 +162,8 @@ module.exports = {
                                 matchingSkills.push({
                                     entryId: parseInt(skillData['SKILLDISPLAYNAMEID'][0]),
                                     chunk: chunk.trim(),
-                                    classNames: skillClasses
+                                    classNames: skillClasses,
+                                    skillData: skillData // Include skillData for later use
                                 });
                             }
                         }
@@ -189,7 +192,8 @@ module.exports = {
                                     allMatchingSkills.push({
                                         entryId: targetSKILLDISPLAYNAMEID,
                                         chunk: chunk.trim(),
-                                        classNames: skillClasses
+                                        classNames: skillClasses,
+                                        skillData: skillData // Include skillData for later use
                                     });
                                 }
                             }
@@ -250,16 +254,26 @@ module.exports = {
                 }
             }
 
-            // Add other classes info
-            if (otherClasses.length > 0) {
-                const classesText = `Other classes that have a skill with the same name: ${otherClasses.join(', ')}`;
-                if (currentMessage.length + classesText.length > 2000) {
-                    messages.push(currentMessage);
-                    currentMessage = classesText;
-                } else {
-                    currentMessage += classesText;
-                }
-            }
+            // Combine all classes into one array
+            const allClasses = [...new Set([...matchingSkillClassNames, ...otherClasses])];
+
+            // URL encode the modName and skillName to safely include them in customId
+            const encodedModName = encodeURIComponent(modName);
+            const encodedSkillName = encodeURIComponent(skillName);
+
+            // Create options for the select menu
+            const classOptions = allClasses.map(cls => ({
+                label: cls.charAt(0).toUpperCase() + cls.slice(1),
+                value: encodeURIComponent(cls.toLowerCase())
+            }));
+
+            // Create the select menu with the modName and skillName in customId
+            const row = new MessageActionRow().addComponents(
+                new MessageSelectMenu()
+                    .setCustomId(`class-select|${encodedModName}|${encodedSkillName}`)
+                    .setPlaceholder('Select a class')
+                    .addOptions(classOptions)
+            );
 
             if (currentMessage.length > 0) {
                 messages.push(currentMessage);
@@ -269,6 +283,9 @@ module.exports = {
             for (const msg of messages) {
                 await message.channel.send({ content: msg });
             }
+
+            // Send the message with the select menu
+            await message.channel.send({ content: 'Please select a class:', components: [row] });
         } catch (error) {
             console.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
