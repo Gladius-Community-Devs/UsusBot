@@ -154,7 +154,7 @@ async function onInteractionCreate(interaction) {
                 await interaction.followUp({ content: msg, ephemeral: false });
             }
         } catch (error) {
-            console.error('Error processing the interaction:', error);
+            this.logger.error('Error processing the interaction:', error);
             await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
         }
     }
