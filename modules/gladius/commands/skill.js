@@ -286,12 +286,16 @@ module.exports = {
             }
 
             // Send the messages
-            for (const msg of messages) {
-                await message.channel.send({ content: msg });
+            for (const [index, msg] of messages.entries()) {
+                if (index === messages.length - 1) {
+                    await message.channel.send({ content: msg, components: rows });
+                } else {
+                    await message.channel.send({ content: msg });
+                }
             }
 
             // Send the message with the select menus
-            await message.channel.send({ content: 'Please select a class:', components: rows });
+            // await message.channel.send({ content: 'Please select a class:', components: rows });
         } catch (error) {
             this.logger.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
