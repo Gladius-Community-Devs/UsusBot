@@ -133,7 +133,7 @@ async function onInteractionCreate(interaction) {
             let currentMessage = header;
 
             for (const skill of matchingSkills) {
-                const skillText = `\`\`\`\n${skill.chunk}\n\`\`\`\n`;
+                const skillText = `\u0060\u0060\u0060\n${skill.chunk}\n\u0060\u0060\u0060\n`;
                 if (currentMessage.length + skillText.length > 2000) {
                     messages.push(currentMessage);
                     currentMessage = skillText;
@@ -149,9 +149,13 @@ async function onInteractionCreate(interaction) {
             // Defer the interaction to allow time for processing
             await interaction.deferUpdate();
 
-            // Send the messages
-            for (const msg of messages) {
-                await interaction.followUp({ content: msg, ephemeral: false });
+            // Edit the original message with the updated content
+            for (const [index, msg] of messages.entries()) {
+                if (index === 0) {
+                    await interaction.editReply({ content: msg, components: interaction.message.components });
+                } else {
+                    await interaction.followUp({ content: msg, ephemeral: false });
+                }
             }
         } catch (error) {
             this.logger.error('Error processing the interaction:', error);
