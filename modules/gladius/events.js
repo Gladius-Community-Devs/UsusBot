@@ -146,10 +146,10 @@ async function onInteractionCreate(interaction) {
                 messages.push(currentMessage);
             }
 
-            // Defer the interaction to allow time for processing
-            await interaction.deferUpdate();
+            // Defer reply to indicate processing
+            await interaction.deferReply({ ephemeral: false });
 
-            // Edit the original message with the updated content and keep the dropdown menus
+            // Edit the original message with the updated content and retain the dropdown menus
             await interaction.editReply({ content: messages[0], components: interaction.message.components });
 
             // Send follow-up messages if the content exceeds the character limit of a single message
