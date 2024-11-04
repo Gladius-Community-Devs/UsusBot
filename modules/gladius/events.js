@@ -149,8 +149,11 @@ async function onInteractionCreate(interaction) {
             // Defer update to acknowledge the interaction without sending a new reply
             await interaction.deferUpdate();
 
-            // Edit the original message with the updated content and retain the dropdown menus
-            await interaction.editReply({ content: messages[0], components: interaction.message.components });
+            // Delete the original message to make it look like it is being updated properly
+            await interaction.message.delete();
+
+            // Send a new message with the updated content and dropdown menus
+            const newMessage = await interaction.channel.send({ content: messages[0], components: interaction.message.components });
 
             // Send follow-up messages if the content exceeds the character limit of a single message
             for (let i = 1; i < messages.length; i++) {
