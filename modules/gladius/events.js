@@ -146,18 +146,15 @@ async function onInteractionCreate(interaction) {
                 messages.push(currentMessage);
             }
 
-            // Defer update to acknowledge the interaction without sending a new reply
-            await interaction.deferUpdate();
-
             // Delete the original message to make it look like it is being updated properly
-            await interaction.message.delete();
+            await interaction.message.delete().catch(console.error);
 
             // Send a new message with the updated content and dropdown menus
             const newMessage = await interaction.channel.send({ content: messages[0], components: interaction.message.components });
 
             // Send follow-up messages if the content exceeds the character limit of a single message
             for (let i = 1; i < messages.length; i++) {
-                await interaction.followUp({ content: messages[i], ephemeral: false });
+                await newMessage.channel.send({ content: messages[i] });
             }
         } catch (error) {
             this.logger.error('Error processing the interaction:', error);
