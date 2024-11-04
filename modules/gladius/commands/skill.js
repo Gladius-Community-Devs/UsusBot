@@ -241,11 +241,13 @@ module.exports = {
 
             // Prepare the response
             let messages = [];
-            let header = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:\n\n`;
+            let header = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:
+
+`;
             let currentMessage = header;
 
             for (const skill of matchingSkills) {
-                const skillText = `\`\`\`\n${skill.chunk}\n\`\`\`\n`;
+                const skillText = `\u0060\u0060\u0060\n${skill.chunk}\n\u0060\u0060\u0060\n`;
                 if (currentMessage.length + skillText.length > 2000) {
                     messages.push(currentMessage);
                     currentMessage = skillText;
@@ -261,19 +263,23 @@ module.exports = {
             const encodedModName = encodeURIComponent(modName);
             const encodedSkillName = encodeURIComponent(skillName);
 
-            // Create options for the select menu
+            // Create options for the select menus
             const classOptions = allClasses.map(cls => ({
                 label: cls.charAt(0).toUpperCase() + cls.slice(1),
                 value: encodeURIComponent(cls.toLowerCase())
             }));
 
-            // Create the select menu with the modName and skillName in customId
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId(`class-select|${encodedModName}|${encodedSkillName}`)
-                .setPlaceholder('Select a class')
-                .addOptions(classOptions);
-
-            const row = new ActionRowBuilder().addComponents(selectMenu);
+            // Create select menus, splitting options into groups of 25 if necessary
+            const rows = [];
+            for (let i = 0; i < classOptions.length; i += 25) {
+                const optionsChunk = classOptions.slice(i, i + 25);
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId(`class-select|${encodedModName}|${encodedSkillName}|${i}`)
+                    .setPlaceholder('Select a class')
+                    .addOptions(optionsChunk);
+                const row = new ActionRowBuilder().addComponents(selectMenu);
+                rows.push(row);
+            }
 
             if (currentMessage.length > 0) {
                 messages.push(currentMessage);
@@ -284,8 +290,8 @@ module.exports = {
                 await message.channel.send({ content: msg });
             }
 
-            // Send the message with the select menu
-            await message.channel.send({ content: 'Please select a class:', components: [row] });
+            // Send the message with the select menus
+            await message.channel.send({ content: 'Please select a class:', components: rows });
         } catch (error) {
             this.logger.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });
