@@ -22,6 +22,9 @@ module.exports = {
             if (current_command.module === 'Core' || current_command.module === 'Admin') {
                 continue;
             }
+            if (current_command.name.startsWith('h-')) {
+                continue;
+            }
 
             const args = current_command.syntax.replace(current_command.name, '').trim();
             embed.addFields({
