@@ -111,6 +111,72 @@ module.exports = {
                 return skillData;
             };
 
+            // Function to collect all skills in a combo chain
+            const collectComboChain = (initialSkillData, skillsChunks) => {
+                const comboSkills = [];
+                let currentSkill = initialSkillData;
+                
+                // First, check if this is a combo skill (has SKILLMETER with "Chain")
+                if (currentSkill['SKILLMETER'] && currentSkill['SKILLMETER'][0].includes('Chain')) {
+                    comboSkills.push({ 
+                        skillData: currentSkill, 
+                        isInitial: true,
+                        chunk: findOriginalChunk(currentSkill, skillsChunks)
+                    });
+                    
+                    // Determine the maximum additional hits from the initial SKILLMETER
+                    let meterParts = currentSkill['SKILLMETER'][0].split(',').map(s => s.trim().replace(/"/g, ''));
+                    const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
+                    
+                    // Follow the chain of subskills
+                    let hitNumber = 1;
+                    while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
+                        const subSkillName = currentSkill['SKILLSUBSKILL'][0];
+                        let foundSubSkill = null;
+                        let foundChunk = null;
+                        
+                        // Find the subskill in the chunks
+                        for (const chunk of skillsChunks) {
+                            if (chunk.includes('SKILLCREATE:')) {
+                                const subSkillData = parseSkillChunk(chunk);
+                                if (subSkillData['SKILLCREATE'] && 
+                                    subSkillData['SKILLCREATE'][0].includes(subSkillName)) {
+                                    foundSubSkill = subSkillData;
+                                    foundChunk = chunk;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (!foundSubSkill) break;
+                        
+                        // Add the subskill to our chain
+                        comboSkills.push({ 
+                            skillData: foundSubSkill, 
+                            hitNumber: hitNumber + 1,
+                            chunk: foundChunk
+                        });
+                        
+                        currentSkill = foundSubSkill;
+                        hitNumber++;
+                    }
+                }
+                return comboSkills;
+            };
+            
+            // Helper function to find the original chunk for a skill
+            const findOriginalChunk = (skillData, skillsChunks) => {
+                if (!skillData['SKILLCREATE']) return '';
+                
+                const skillName = skillData['SKILLCREATE'][0];
+                for (const chunk of skillsChunks) {
+                    if (chunk.includes('SKILLCREATE:') && chunk.includes(skillName)) {
+                        return chunk;
+                    }
+                }
+                return '';
+            };
+
             // Initialize variables
             let className = '';
             let skillName = '';
@@ -239,44 +305,6 @@ module.exports = {
             // Prepare 'otherClasses' by excluding classes already in matchingSkills
             const otherClasses = [...allClassesWithSkillName].filter(cls => !matchingSkillClassNames.includes(cls) && cls !== 'unknown');
 
-            // Function to collect all skills in a combo chain
-            const collectComboChain = (initialSkillData, skillsChunks) => {
-                const comboSkills = [];
-                let currentSkill = initialSkillData;
-                
-                // First, check if this is a combo skill (has SKILLMETER with "Chain")
-                if (currentSkill['SKILLMETER'] && currentSkill['SKILLMETER'].includes('Chain')) {
-                    comboSkills.push({ ...currentSkill, isInitial: true });
-                    
-                    // Determine the maximum additional hits from the initial SKILLMETER
-                    let meterParts = currentSkill['SKILLMETER'].split(',').map(s => s.trim().replace(/"/g, ''));
-                    const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
-                    
-                    // Follow the chain of subskills
-                    let hitNumber = 1;
-                    while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
-                        const subSkillName = currentSkill['SKILLSUBSKILL'];
-                        let foundSubSkill = null;
-                        // Find the subskill in the chunks
-                        for (const chunk of skillsChunks) {
-                            if (chunk.includes('SKILLCREATE:')) {
-                                const subSkillData = parseSkillChunk(chunk);
-                                if (subSkillData['SKILLCREATE'] && subSkillData['SKILLCREATE'].includes(subSkillName)) {
-                                    foundSubSkill = subSkillData;
-                                    // Add the subskill to our chain
-                                    comboSkills.push({ ...subSkillData, hitNumber: hitNumber + 1 });
-                                    break;
-                                }
-                            }
-                        }
-                        if (!foundSubSkill) break;
-                        currentSkill = foundSubSkill;
-                        hitNumber++;
-                    }
-                }
-                return comboSkills;
-            };
-
             // Combine all classes into one array
             const allClasses = [...new Set([...matchingSkillClassNames, ...otherClasses])];
 
@@ -312,12 +340,12 @@ module.exports = {
             // Check for combo skills and include all chain parts in output
             for (const skill of matchingSkills) {
                 // Get the skill data
-                const skillData = skill.skillData || parseSkillChunk(skill.chunk);
+                const skillData = skill.skillData;
                 
                 // Check if this is a combo skill
                 const comboSkills = collectComboChain(skillData, skillsChunks);
                 
-                if (comboSkills.length > 0) {
+                if (comboSkills.length > 1) { // Only treat as combo if there's more than one skill
                     // This is a combo skill, add header for combo chain
                     const comboHeader = `\n==== Combo Chain (${comboSkills.length} hits) ====\n\n`;
                     if (currentMessage.length + comboHeader.length > 2000) {
@@ -329,17 +357,8 @@ module.exports = {
                     
                     // Add each skill in the combo chain
                     for (const comboSkill of comboSkills) {
-                        // Find the original chunk for this skill
-                        let comboChunk = '';
-                        for (const chunk of skillsChunks) {
-                            if (chunk.includes('SKILLCREATE:') && chunk.includes(comboSkill['SKILLCREATE'][0])) {
-                                comboChunk = chunk;
-                                break;
-                            }
-                        }
-                        
                         const hitText = comboSkill.isInitial ? 'Initial Hit' : `Hit #${comboSkill.hitNumber}`;
-                        const skillText = `=== ${hitText} ===\n\u0060\u0060\u0060\n${comboChunk.trim()}\n\u0060\u0060\u0060\n\n`;
+                        const skillText = `=== ${hitText} ===\n\`\`\`\n${comboSkill.chunk.trim()}\n\`\`\`\n\n`;
                         
                         if (currentMessage.length + skillText.length > 2000) {
                             messages.push(currentMessage);
@@ -350,7 +369,7 @@ module.exports = {
                     }
                 } else {
                     // Regular non-combo skill
-                    const skillText = `\u0060\u0060\u0060\n${skill.chunk}\n\u0060\u0060\u0060\n\n`;
+                    const skillText = `\`\`\`\n${skill.chunk}\n\`\`\`\n\n`;
                     if (currentMessage.length + skillText.length > 2000) {
                         messages.push(currentMessage);
                         currentMessage = skillText;
