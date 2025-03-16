@@ -620,13 +620,42 @@ async function onInteractionCreate(interaction) {
                 // Get all shop files
                 const shopFiles = fs.readdirSync(shopsPath).filter(file => file.endsWith('.tok'));
                 
+                // Function to extract raw item name from ITEMCREATE line
+                const extractRawItemName = (itemData) => {
+                    if (itemData && itemData['ITEMCREATE'] && itemData['ITEMCREATE'].length > 0) {
+                        // Get first part of the ITEMCREATE value (the name)
+                        const createLine = itemData['ITEMCREATE'][0];
+                        const match = createLine.match(/^"([^"]+)"/);
+                        if (match && match[1]) {
+                            return match[1]; // Return the raw item name in quotes
+                        }
+                    }
+                    return null;
+                };
+                
                 // Find shops that sell these items
                 const itemShopMap = new Map();
                 
                 // For each item that grants this skill
                 for (const item of currentSkill.items) {
-                    const itemName = item.itemName;
-                    itemShopMap.set(itemName, []);
+                    // Get the display name for grouping in output
+                    const displayName = item.itemName;
+                    
+                    // Get the raw name from ITEMCREATE for shop searching
+                    const rawItemName = extractRawItemName(item.itemData);
+                    
+                    if (!rawItemName) {
+                        // If we couldn't extract a raw name, use the display name as fallback
+                        if (!itemShopMap.has(displayName)) {
+                            itemShopMap.set(displayName, []);
+                        }
+                        continue; // Skip to next item
+                    }
+                    
+                    // Initialize the shop list for this item
+                    if (!itemShopMap.has(displayName)) {
+                        itemShopMap.set(displayName, []);
+                    }
                     
                     // Check each shop file for this item
                     for (const shopFile of shopFiles) {
@@ -641,13 +670,16 @@ async function onInteractionCreate(interaction) {
                                 shopName = nameMatch[1];
                             }
                             
-                            // Check if the shop sells this item
+                            // Check if the shop sells this item using the raw item name
                             // We need to escape special regex characters in the item name
-                            const escapedItemName = itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const escapedItemName = rawItemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                             const itemRegex = new RegExp(`ITEM\\s+"${escapedItemName}"`, 'i');
                             
                             if (itemRegex.test(shopContent)) {
-                                itemShopMap.get(itemName).push(shopName);
+                                // Add the shop to the list if it's not already there
+                                if (!itemShopMap.get(displayName).includes(shopName)) {
+                                    itemShopMap.get(displayName).push(shopName);
+                                }
                             }
                         } catch (error) {
                             console.error(`Error reading shop file ${shopFile}:`, error);
@@ -655,24 +687,81 @@ async function onInteractionCreate(interaction) {
                     }
                 }
                 
+                // Function to group items by their base name (without affinity prefixes)
+                const groupItemsByBaseName = () => {
+                    // Common affinity prefixes to remove
+                    const affinityPrefixes = [
+                        'Fire ', 'Water ', 'Wind ', 'Earth ', 'Light ', 'Dark ', 
+                        'Lightning ', 'Ice ', 'Holy ', 'Unholy ', 'Poison ', 'Shadow '
+                    ];
+                    
+                    // Map to store grouped items: base name -> {display names -> shops}
+                    const groupedItems = new Map();
+                    
+                    for (const [itemName, shops] of itemShopMap.entries()) {
+                        // Try to extract the base name by removing affinity prefixes
+                        let baseName = itemName;
+                        for (const prefix of affinityPrefixes) {
+                            if (itemName.startsWith(prefix)) {
+                                baseName = itemName.substring(prefix.length);
+                                break;
+                            }
+                        }
+                        
+                        // Initialize the group if it doesn't exist
+                        if (!groupedItems.has(baseName)) {
+                            groupedItems.set(baseName, new Map());
+                        }
+                        
+                        // Add this item to its group
+                        groupedItems.get(baseName).set(itemName, shops);
+                    }
+                    
+                    return groupedItems;
+                };
+                
+                const groupedItems = groupItemsByBaseName();
+                
                 // Prepare response message
                 let embed = new EmbedBuilder()
                     .setTitle(`Shop Locations for ${currentSkill.displayName || currentSkill.skillName}`)
                     .setDescription(`Shops selling items that grant this skill in ${modName}`)
                     .setColor(0x00AAFF);
                 
-                // Add fields for each item and its shops
-                for (const [itemName, shops] of itemShopMap.entries()) {
-                    let shopList = shops.length > 0 
-                        ? shops.join('\n') 
-                        : 'Not sold in any shops (may be a drop, quest reward, or crafted item)';
+                // Add fields for each base item group
+                for (const [baseName, itemGroup] of groupedItems.entries()) {
+                    let allShops = [];
+                    let itemDetails = '';
                     
-                    // Truncate if too long
-                    if (shopList.length > 1024) {
-                        shopList = shopList.substring(0, 1021) + '...';
+                    // Collect information for each variant in this group
+                    for (const [itemName, shops] of itemGroup.entries()) {
+                        // Add details about this specific variant
+                        itemDetails += `**${itemName}**:\n`;
+                        
+                        if (shops.length > 0) {
+                            shops.forEach(shop => {
+                                if (!allShops.includes(shop)) {
+                                    allShops.push(shop);
+                                }
+                                itemDetails += `• ${shop}\n`;
+                            });
+                        } else {
+                            itemDetails += '• Not sold in any shops\n';
+                        }
+                        
+                        itemDetails += '\n';
                     }
                     
-                    embed.addFields({ name: itemName, value: shopList });
+                    // Truncate if too long
+                    if (itemDetails.length > 1024) {
+                        itemDetails = itemDetails.substring(0, 1021) + '...';
+                    }
+                    
+                    // Add the field for this group
+                    embed.addFields({
+                        name: allShops.length > 0 ? baseName : `${baseName} (Not sold in shops)`,
+                        value: itemDetails || 'Not found in any shops'
+                    });
                 }
                 
                 // Send the response
