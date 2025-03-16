@@ -627,100 +627,110 @@ async function onInteractionCreate(interaction) {
                         const createLine = itemData['ITEMCREATE'][0];
                         const match = createLine.match(/^"([^"]+)"/);
                         if (match && match[1]) {
-                            return match[1]; // Return the raw item name in quotes
+                            return match[1]; // Return the raw item name without quotes
                         }
                     }
                     return null;
                 };
                 
-                // Find shops that sell these items
-                const itemShopMap = new Map();
+                // Find all items that could be in shops
+                const itemsToSearch = [];
                 
-                // For each item that grants this skill
+                // For each item that grants this skill, get its raw name to search for
                 for (const item of currentSkill.items) {
-                    // Get the display name for grouping in output
-                    const displayName = item.itemName;
-                    
-                    // Get the raw name from ITEMCREATE for shop searching
                     const rawItemName = extractRawItemName(item.itemData);
-                    
-                    if (!rawItemName) {
+                    if (rawItemName) {
+                        itemsToSearch.push({
+                            displayName: item.itemName,
+                            rawName: rawItemName
+                        });
+                    } else {
                         // If we couldn't extract a raw name, use the display name as fallback
-                        if (!itemShopMap.has(displayName)) {
-                            itemShopMap.set(displayName, []);
-                        }
-                        continue; // Skip to next item
-                    }
-                    
-                    // Initialize the shop list for this item
-                    if (!itemShopMap.has(displayName)) {
-                        itemShopMap.set(displayName, []);
-                    }
-                    
-                    // Check each shop file for this item
-                    for (const shopFile of shopFiles) {
-                        const shopFilePath = path.join(shopsPath, shopFile);
-                        try {
-                            const shopContent = fs.readFileSync(shopFilePath, 'utf8');
-                            
-                            // Extract shop name
-                            let shopName = shopFile.replace('.tok', '');
-                            const nameMatch = shopContent.match(/NAME\s+"([^"]+)"/);
-                            if (nameMatch && nameMatch[1]) {
-                                shopName = nameMatch[1];
-                            }
-                            
-                            // Check if the shop sells this item using the raw item name
-                            // We need to escape special regex characters in the item name
-                            const escapedItemName = rawItemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            const itemRegex = new RegExp(`ITEM\\s+"${escapedItemName}"`, 'i');
-                            
-                            if (itemRegex.test(shopContent)) {
-                                // Add the shop to the list if it's not already there
-                                if (!itemShopMap.get(displayName).includes(shopName)) {
-                                    itemShopMap.get(displayName).push(shopName);
-                                }
-                            }
-                        } catch (error) {
-                            console.error(`Error reading shop file ${shopFile}:`, error);
-                        }
+                        itemsToSearch.push({
+                            displayName: item.itemName,
+                            rawName: item.itemName
+                        });
                     }
                 }
                 
-                // Function to group items by their base name (without affinity prefixes)
-                const groupItemsByBaseName = () => {
-                    // Common affinity prefixes to remove
-                    const affinityPrefixes = [
-                        'Fire ', 'Water ', 'Wind ', 'Earth ', 'Light ', 'Dark ', 
-                        'Lightning ', 'Ice ', 'Holy ', 'Unholy ', 'Poison ', 'Shadow '
-                    ];
-                    
-                    // Map to store grouped items: base name -> {display names -> shops}
-                    const groupedItems = new Map();
-                    
-                    for (const [itemName, shops] of itemShopMap.entries()) {
-                        // Try to extract the base name by removing affinity prefixes
-                        let baseName = itemName;
-                        for (const prefix of affinityPrefixes) {
-                            if (itemName.startsWith(prefix)) {
-                                baseName = itemName.substring(prefix.length);
-                                break;
+                // Find all items in all shops
+                const foundItems = [];
+                
+                // Check each shop file
+                for (const shopFile of shopFiles) {
+                    const shopFilePath = path.join(shopsPath, shopFile);
+                    try {
+                        const shopContent = fs.readFileSync(shopFilePath, 'utf8');
+                        
+                        // Extract shop name
+                        let shopName = shopFile.replace('.tok', '');
+                        const nameMatch = shopContent.match(/NAME\s+"([^"]+)"/);
+                        if (nameMatch && nameMatch[1]) {
+                            shopName = nameMatch[1];
+                        }
+                        
+                        // Find all item entries in the shop
+                        const itemRegex = /ITEM\s+"([^"]+)"/ig;
+                        let match;
+                        
+                        // Reset regex lastIndex
+                        itemRegex.lastIndex = 0;
+                        
+                        // For each item entry in the shop
+                        while ((match = itemRegex.exec(shopContent)) !== null) {
+                            const shopItemName = match[1];
+                            
+                            // Check if this is any of our items or a variant
+                            for (const searchItem of itemsToSearch) {
+                                if (shopItemName === searchItem.rawName || 
+                                    (shopItemName.endsWith(searchItem.rawName) && 
+                                     shopItemName.length > searchItem.rawName.length)) {
+                                    
+                                    // Record this specific item and its shop
+                                    foundItems.push({
+                                        exactName: shopItemName,
+                                        baseItem: searchItem.displayName,
+                                        shopName: shopName
+                                    });
+                                }
                             }
                         }
-                        
-                        // Initialize the group if it doesn't exist
-                        if (!groupedItems.has(baseName)) {
-                            groupedItems.set(baseName, new Map());
-                        }
-                        
-                        // Add this item to its group
-                        groupedItems.get(baseName).set(itemName, shops);
+                    } catch (error) {
+                        console.error(`Error reading shop file ${shopFile}:`, error);
+                    }
+                }
+                
+                // Group items by their base name for display
+                const groupedItems = new Map(); // Map<baseItemName, Map<exactName, shops[]>>
+                
+                for (const foundItem of foundItems) {
+                    // Get or initialize the group for this base item
+                    if (!groupedItems.has(foundItem.baseItem)) {
+                        groupedItems.set(foundItem.baseItem, new Map());
                     }
                     
-                    return groupedItems;
-                };
+                    // Get or initialize the shops list for this exact item
+                    const itemVariants = groupedItems.get(foundItem.baseItem);
+                    if (!itemVariants.has(foundItem.exactName)) {
+                        itemVariants.set(foundItem.exactName, []);
+                    }
+                    
+                    // Add this shop to the item's shop list if not already present
+                    const shops = itemVariants.get(foundItem.exactName);
+                    if (!shops.includes(foundItem.shopName)) {
+                        shops.push(foundItem.shopName);
+                    }
+                }
                 
-                const groupedItems = groupItemsByBaseName();
+                // Find all items we were searching for that weren't found in any shop
+                for (const item of currentSkill.items) {
+                    const itemName = item.itemName;
+                    
+                    // If this item wasn't found at all, add an empty entry
+                    if (!groupedItems.has(itemName)) {
+                        groupedItems.set(itemName, new Map());
+                    }
+                }
                 
                 // Prepare response message
                 let embed = new EmbedBuilder()
@@ -728,39 +738,34 @@ async function onInteractionCreate(interaction) {
                     .setDescription(`Shops selling items that grant this skill in ${modName}`)
                     .setColor(0x00AAFF);
                 
-                // Add fields for each base item group
-                for (const [baseName, itemGroup] of groupedItems.entries()) {
-                    let allShops = [];
-                    let itemDetails = '';
+                // Convert the grouped items to fields in the embed
+                for (const [baseItemName, variants] of groupedItems.entries()) {
+                    let fieldValue = '';
                     
-                    // Collect information for each variant in this group
-                    for (const [itemName, shops] of itemGroup.entries()) {
-                        // Add details about this specific variant
-                        itemDetails += `**${itemName}**:\n`;
-                        
-                        if (shops.length > 0) {
-                            shops.forEach(shop => {
-                                if (!allShops.includes(shop)) {
-                                    allShops.push(shop);
-                                }
-                                itemDetails += `• ${shop}\n`;
-                            });
-                        } else {
-                            itemDetails += '• Not sold in any shops\n';
+                    if (variants.size === 0) {
+                        // Item not found in any shop
+                        fieldValue = 'Not sold in any shops (may be a drop, quest reward, or crafted item)';
+                    } else {
+                        // List each variant with its shops
+                        for (const [exactName, shops] of variants.entries()) {
+                            fieldValue += `**${exactName}**:\n`;
+                            if (shops.length > 0) {
+                                fieldValue += shops.map(shop => `• ${shop}`).join('\n') + '\n\n';
+                            } else {
+                                fieldValue += '• Not found in any shops\n\n';
+                            }
                         }
-                        
-                        itemDetails += '\n';
                     }
                     
                     // Truncate if too long
-                    if (itemDetails.length > 1024) {
-                        itemDetails = itemDetails.substring(0, 1021) + '...';
+                    if (fieldValue.length > 1024) {
+                        fieldValue = fieldValue.substring(0, 1021) + '...';
                     }
                     
-                    // Add the field for this group
+                    // Add field to embed
                     embed.addFields({
-                        name: allShops.length > 0 ? baseName : `${baseName} (Not sold in shops)`,
-                        value: itemDetails || 'Not found in any shops'
+                        name: baseItemName,
+                        value: fieldValue
                     });
                 }
                 
