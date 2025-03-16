@@ -770,7 +770,7 @@ async function onInteractionCreate(interaction) {
                     
                     if (variants.size === 0) {
                         // Item not found in any shop
-                        fieldValue = 'Not sold in any shops (may be a drop, quest reward, or crafted item)';
+                        fieldValue = 'Not sold in any shops (may be a drop or league reward)';
                     } else {
                         // List each variant with its shops without repeating the base name
                         for (const [exactName, shops] of variants.entries()) {
