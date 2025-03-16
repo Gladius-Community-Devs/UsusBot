@@ -204,10 +204,15 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         const accuracyModifier = combatModsParts[0];
         // CODE CHANGE: Keep baseDamageModifier as a number for accurate arithmetic.
         baseDamageModifier = parseFloat(combatModsParts[1]) || 0;
-        const accuracyText = parseFloat(accuracyModifier) === 0 
-            ? 'with no changes to accuracy' 
-            : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
-        description += `**Combat Modifiers:** This skill deals ${(baseDamageModifier * 100).toFixed(2)}% ${damageType} per hit ${accuracyText}\n`;
+        
+        // Only show combat modifiers line if this is not a combo skill
+        const isComboSkill = skillData['SKILLMETER'] && skillData['SKILLMETER'].includes('Chain');
+        if (!isComboSkill) {
+            const accuracyText = parseFloat(accuracyModifier) === 0 
+                ? 'with no changes to accuracy' 
+                : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
+            description += `**Combat Modifiers:** This skill deals ${(baseDamageModifier * 100).toFixed(2)}% ${damageType} per hit ${accuracyText}\n`;
+        }
     }
     
     // CODE CHANGE: Process combo chain if SKILLMETER indicates a combo attack.
