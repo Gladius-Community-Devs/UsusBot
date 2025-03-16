@@ -1,4 +1,4 @@
-const { InteractionType } = require('discord.js');
+const { InteractionType, ButtonStyle, EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -294,7 +294,7 @@ async function onInteractionCreate(interaction) {
         const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
 
         // Check if files exist
-        if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
+        if (!fs.existsSync(lookupFilePath) || !fs.exists(skillsFilePath)) {
             await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
             return;
         }
@@ -440,6 +440,215 @@ async function onInteractionCreate(interaction) {
         } catch (error) {
             console.error('Error processing the interaction:', error);
             await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
+        }
+    }
+    
+    // For itemskill pagination buttons
+    else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|')) {
+        // Parse the custom ID to get information
+        const parts = customId.split('|');
+        if (parts.length < 3) {
+            await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
+            return;
+        }
+        
+        const action = parts[0]; // Either 'itemskill-prev' or 'itemskill-next'
+        const modName = parts[1];
+        const currentPageStr = parts[2];
+        
+        let currentPage = parseInt(currentPageStr);
+        if (isNaN(currentPage)) {
+            await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
+            return;
+        }
+        
+        // Calculate the new page
+        let newPage;
+        if (action === 'itemskill-prev') {
+            newPage = currentPage - 1;
+        } else {
+            newPage = currentPage + 1;
+        }
+        
+        try {
+            // Define file paths securely
+            const baseUploadsPath = path.join(__dirname, '../../uploads');
+            const modPath = path.join(baseUploadsPath, modName);
+            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
+            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
+            const itemsFilePath = path.join(modPath, 'data', 'config', 'items.tok');
+            
+            // Check if files exist
+            if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath) || !fs.existsSync(itemsFilePath)) {
+                await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
+                return;
+            }
+            
+            // Load lookup text
+            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+            const lookupLines = lookupContent.split(/\r?\n/);
+
+            // Build a map of entry IDs to names
+            const entryIdToName = {};
+            for (const line of lookupLines) {
+                if (!line.trim()) continue;
+                const fields = line.split('^');
+                const id = parseInt(fields[0].trim());
+                const name = fields[fields.length - 1].trim();
+                entryIdToName[id] = name;
+            }
+            
+            // Function to parse a chunk into a key-value object
+            const parseChunk = (chunk) => {
+                const lines = chunk.trim().split(/\r?\n/);
+                const data = {};
+                for (const line of lines) {
+                    const lineTrimmed = line.trim();
+                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
+                    if (match) {
+                        const key = match[1].toUpperCase();
+                        let value = match[2].trim();
+
+                        // Remove surrounding quotes if present
+                        if (value.startsWith('"') && value.endsWith('"')) {
+                            value = value.substring(1, value.length - 1);
+                        }
+
+                        // Store all values as arrays
+                        if (!data[key]) {
+                            data[key] = [];
+                        }
+                        data[key].push(value);
+                    }
+                }
+                return data;
+            };
+            
+            // Read the skills.tok file
+            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
+            const skillsChunks = skillsContent.split(/\n\s*\n/);
+            
+            // Read the items.tok file
+            const itemsContent = fs.readFileSync(itemsFilePath, 'utf8');
+            const itemsChunks = itemsContent.split(/\n\s*\n/);
+            
+            // Find all item skills
+            const itemSkills = [];
+            for (const chunk of skillsChunks) {
+                if (chunk.includes('SKILLCREATE:')) {
+                    const skillData = parseChunk(chunk);
+                    if (skillData['SKILLCREATE'] && skillData['SKILLCREATE'][0].includes('Item ')) {
+                        const skillName = skillData['SKILLCREATE'][0].split(',')[0].trim().replace(/"/g, '');
+                        
+                        // Get display name
+                        const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
+                        const displayName = displayNameId && entryIdToName[displayNameId] ? entryIdToName[displayNameId] : skillName;
+                        
+                        itemSkills.push({
+                            skillName,
+                            displayName,
+                            chunk,
+                            items: [] // Will be populated later
+                        });
+                    }
+                }
+            }
+            
+            // Associate items with skills
+            for (const chunk of itemsChunks) {
+                if (chunk.includes('ITEMCREATE:')) {
+                    const itemData = parseChunk(chunk);
+                    if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) {
+                        const itemSkillName = itemData['ITEMSKILL'][0].trim().replace(/"/g, '');
+                        
+                        // Find the matching skill
+                        const matchingSkill = itemSkills.find(skill => 
+                            skill.skillName === itemSkillName ||
+                            skill.skillName === `Item ${itemSkillName}`
+                        );
+                        
+                        if (matchingSkill) {
+                            const displayNameId = itemData['ITEMDISPLAYNAMEID'] ? parseInt(itemData['ITEMDISPLAYNAMEID'][0]) : null;
+                            const itemName = displayNameId && entryIdToName[displayNameId] 
+                                ? entryIdToName[displayNameId] 
+                                : (itemData['ITEMCREATE'] ? itemData['ITEMCREATE'][0].split(',')[0].trim().replace(/"/g, '') : 'Unknown');
+                            
+                            matchingSkill.items.push({
+                                itemName,
+                                chunk
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Filter to only include skills that have items granting them
+            const skillsWithItems = itemSkills.filter(skill => skill.items.length > 0);
+            
+            // Sort skills alphabetically
+            skillsWithItems.sort((a, b) => a.displayName.localeCompare(b.displayName));
+            
+            const totalPages = skillsWithItems.length;
+            
+            // Check if the new page is valid
+            if (newPage < 0 || newPage >= totalPages) {
+                await interaction.reply({ content: 'Invalid page number. No more pages in that direction.', ephemeral: true });
+                return;
+            }
+            
+            // Helper function to create embed for a skill
+            function createSkillEmbed(skill, currentPage, totalPages, modName) {
+                const embed = new EmbedBuilder()
+                    .setTitle(`${skill.displayName || skill.skillName}`)
+                    .setDescription(`Item Skill in ${modName} (${currentPage + 1}/${totalPages})`)
+                    .setColor(0x0099FF);
+                
+                // Add skill data
+                const skillLines = skill.chunk.split('\n');
+                const formattedSkill = skillLines.map(line => line.trim()).join('\n');
+                embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`` });
+                
+                // Add items that grant this skill
+                if (skill.items.length > 0) {
+                    const itemsList = skill.items.map(item => `- ${item.itemName}`).join('\n');
+                    embed.addFields({ 
+                        name: `Granted by ${skill.items.length} item(s)`, 
+                        value: itemsList.length > 1024 ? itemsList.substring(0, 1021) + '...' : itemsList 
+                    });
+                } else {
+                    embed.addFields({ name: 'Items', value: 'No items found that grant this skill.' });
+                }
+                
+                return embed;
+            }
+            
+            // Get the skill for the new page
+            const currentSkill = skillsWithItems[newPage];
+            
+            // Create the updated embed
+            const embed = createSkillEmbed(currentSkill, newPage, totalPages, modName);
+            
+            // Update the buttons
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`itemskill-prev|${modName}|${newPage}`)
+                        .setLabel('◀️ Previous')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(newPage === 0),
+                    new ButtonBuilder()
+                        .setCustomId(`itemskill-next|${modName}|${newPage}`)
+                        .setLabel('Next ▶️')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(newPage === totalPages - 1)
+                );
+            
+            // Update the message
+            await interaction.update({ embeds: [embed], components: [row] });
+            
+        } catch (error) {
+            console.error('Error handling itemskill pagination:', error);
+            await interaction.reply({ content: 'An error occurred while handling the itemskill command pagination.', ephemeral: true });
         }
     }
 }
