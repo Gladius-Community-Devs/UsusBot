@@ -340,6 +340,8 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     return description;
 };
 
+const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+
 module.exports = {
     name: 'explain',
     description: 'Gives a natural language description of a skill.',
@@ -539,8 +541,39 @@ module.exports = {
             if (currentMessage.length > 0) {
                 messages.push(currentMessage);
             }
-            for (const msg of messages) {
-                await message.channel.send({ content: msg });
+            
+            // Create dropdown menus for class selection
+            const allClasses = [...new Set([...matchingSkillClassNames, ...otherClasses])];
+            
+            // URL encode the modName and skillName for safe inclusion in customId
+            const encodedModName = encodeURIComponent(modName);
+            const encodedSkillName = encodeURIComponent(skillName);
+            
+            // Create options for the select menus
+            const classOptions = allClasses.map(cls => ({
+                label: cls.charAt(0).toUpperCase() + cls.slice(1),
+                value: encodeURIComponent(cls.toLowerCase())
+            }));
+            
+            // Create select menus, splitting options into groups of 25 if necessary
+            const rows = [];
+            for (let i = 0; i < classOptions.length; i += 25) {
+                const optionsChunk = classOptions.slice(i, i + 25);
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId(`explain-select|${encodedModName}|${encodedSkillName}|${i}`)
+                    .setPlaceholder('Select a class')
+                    .addOptions(optionsChunk);
+                const row = new ActionRowBuilder().addComponents(selectMenu);
+                rows.push(row);
+            }
+            
+            // Send messages with dropdown menus on the last message
+            for (const [index, msg] of messages.entries()) {
+                if (index === messages.length - 1) {
+                    await message.channel.send({ content: msg, components: rows });
+                } else {
+                    await message.channel.send({ content: msg });
+                }
             }
         } catch (error) {
             console.error('Error finding the skill:', error);
