@@ -407,7 +407,8 @@ async function onInteractionCreate(interaction) {
 
             // Generate skill descriptions
             let messages = [];
-            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **;skill**\n\n\nSkill details for '${skillNameSanitized}' in '${modNameSanitized}' for class '${classNameSanitized}':\n\n`;
+            // Updated header with specific skill command that includes the selected class
+            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **;skill ${modNameSanitized !== 'Vanilla' ? modNameSanitized + ' ' : ''}${classNameSanitized} ${skillNameSanitized}**\n\n\nSkill details for '${skillNameSanitized}' in '${modNameSanitized}' for class '${classNameSanitized}':\n\n`;
             let currentMessage = header;
 
             for (const skill of matchingSkills) {
