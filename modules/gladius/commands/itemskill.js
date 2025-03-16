@@ -287,11 +287,11 @@ module.exports = {
                     const skill = itemSkills[0];
                     const embed = createSkillEmbed(skill, 0, 1, modName);
                     
-                    // Create shop button for the single result
+                    // Create shop button for the single result but include the skill name in the customId
                     const row = new ActionRowBuilder()
                         .addComponents(
                             new ButtonBuilder()
-                                .setCustomId(`itemskill-shops|${modName}|0`)
+                                .setCustomId(`itemskill-shops-byname|${modName}|${encodeURIComponent(skill.skillName)}`)
                                 .setLabel('🏪 Locate Shop')
                                 .setStyle(ButtonStyle.Secondary)
                                 .setDisabled(skill.items.length === 0)

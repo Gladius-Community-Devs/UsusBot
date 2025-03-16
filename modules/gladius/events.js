@@ -444,7 +444,7 @@ async function onInteractionCreate(interaction) {
     }
     
     // For itemskill pagination buttons
-    else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|') || customId.startsWith('itemskill-shops|')) {
+    else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|') || customId.startsWith('itemskill-shops|') || customId.startsWith('itemskill-shops-byname|')) {
         // Parse the custom ID to get information
         const parts = customId.split('|');
         if (parts.length < 3) {
@@ -452,14 +452,24 @@ async function onInteractionCreate(interaction) {
             return;
         }
         
-        const action = parts[0]; // Either 'itemskill-prev', 'itemskill-next', or 'itemskill-shops'
+        const action = parts[0]; // Action type
         const modName = parts[1];
-        const currentPageStr = parts[2];
         
-        let currentPage = parseInt(currentPageStr);
-        if (isNaN(currentPage)) {
-            await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
-            return;
+        // Different handling based on action type
+        let currentPage = 0;
+        let skillName = null;
+        
+        if (action === 'itemskill-shops-byname') {
+            // This is a direct skill lookup by name
+            skillName = decodeURIComponent(parts[2]);
+        } else {
+            // This is a pagination action with page number
+            const currentPageStr = parts[2];
+            currentPage = parseInt(currentPageStr);
+            if (isNaN(currentPage)) {
+                await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
+                return;
+            }
         }
         
         // Calculate the new page for prev/next actions
@@ -593,15 +603,31 @@ async function onInteractionCreate(interaction) {
             const totalPages = skillsWithItems.length;
             
             // Handle the "Locate Shop" button action
-            if (action === 'itemskill-shops') {
-                // Check if there are items to locate in shops
-                if (currentPage < 0 || currentPage >= skillsWithItems.length) {
-                    await interaction.reply({ content: 'Invalid skill index.', ephemeral: true });
-                    return;
-                }
+            if (action === 'itemskill-shops' || action === 'itemskill-shops-byname') {
+                // Get the current skill
+                let currentSkill;
                 
-                // Get the current skill and its items
-                const currentSkill = skillsWithItems[currentPage];
+                if (action === 'itemskill-shops-byname') {
+                    // Find the skill by name
+                    currentSkill = skillsWithItems.find(skill => 
+                        skill.skillName === skillName || 
+                        skill.displayName === skillName);
+                    
+                    if (!currentSkill) {
+                        await interaction.reply({ 
+                            content: `Could not find the skill "${skillName}" in ${modName}.`, 
+                            ephemeral: true 
+                        });
+                        return;
+                    }
+                } else {
+                    // Get skill by index/page number
+                    if (currentPage < 0 || currentPage >= skillsWithItems.length) {
+                        await interaction.reply({ content: 'Invalid skill index.', ephemeral: true });
+                        return;
+                    }
+                    currentSkill = skillsWithItems[currentPage];
+                }
                 
                 if (currentSkill.items.length === 0) {
                     await interaction.reply({ content: 'This skill is not granted by any items.', ephemeral: true });
