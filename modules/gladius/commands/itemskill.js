@@ -281,60 +281,50 @@ module.exports = {
                 // Sort skills alphabetically
                 itemSkills.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-                // Prepare the response
-                let messages = [];
-                let header = `Item skills in '${modName}' matching '${searchTerm}':\n\n`;
-                let currentMessage = header;
-
-                for (const skill of itemSkills) {
-                    const skillInfo = `**${skill.displayName || skill.skillName}**\n`;
+                // CHANGED: Use embeds for search results instead of plain text
+                if (itemSkills.length === 1) {
+                    // If there's only one result, use the same format as the browse mode with shop button
+                    const skill = itemSkills[0];
+                    const embed = createSkillEmbed(skill, 0, 1, modName);
                     
-                    // If adding this skill would exceed Discord's message limit, start a new message
-                    if (currentMessage.length + skillInfo.length > 1900) {
-                        messages.push(currentMessage);
-                        currentMessage = skillInfo;
-                    } else {
-                        currentMessage += skillInfo;
+                    // Create shop button for the single result
+                    const row = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`itemskill-shops|${modName}|0`)
+                                .setLabel('🏪 Locate Shop')
+                                .setStyle(ButtonStyle.Secondary)
+                                .setDisabled(skill.items.length === 0)
+                        );
+                    
+                    // Send the message with embed and shop button
+                    message.channel.send({ 
+                        content: `Item skill in '${modName}' matching '${searchTerm}':`, 
+                        embeds: [embed], 
+                        components: [row] 
+                    });
+                } else {
+                    // For multiple results, create an embed for each skill (up to 10 embeds)
+                    const embeds = [];
+                    const maxEmbedsToShow = Math.min(itemSkills.length, 10);
+                    
+                    for (let i = 0; i < maxEmbedsToShow; i++) {
+                        const skill = itemSkills[i];
+                        embeds.push(createSkillEmbed(skill, i, itemSkills.length, modName));
                     }
                     
-                    // Add skill definition
-                    const skillDefinition = `\`\`\`\n${skill.chunk.trim()}\n\`\`\`\n`;
-                    if (currentMessage.length + skillDefinition.length > 1900) {
-                        messages.push(currentMessage);
-                        currentMessage = skillDefinition;
-                    } else {
-                        currentMessage += skillDefinition;
-                    }
+                    // Send a message with the embeds
+                    message.channel.send({ 
+                        content: `Found ${itemSkills.length} item skills in '${modName}' matching '${searchTerm}'${itemSkills.length > 10 ? ` (showing first 10)` : ''}:`,
+                        embeds: embeds.slice(0, 10) // Discord allows max 10 embeds per message
+                    });
                     
-                    // List items that grant this skill
-                    if (skill.items.length > 0) {
-                        const itemsText = `Granted by ${skill.items.length} item(s):\n` + 
-                            skill.items.map(item => `- ${item.itemName}`).join('\n') + '\n\n';
-                        
-                        if (currentMessage.length + itemsText.length > 1900) {
-                            messages.push(currentMessage);
-                            currentMessage = itemsText;
-                        } else {
-                            currentMessage += itemsText;
-                        }
-                    } else {
-                        const noItemsText = `No items found that grant this skill.\n\n`;
-                        if (currentMessage.length + noItemsText.length > 1900) {
-                            messages.push(currentMessage);
-                            currentMessage = noItemsText;
-                        } else {
-                            currentMessage += noItemsText;
-                        }
+                    // If there are more than 10 results, suggest the user narrow their search
+                    if (itemSkills.length > 10) {
+                        message.channel.send({ 
+                            content: `⚠️ Showing only the first 10 results. Please refine your search to see more specific results.`
+                        });
                     }
-                }
-
-                if (currentMessage.length > 0) {
-                    messages.push(currentMessage);
-                }
-
-                // Send the messages
-                for (const msg of messages) {
-                    await message.channel.send({ content: msg });
                 }
             }
 
@@ -355,7 +345,7 @@ function createSkillEmbed(skill, currentPage, totalPages, modName) {
     // Add skill data
     const skillLines = skill.chunk.split('\n');
     const formattedSkill = skillLines.map(line => line.trim()).join('\n');
-    embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`` });
+    embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`}` });
     
     // Add items that grant this skill
     if (skill.items.length > 0) {
