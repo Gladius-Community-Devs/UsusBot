@@ -746,13 +746,19 @@ async function onInteractionCreate(interaction) {
                         // Item not found in any shop
                         fieldValue = 'Not sold in any shops (may be a drop, quest reward, or crafted item)';
                     } else {
-                        // List each variant with its shops
+                        // List each variant with its shops without repeating the base name
                         for (const [exactName, shops] of variants.entries()) {
-                            fieldValue += `**${exactName}**:\n`;
+                            // For variants, just show the variant name without redundancy
+                            if (exactName !== baseItemName) {
+                                fieldValue += `**${exactName}**:\n`;
+                            }
+                            
                             if (shops.length > 0) {
-                                fieldValue += shops.map(shop => `• ${shop}`).join('\n') + '\n\n';
+                                fieldValue += shops.map(shop => `• ${shop}`).join('\n');
+                                // Only add a single newline between items for more compact display
+                                fieldValue += '\n';
                             } else {
-                                fieldValue += '• Not found in any shops\n\n';
+                                fieldValue += '• Not sold in any shops\n';
                             }
                         }
                     }
@@ -765,7 +771,7 @@ async function onInteractionCreate(interaction) {
                     // Add field to embed
                     embed.addFields({
                         name: baseItemName,
-                        value: fieldValue
+                        value: fieldValue || 'Not found in any shops'
                     });
                 }
                 
