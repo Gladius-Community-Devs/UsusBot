@@ -39,24 +39,22 @@ const parseSkillChunk = (chunk) => {
     return skillData;
 };
 
-// CODE CHANGE: New helper function to parse the combo chain and provide a per-hit breakdown.
+// CODE CHANGE: New helper function to parse the combo chain and return additional hit damage as numbers.
 function parseComboChain(skillData, skillsChunks) {
     let totalComboDamage = 0;
-    let comboBreakdown = [];
+    let additionalHits = []; // Array to hold damage modifier (as a number) for each additional hit.
     let currentSkill = skillData;
     
     // Determine the maximum additional hits from the initial SKILLMETER.
-    // Example: SKILLMETER: "Chain", 0, 2 => 2 means a total of 2 hits, so 1 additional hit.
+    // For example, SKILLMETER: "Chain", 0, 3 means 3 hits total so 2 additional hits.
     let meterParts = currentSkill['SKILLMETER'] 
         ? currentSkill['SKILLMETER'].split(',').map(s => s.trim().replace(/"/g, ''))
         : [];
     const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
-    let hitNumber = 1; // Hit 1 is the first additional hit.
+    let hitNumber = 1; // hitNumber = 1 for the first additional hit.
     
     while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
         const subSkillName = currentSkill['SKILLSUBSKILL'];
-        // Prevent circular chains
-        // (if necessary, you could add a visited set here; for now, assuming linear chains)
         let foundSubSkill = null;
         for (const chunk of skillsChunks) {
             if (chunk.includes('SKILLCREATE:')) {
@@ -73,15 +71,15 @@ function parseComboChain(skillData, skillsChunks) {
             const mods = foundSubSkill['SKILLCOMBATMODS'].split(',').map(s => s.trim());
             const damageModifier = parseFloat(mods[1]) || 0;
             totalComboDamage += damageModifier;
-            comboBreakdown.push(`Hit ${hitNumber + 1}: adds ${(damageModifier * 100).toFixed(2)}% damage`);
+            additionalHits.push(damageModifier);
         }
         currentSkill = foundSubSkill;
         hitNumber++;
     }
-    return { totalComboDamage, comboBreakdown };
+    return { totalComboDamage, additionalHits };
 }
 
-// CODE CHANGE: Updated generateSkillDescription to accept skillsChunks and include per-hit breakdown.
+// CODE CHANGE: Updated generateSkillDescription to accept skillsChunks and output a reformatted combo chain breakdown.
 const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     let description = '';
 
@@ -204,7 +202,8 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     if (skillData['SKILLCOMBATMODS']) {
         const combatModsParts = skillData['SKILLCOMBATMODS'].split(',').map(part => part.trim());
         const accuracyModifier = combatModsParts[0];
-        baseDamageModifier = parseFloat(combatModsParts[1]).toFixed(2);
+        // CODE CHANGE: Keep baseDamageModifier as a number for accurate arithmetic.
+        baseDamageModifier = parseFloat(combatModsParts[1]) || 0;
         const accuracyText = parseFloat(accuracyModifier) === 0 
             ? 'with no changes to accuracy' 
             : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
@@ -213,13 +212,14 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     
     // CODE CHANGE: Process combo chain if SKILLMETER indicates a combo attack.
     if (skillData['SKILLMETER'] && skillData['SKILLMETER'].includes('Chain')) {
-        const { totalComboDamage, comboBreakdown } = parseComboChain(skillData, skillsChunks);
-        if (comboBreakdown.length > 0) {
-            description += `**Combo Chain Breakdown:**\n`;
-            comboBreakdown.forEach(line => {
-                description += `${line}\n`;
+        const { totalComboDamage, additionalHits } = parseComboChain(skillData, skillsChunks);
+        if (additionalHits.length > 0) {
+            const totalCombo = baseDamageModifier + totalComboDamage;
+            description += `**Combo:** This combo deals a total of ${(totalCombo * 100).toFixed(0)}% ${damageType}\nBreakdown:\n`;
+            description += `Hit 1: ${(baseDamageModifier * 100).toFixed(0)}%\n`;
+            additionalHits.forEach((hitDamage, index) => {
+                description += `Hit ${index + 2}: ${(hitDamage * 100).toFixed(0)}%\n`;
             });
-            description += `**Total Additional Combo Damage:** ${(totalComboDamage * 100).toFixed(2)}% ${damageType}\n`;
         }
     }
     
