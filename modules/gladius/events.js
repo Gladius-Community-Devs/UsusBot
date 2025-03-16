@@ -40,7 +40,7 @@ async function onInteractionCreate(interaction) {
         const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
 
         // Check if files exist
-        if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
+        if (!fs.existsSync(lookupFilePath) || !fs.exists(skillsFilePath)) {
             await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
             return;
         }
@@ -444,7 +444,7 @@ async function onInteractionCreate(interaction) {
     }
     
     // For itemskill pagination buttons
-    else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|')) {
+    else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|') || customId.startsWith('itemskill-shops|')) {
         // Parse the custom ID to get information
         const parts = customId.split('|');
         if (parts.length < 3) {
@@ -452,7 +452,7 @@ async function onInteractionCreate(interaction) {
             return;
         }
         
-        const action = parts[0]; // Either 'itemskill-prev' or 'itemskill-next'
+        const action = parts[0]; // Either 'itemskill-prev', 'itemskill-next', or 'itemskill-shops'
         const modName = parts[1];
         const currentPageStr = parts[2];
         
@@ -462,11 +462,11 @@ async function onInteractionCreate(interaction) {
             return;
         }
         
-        // Calculate the new page
-        let newPage;
+        // Calculate the new page for prev/next actions
+        let newPage = currentPage;
         if (action === 'itemskill-prev') {
             newPage = currentPage - 1;
-        } else {
+        } else if (action === 'itemskill-next') {
             newPage = currentPage + 1;
         }
         
@@ -477,6 +477,7 @@ async function onInteractionCreate(interaction) {
             const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
             const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
             const itemsFilePath = path.join(modPath, 'data', 'config', 'items.tok');
+            const shopsPath = path.join(modPath, 'data', 'towns', 'shops');
             
             // Check if files exist
             if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath) || !fs.existsSync(itemsFilePath)) {
@@ -575,6 +576,7 @@ async function onInteractionCreate(interaction) {
                             
                             matchingSkill.items.push({
                                 itemName,
+                                itemData,
                                 chunk
                             });
                         }
@@ -590,7 +592,95 @@ async function onInteractionCreate(interaction) {
             
             const totalPages = skillsWithItems.length;
             
-            // Check if the new page is valid
+            // Handle the "Locate Shop" button action
+            if (action === 'itemskill-shops') {
+                // Check if there are items to locate in shops
+                if (currentPage < 0 || currentPage >= skillsWithItems.length) {
+                    await interaction.reply({ content: 'Invalid skill index.', ephemeral: true });
+                    return;
+                }
+                
+                // Get the current skill and its items
+                const currentSkill = skillsWithItems[currentPage];
+                
+                if (currentSkill.items.length === 0) {
+                    await interaction.reply({ content: 'This skill is not granted by any items.', ephemeral: true });
+                    return;
+                }
+                
+                // Defer reply since shop searching might take time
+                await interaction.deferReply();
+                
+                // Check if shops directory exists
+                if (!fs.existsSync(shopsPath)) {
+                    await interaction.editReply({ content: `The shop files directory does not exist for this mod.` });
+                    return;
+                }
+                
+                // Get all shop files
+                const shopFiles = fs.readdirSync(shopsPath).filter(file => file.endsWith('.tok'));
+                
+                // Find shops that sell these items
+                const itemShopMap = new Map();
+                
+                // For each item that grants this skill
+                for (const item of currentSkill.items) {
+                    const itemName = item.itemName;
+                    itemShopMap.set(itemName, []);
+                    
+                    // Check each shop file for this item
+                    for (const shopFile of shopFiles) {
+                        const shopFilePath = path.join(shopsPath, shopFile);
+                        try {
+                            const shopContent = fs.readFileSync(shopFilePath, 'utf8');
+                            
+                            // Extract shop name
+                            let shopName = shopFile.replace('.tok', '');
+                            const nameMatch = shopContent.match(/NAME\s+"([^"]+)"/);
+                            if (nameMatch && nameMatch[1]) {
+                                shopName = nameMatch[1];
+                            }
+                            
+                            // Check if the shop sells this item
+                            // We need to escape special regex characters in the item name
+                            const escapedItemName = itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const itemRegex = new RegExp(`ITEM\\s+"${escapedItemName}"`, 'i');
+                            
+                            if (itemRegex.test(shopContent)) {
+                                itemShopMap.get(itemName).push(shopName);
+                            }
+                        } catch (error) {
+                            console.error(`Error reading shop file ${shopFile}:`, error);
+                        }
+                    }
+                }
+                
+                // Prepare response message
+                let embed = new EmbedBuilder()
+                    .setTitle(`Shop Locations for ${currentSkill.displayName || currentSkill.skillName}`)
+                    .setDescription(`Shops selling items that grant this skill in ${modName}`)
+                    .setColor(0x00AAFF);
+                
+                // Add fields for each item and its shops
+                for (const [itemName, shops] of itemShopMap.entries()) {
+                    let shopList = shops.length > 0 
+                        ? shops.join('\n') 
+                        : 'Not sold in any shops (may be a drop, quest reward, or crafted item)';
+                    
+                    // Truncate if too long
+                    if (shopList.length > 1024) {
+                        shopList = shopList.substring(0, 1021) + '...';
+                    }
+                    
+                    embed.addFields({ name: itemName, value: shopList });
+                }
+                
+                // Send the response
+                await interaction.editReply({ embeds: [embed] });
+                return;
+            }
+            
+            // Check if the new page is valid for prev/next navigation
             if (newPage < 0 || newPage >= totalPages) {
                 await interaction.reply({ content: 'Invalid page number. No more pages in that direction.', ephemeral: true });
                 return;
@@ -628,7 +718,7 @@ async function onInteractionCreate(interaction) {
             // Create the updated embed
             const embed = createSkillEmbed(currentSkill, newPage, totalPages, modName);
             
-            // Update the buttons
+            // Update the buttons - now with three buttons including "Locate Shop"
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -640,7 +730,12 @@ async function onInteractionCreate(interaction) {
                         .setCustomId(`itemskill-next|${modName}|${newPage}`)
                         .setLabel('Next ▶️')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage === totalPages - 1)
+                        .setDisabled(newPage === totalPages - 1),
+                    new ButtonBuilder()
+                        .setCustomId(`itemskill-shops|${modName}|${newPage}`)
+                        .setLabel('🏪 Locate Shop')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(currentSkill.items.length === 0)
                 );
             
             // Update the message

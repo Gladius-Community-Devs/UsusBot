@@ -215,7 +215,12 @@ module.exports = {
                             .setCustomId(`itemskill-next|${modName}|${currentPage}`)
                             .setLabel('Next ▶️')
                             .setStyle(ButtonStyle.Primary)
-                            .setDisabled(currentPage === totalPages - 1)
+                            .setDisabled(currentPage === totalPages - 1),
+                        new ButtonBuilder()
+                            .setCustomId(`itemskill-shops|${modName}|${currentPage}`)
+                            .setLabel('🏪 Locate Shop')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setDisabled(currentSkill.items.length === 0)
                     );
                 
                 // Send the message with embed and buttons
