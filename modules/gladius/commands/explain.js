@@ -529,15 +529,7 @@ module.exports = {
                 }
             }
 
-            if (otherClasses.length > 0) {
-                const classesText = `Other classes that have a skill with the same name: ${otherClasses.join(', ')}`;
-                if (currentMessage.length + classesText.length > 2000) {
-                    messages.push(currentMessage);
-                    currentMessage = classesText;
-                } else {
-                    currentMessage += classesText;
-                }
-            }
+            // Remove the text listing of "Other classes" since we have a dropdown now
             if (currentMessage.length > 0) {
                 messages.push(currentMessage);
             }
