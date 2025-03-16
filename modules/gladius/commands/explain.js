@@ -511,7 +511,7 @@ module.exports = {
             const otherClasses = [...allClassesWithSkillName].filter(cls => !matchingSkillClassNames.includes(cls) && cls !== 'unknown');
 
             let messages = [];
-            let header = `This is **WIP** and is missing some details. For more info try **;skill**\n\n\nSkill details for '${skillName}' in '${modName}' for class '${matchingSkills[0].classNames[0]}':\n\n`;
+            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **;skill**\n\n\nSkill details for '${skillName}' in '${modName}' for class '${matchingSkills[0].classNames[0]}':\n\n`;
             let currentMessage = header;
             const lookupTextMap = {};
             for (const line of lookupLines) {
