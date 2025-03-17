@@ -40,7 +40,7 @@ async function onInteractionCreate(interaction) {
         const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
 
         // Check if files exist
-        if (!fs.existsSync(lookupFilePath) || !fs.exists(skillsFilePath)) {
+        if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
             await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
             return;
         }
@@ -294,7 +294,7 @@ async function onInteractionCreate(interaction) {
         const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
 
         // Check if files exist
-        if (!fs.existsSync(lookupFilePath) || !fs.exists(skillsFilePath)) {
+        if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
             await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
             return;
         }
