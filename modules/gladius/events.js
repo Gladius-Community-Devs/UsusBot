@@ -1065,12 +1065,12 @@ async function onInteractionCreate(interaction) {
                         .setCustomId(`class-prev|${modName}|${newPage}`)
                         .setLabel('◀️ Previous')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage === 0),
+                        .setDisabled(newPage <= 0),
                     new ButtonBuilder()
                         .setCustomId(`class-next|${modName}|${newPage}`)
                         .setLabel('Next ▶️')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage === classesList.length - 1),
+                        .setDisabled(newPage >= classesList.length - 1), // Updated condition
                     new ButtonBuilder()
                         .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[newPage].className)}`)
                         .setLabel('📚 Learnable Skills')
