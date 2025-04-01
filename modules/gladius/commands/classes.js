@@ -72,28 +72,36 @@ module.exports = {
                 entryIdToText[id.trim()] = textParts[textParts.length - 1].trim();
             }
 
-            // Parse class definitions
+            // Parse class definitions - update the splitting logic
             const classes = [];
-            const classChunks = classdefsContent.split(/\n\s*\n/);
+            // Split on CREATECLASS: to ensure we get complete class definitions
+            const classChunks = classdefsContent.split(/\nCREATECLASS:/);
+            
+            // Process each chunk, skipping the first empty chunk if it exists
+            for (let i = 0; i < classChunks.length; i++) {
+                let chunk = classChunks[i].trim();
+                if (!chunk) continue;
+                
+                // Add back the CREATECLASS: prefix except for first chunk if it already has it
+                if (!chunk.startsWith('CREATECLASS:')) {
+                    chunk = 'CREATECLASS:' + chunk;
+                }
 
-            for (const chunk of classChunks) {
-                if (chunk.includes('CREATECLASS:')) {
-                    const classData = parseClassChunk(chunk);
-                    if (classData) {
-                        // Get display name and description from lookup text
-                        const displayName = classData.DISPLAYNAMEID ? 
-                            entryIdToText[classData.DISPLAYNAMEID] || classData.className : 
-                            classData.className;
-                        const description = classData.DESCRIPTIONID ? 
-                            entryIdToText[classData.DESCRIPTIONID] || '' : 
-                            '';
+                const classData = parseClassChunk(chunk);
+                if (classData && classData.className) {  // Verify we have valid class data
+                    // Get display name and description from lookup text
+                    const displayName = classData.DISPLAYNAMEID ? 
+                        entryIdToText[classData.DISPLAYNAMEID] || classData.className : 
+                        classData.className;
+                    const description = classData.DESCRIPTIONID ? 
+                        entryIdToText[classData.DESCRIPTIONID] || '' : 
+                        '';
 
-                        classes.push({
-                            ...classData,
-                            displayName,
-                            description
-                        });
-                    }
+                    classes.push({
+                        ...classData,
+                        displayName,
+                        description
+                    });
                 }
             }
 
@@ -145,6 +153,8 @@ module.exports = {
 
 // Helper function to parse class chunks
 function parseClassChunk(chunk) {
+    if (!chunk || typeof chunk !== 'string') return null;
+
     const lines = chunk.trim().split(/\r?\n/);
     const classData = {
         className: '',
@@ -158,48 +168,55 @@ function parseClassChunk(chunk) {
         accessories: []
     };
 
-    let currentCategory = null;
-
     for (const line of lines) {
-        const trimmedLine = line.trim();
+        if (!line || typeof line !== 'string') continue;
         
+        const trimmedLine = line.trim();
         if (!trimmedLine || trimmedLine.startsWith('//')) continue;
 
         if (trimmedLine.startsWith('CREATECLASS:')) {
-            classData.className = trimmedLine.split(':')[1].trim();
+            classData.className = trimmedLine.split(':')[1]?.trim() || '';
         } else if (trimmedLine.startsWith('DISPLAYNAMEID:')) {
-            classData.DISPLAYNAMEID = trimmedLine.split(':')[1].trim();
+            classData.DISPLAYNAMEID = trimmedLine.split(':')[1]?.trim() || null;
         } else if (trimmedLine.startsWith('DESCRIPTIONID:')) {
-            classData.DESCRIPTIONID = trimmedLine.split(':')[1].trim();
+            classData.DESCRIPTIONID = trimmedLine.split(':')[1]?.trim() || null;
         } else if (trimmedLine.startsWith('ATTRIBUTE:')) {
-            const attribute = trimmedLine.split(':')[1].trim().replace(/"/g, '');
-            classData.attributes.push(attribute);
+            const attribute = trimmedLine.split(':')[1]?.trim()?.replace(/"/g, '');
+            if (attribute) classData.attributes.push(attribute);
         } else if (trimmedLine.startsWith('ITEMCAT:')) {
-            const [_, category, type, style] = trimmedLine.split(',').map(s => s.trim());
-            const cleanType = type.replace(/"/g, '');
-            const cleanStyle = style.replace(/"/g, '');
-            
-            switch (category.split(' ')[1].toLowerCase()) {
-                case 'weapon':
-                    classData.weapons.push(`${cleanType} (${cleanStyle})`);
-                    break;
-                case 'armor':
-                    classData.armors.push(`${cleanType} (${cleanStyle})`);
-                    break;
-                case 'helmet':
-                    classData.helmets.push(`${cleanType} (${cleanStyle})`);
-                    break;
-                case 'shield':
-                    classData.shields.push(`${cleanType} (${cleanStyle})`);
-                    break;
-                case 'accessory':
-                    classData.accessories.push(`${cleanType} (${cleanStyle})`);
-                    break;
+            try {
+                const parts = trimmedLine.split(',').map(s => s.trim());
+                if (parts.length >= 3) {
+                    const [category, type, style] = [parts[0].split(' ')[1], parts[1], parts[2]];
+                    const cleanType = type.replace(/"/g, '');
+                    const cleanStyle = style.replace(/"/g, '');
+                    
+                    switch (category.toLowerCase()) {
+                        case 'weapon':
+                            classData.weapons.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'armor':
+                            classData.armors.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'helmet':
+                            classData.helmets.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'shield':
+                            classData.shields.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'accessory':
+                            classData.accessories.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                    }
+                }
+            } catch (error) {
+                // Skip malformed ITEMCAT lines
+                continue;
             }
         }
     }
 
-    return classData;
+    return classData.className ? classData : null;  // Only return if we have a valid class name
 }
 
 // Helper function to create an embed for a class
