@@ -903,10 +903,26 @@ async function onInteractionCreate(interaction) {
 
             // Parse lookup text
             const entryIdToText = {};
-            for (const line of lookupContent.split(/\r?\n/)) {
-                if (!line.trim()) continue;
-                const [id, ...textParts] = line.split('^');
-                entryIdToText[id.trim()] = textParts[textParts.length - 1].trim();
+            if (lookupContent && typeof lookupContent === 'string') {
+                try {
+                    const lines = lookupContent.split(/\r?\n/).filter(line => line && line.trim());
+                    
+                    for (const line of lines) {
+                        // Skip invalid lines
+                        if (!line || !line.includes('^')) continue;
+                        
+                        const parts = line.split('^');
+                        if (parts.length >= 2) {
+                            const id = parts[0].trim();
+                            const text = parts[parts.length - 1].trim();
+                            if (id && text) {
+                                entryIdToText[id] = text;
+                            }
+                        }
+                    }
+                } catch (parseError) {
+                    this.logger.error('Error parsing lookup text:', parseError);
+                }
             }
 
             // Handle class skills button
@@ -981,8 +997,84 @@ async function onInteractionCreate(interaction) {
                 return;
             }
 
-            // Parse classes and create the classes array
-            // ...rest of the navigation handling code similar to itemskill command...
+            // Parse classes similar to the classes.js command
+            const classes = [];
+            const classChunks = classdefsContent.split(/\nCREATECLASS:/);
+            
+            for (let i = 0; i < classChunks.length; i++) {
+                let chunk = classChunks[i].trim();
+                if (!chunk) continue;
+                
+                if (!chunk.startsWith('CREATECLASS:')) {
+                    chunk = 'CREATECLASS:' + chunk;
+                }
+
+                // Skip if the chunk appears to be just a comment
+                if (chunk.trim().startsWith('CREATECLASS: //')) continue;
+
+                const classData = parseClassChunk(chunk);
+                if (classData && classData.className && !classData.className.startsWith('//')) {
+                    // Get display name and description
+                    const displayName = classData.DISPLAYNAMEID ? 
+                        entryIdToText[classData.DISPLAYNAMEID] || classData.className : 
+                        classData.className;
+                    const description = classData.DESCRIPTIONID ? 
+                        entryIdToText[classData.DESCRIPTIONID] || '' : 
+                        '';
+
+                    // Skip entries that look like comments
+                    if (displayName.startsWith('//')) continue;
+
+                    classes.push({
+                        ...classData,
+                        displayName,
+                        description
+                    });
+                }
+            }
+
+            // Sort classes alphabetically
+            classes.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+            // Calculate the new page number based on the action
+            let newPage = currentPage;
+            if (action === 'class-prev') {
+                newPage = Math.max(0, currentPage - 1);
+            } else if (action === 'class-next') {
+                newPage = Math.min(classes.length - 1, currentPage + 1);
+            }
+
+            // Check if the new page is valid
+            if (newPage < 0 || newPage >= classes.length) {
+                await interaction.reply({ content: 'Invalid page number. No more pages in that direction.', ephemeral: true });
+                return;
+            }
+
+            // Create the embed for the new page
+            const classData = classes[newPage];
+            const embed = createClassEmbed(classData, newPage, classes.length, modName);
+
+            // Create updated navigation buttons
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`class-prev|${modName}|${newPage}`)
+                        .setLabel('◀️ Previous')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(newPage === 0),
+                    new ButtonBuilder()
+                        .setCustomId(`class-next|${modName}|${newPage}`)
+                        .setLabel('Next ▶️')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(newPage === classes.length - 1),
+                    new ButtonBuilder()
+                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classData.className)}`)
+                        .setLabel('📚 Learnable Skills')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+            // Update the message
+            await interaction.update({ embeds: [embed], components: [row] });
 
         } catch (error) {
             this.logger.error('Error handling class interaction:', error);
@@ -996,3 +1088,135 @@ function register_handlers(event_registry) {
 }
 
 module.exports = register_handlers;
+
+// Add the missing function
+function parseSkillChunk(chunk) {
+    const lines = chunk.trim().split(/\r?\n/);
+    const skillData = {};
+    for (const line of lines) {
+        const lineTrimmed = line.trim();
+        const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
+        if (match) {
+            const key = match[1].toUpperCase();
+            let value = match[2].trim();
+            if (value.startsWith('"') && value.endsWith('"')) {
+                value = value.substring(1, value.length - 1);
+            }
+            if (!skillData[key]) {
+                skillData[key] = [];
+            }
+            skillData[key].push(value);
+        }
+    }
+    return skillData;
+}
+
+// Add the createClassEmbed function to the events.js file
+function createClassEmbed(classData, currentPage, totalPages, modName) {
+    const embed = new EmbedBuilder()
+        .setTitle(classData.displayName)
+        .setDescription(`Class in ${modName} (${currentPage + 1}/${totalPages})`)
+        .setColor(0x00FF00);
+
+    // Add description if available
+    if (classData.description) {
+        embed.addFields({ name: 'Description', value: classData.description });
+    }
+
+    // Add attributes
+    if (classData.attributes.length > 0) {
+        embed.addFields({ 
+            name: 'Attributes', 
+            value: classData.attributes.join(', ') 
+        });
+    }
+
+    // Add equipment categories
+    const categories = [
+        { name: 'Weapons', items: classData.weapons },
+        { name: 'Armor', items: classData.armors },
+        { name: 'Helmets', items: classData.helmets },
+        { name: 'Shields', items: classData.shields },
+        { name: 'Accessories', items: classData.accessories }
+    ];
+
+    for (const category of categories) {
+        if (category.items.length > 0) {
+            embed.addFields({ 
+                name: category.name, 
+                value: category.items.join('\n'),
+                inline: true 
+            });
+        }
+    }
+
+    return embed;
+}
+
+// Add the parseClassChunk function to events.js
+function parseClassChunk(chunk) {
+    if (!chunk || typeof chunk !== 'string') return null;
+
+    const lines = chunk.trim().split(/\r?\n/);
+    const classData = {
+        className: '',
+        DISPLAYNAMEID: null,
+        DESCRIPTIONID: null,
+        attributes: [],
+        weapons: [],
+        armors: [],
+        helmets: [],
+        shields: [],
+        accessories: []
+    };
+
+    for (const line of lines) {
+        if (!line || typeof line !== 'string') continue;
+        
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('//')) continue;
+
+        if (trimmedLine.startsWith('CREATECLASS:')) {
+            classData.className = trimmedLine.split(':')[1]?.trim() || '';
+        } else if (trimmedLine.startsWith('DISPLAYNAMEID:')) {
+            classData.DISPLAYNAMEID = trimmedLine.split(':')[1]?.trim() || null;
+        } else if (trimmedLine.startsWith('DESCRIPTIONID:')) {
+            classData.DESCRIPTIONID = trimmedLine.split(':')[1]?.trim() || null;
+        } else if (trimmedLine.startsWith('ATTRIBUTE:')) {
+            const attribute = trimmedLine.split(':')[1]?.trim()?.replace(/"/g, '');
+            if (attribute) classData.attributes.push(attribute);
+        } else if (trimmedLine.startsWith('ITEMCAT:')) {
+            try {
+                const parts = trimmedLine.split(',').map(s => s.trim());
+                if (parts.length >= 3) {
+                    const [category, type, style] = [parts[0].split(' ')[1], parts[1], parts[2]];
+                    const cleanType = type.replace(/"/g, '');
+                    const cleanStyle = style.replace(/"/g, '');
+                    
+                    switch (category.toLowerCase()) {
+                        case 'weapon':
+                            classData.weapons.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'armor':
+                            classData.armors.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'helmet':
+                            classData.helmets.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'shield':
+                            classData.shields.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                        case 'accessory':
+                            classData.accessories.push(`${cleanType} (${cleanStyle})`);
+                            break;
+                    }
+                }
+            } catch (error) {
+                // Skip malformed ITEMCAT lines
+                continue;
+            }
+        }
+    }
+
+    return classData.className ? classData : null;  // Only return if we have a valid class name
+}

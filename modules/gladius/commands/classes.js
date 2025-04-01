@@ -106,11 +106,15 @@ module.exports = {
                 }
 
                 const classData = parseClassChunk(chunk);
-                if (classData && classData.className) {  // Verify we have valid class data
-                    // Get display name and description from lookup text
+                if (classData && classData.className && !classData.className.startsWith('//')) {
+                    // Get display name and description
                     const displayName = classData.DISPLAYNAMEID ? 
                         entryIdToText[classData.DISPLAYNAMEID] || classData.className : 
                         classData.className;
+                    
+                    // Skip entries that look like comments
+                    if (displayName.startsWith('//')) continue;
+                    
                     const description = classData.DESCRIPTIONID ? 
                         entryIdToText[classData.DESCRIPTIONID] || '' : 
                         '';
