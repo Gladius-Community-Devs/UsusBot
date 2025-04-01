@@ -7,6 +7,9 @@ async function onInteractionCreate(interaction) {
 
     const customId = interaction.customId;
 
+    // Log the interaction for debugging
+    logger.info(`Processing interaction with customId: ${customId}`);
+
     // For dropdowns from the skill.js command
     if (customId.startsWith('class-select|')) {
         // Extract modName and skillName from customId
@@ -885,6 +888,9 @@ async function onInteractionCreate(interaction) {
         const action = parts[0];
         const modName = parts[1];
         const className = parts[2];
+        
+        logger.info(`Learnable skills action: ${action} for mod: ${modName}, class: ${className}`);
+        
         let currentPage = 0;
         let skillName = null;
         
@@ -1229,16 +1235,36 @@ async function onInteractionCreate(interaction) {
             }
             
         } catch (error) {
-            console.error('Error handling learnable skills:', error);
-            await interaction.reply({ 
-                content: 'An error occurred while processing learnable skills.', 
-                ephemeral: true 
-            });
+            logger.error('Error handling learnable skills:', error);
+            
+            // More detailed error handling
+            try {
+                await interaction.reply({ 
+                    content: 'An error occurred while processing learnable skills.', 
+                    ephemeral: true 
+                });
+            } catch (replyError) {
+                // If replying fails (e.g., interaction already replied to), try to update instead
+                logger.error('Failed to reply to interaction:', replyError);
+                try {
+                    await interaction.update({ 
+                        content: 'An error occurred while processing learnable skills.',
+                        components: [] 
+                    });
+                } catch (updateError) {
+                    logger.error('Failed to update interaction:', updateError);
+                    // At this point we can't do much else
+                }
+            }
         }
     }
 }
 
 function register_handlers(event_registry) {
+    // Store reference to the logger
+    logger = event_registry.logger;
+    
+    // Register the handler
     event_registry.register('interactionCreate', onInteractionCreate);
 }
 
