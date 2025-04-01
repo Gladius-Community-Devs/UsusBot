@@ -1,6 +1,9 @@
 const { InteractionType, ButtonStyle, EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const helpers = require('./functions');  // Import the centralized helper functions
+
+let logger;
 
 async function onInteractionCreate(interaction) {
     if (interaction.type !== InteractionType.MessageComponent) return;
@@ -27,140 +30,27 @@ async function onInteractionCreate(interaction) {
         const selectedClassEncoded = interaction.values[0];
         const selectedClass = decodeURIComponent(selectedClassEncoded);
 
-        // Sanitize inputs
-        const sanitizeInput = (input) => {
-            return input.replace(/[^\w\s'’-]/g, '').trim();
-        };
+        // Sanitize inputs using the helper function
+        const modNameSanitized = path.basename(helpers.sanitizeInput(modName));
+        const skillNameSanitized = helpers.sanitizeInput(skillName);
+        const classNameSanitized = helpers.sanitizeInput(selectedClass);
 
-        const modNameSanitized = path.basename(sanitizeInput(modName));
-        const skillNameSanitized = sanitizeInput(skillName);
-        const classNameSanitized = sanitizeInput(selectedClass);
-
-        // Define file paths securely
-        const baseUploadsPath = path.join(__dirname, '../../uploads');
-        const modPath = path.join(baseUploadsPath, modNameSanitized);
-        const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
-        const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
+        // Define file paths using helper
+        const filePaths = helpers.getModFilePaths(modNameSanitized);
 
         // Check if files exist
-        if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
+        if (!helpers.validateModFiles(filePaths, ['lookupFilePath', 'skillsFilePath'])) {
             await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
             return;
         }
 
         try {
-            // Collect all possible skill names and map them to entry IDs
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const lookupLines = lookupContent.split(/\r?\n/);
-
-            // Build a map of skill names to entry IDs
-            const skillNameToEntryIds = {};
-            for (const line of lookupLines) {
-                if (!line.trim()) continue;
-                const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
-                const name = fields[fields.length - 1].trim().toLowerCase();
-                if (!skillNameToEntryIds[name]) {
-                    skillNameToEntryIds[name] = [];
-                }
-                skillNameToEntryIds[name].push(id);
-            }
-
-            // Read the skills.tok file
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
-
-            // Function to parse a skill chunk into a key-value object
-            const parseSkillChunk = (chunk) => {
-                const lines = chunk.trim().split(/\r?\n/);
-                const skillData = {};
-                for (const line of lines) {
-                    const lineTrimmed = line.trim();
-                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                    if (match) {
-                        const key = match[1].toUpperCase();
-                        let value = match[2].trim();
-
-                        // Remove surrounding quotes if present
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substring(1, value.length - 1);
-                        }
-
-                        // Store all values as arrays
-                        if (!skillData[key]) {
-                            skillData[key] = [];
-                        }
-                        skillData[key].push(value);
-                    }
-                }
-                return skillData;
-            };
-
-            // Helper function to find the original chunk for a skill
-            const findOriginalChunk = (skillData, skillsChunks) => {
-                if (!skillData['SKILLCREATE']) return '';
-                
-                const skillName = skillData['SKILLCREATE'][0];
-                for (const chunk of skillsChunks) {
-                    if (chunk.includes('SKILLCREATE:') && chunk.includes(skillName)) {
-                        return chunk;
-                    }
-                }
-                return '';
-            };
+            // Load lookup text using helper
+            const { nameToIds: skillNameToEntryIds } = helpers.loadLookupText(filePaths.lookupFilePath);
             
-            // Function to collect all skills in a combo chain
-            const collectComboChain = (initialSkillData, skillsChunks) => {
-                const comboSkills = [];
-                let currentSkill = initialSkillData;
-                
-                // First, check if this is a combo skill (has SKILLMETER with "Chain")
-                if (currentSkill['SKILLMETER'] && currentSkill['SKILLMETER'][0].includes('Chain')) {
-                    comboSkills.push({ 
-                        skillData: currentSkill, 
-                        isInitial: true,
-                        chunk: findOriginalChunk(currentSkill, skillsChunks)
-                    });
-                    
-                    // Determine the maximum additional hits from the initial SKILLMETER
-                    let meterParts = currentSkill['SKILLMETER'][0].split(',').map(s => s.trim().replace(/"/g, ''));
-                    const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
-                    
-                    // Follow the chain of subskills
-                    let hitNumber = 1;
-                    while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
-                        const subSkillName = currentSkill['SKILLSUBSKILL'][0];
-                        let foundSubSkill = null;
-                        let foundChunk = null;
-                        
-                        // Find the subskill in the chunks
-                        for (const chunk of skillsChunks) {
-                            if (chunk.includes('SKILLCREATE:')) {
-                                const subSkillData = parseSkillChunk(chunk);
-                                if (subSkillData['SKILLCREATE'] && 
-                                    subSkillData['SKILLCREATE'][0].includes(subSkillName)) {
-                                    foundSubSkill = subSkillData;
-                                    foundChunk = chunk;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (!foundSubSkill) break;
-                        
-                        // Add the subskill to our chain
-                        comboSkills.push({ 
-                            skillData: foundSubSkill, 
-                            hitNumber: hitNumber + 1,
-                            chunk: foundChunk
-                        });
-                        
-                        currentSkill = foundSubSkill;
-                        hitNumber++;
-                    }
-                }
-                return comboSkills;
-            };
+            // Read the skills.tok file
+            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
+            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
 
             // Get all entry IDs for the skill name
             const entryIds = skillNameToEntryIds[skillNameSanitized.toLowerCase()] || [];
@@ -174,7 +64,7 @@ async function onInteractionCreate(interaction) {
             let matchingSkills = [];
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseSkillChunk(chunk);
+                    const skillData = helpers.parseSkillChunk(chunk);
                     if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID'][0]))) {
                         let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                         if (!Array.isArray(skillClasses)) {
@@ -207,8 +97,8 @@ async function onInteractionCreate(interaction) {
                 // Get the skill data
                 const skillData = skill.skillData;
                 
-                // Check if this is a combo skill
-                const comboSkills = collectComboChain(skillData, skillsChunks);
+                // Check if this is a combo skill using helper
+                const comboSkills = helpers.collectComboChain(skillData, skillsChunks);
                 
                 if (comboSkills.length > 1) { // Only treat as combo if there's more than one skill
                     // This is a combo skill, add header for combo chain
@@ -259,7 +149,7 @@ async function onInteractionCreate(interaction) {
                 await interaction.followUp({ content: messages[i], ephemeral: false });
             }
         } catch (error) {
-            this.logger.error('Error processing the interaction:', error);
+            logger.error('Error processing the interaction:', error);
             await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
         }
     }
@@ -282,22 +172,15 @@ async function onInteractionCreate(interaction) {
         const selectedClass = decodeURIComponent(selectedClassEncoded);
 
         // Sanitize inputs
-        const sanitizeInput = (input) => {
-            return input.replace(/[^\w\s''-]/g, '').trim();
-        };
+        const modNameSanitized = path.basename(helpers.sanitizeInput(modName));
+        const skillNameSanitized = helpers.sanitizeInput(skillName);
+        const classNameSanitized = helpers.sanitizeInput(selectedClass);
 
-        const modNameSanitized = path.basename(sanitizeInput(modName));
-        const skillNameSanitized = sanitizeInput(skillName);
-        const classNameSanitized = sanitizeInput(selectedClass);
-
-        // Define file paths securely
-        const baseUploadsPath = path.join(__dirname, '../../uploads');
-        const modPath = path.join(baseUploadsPath, modNameSanitized);
-        const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
-        const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
+        // Define file paths using helper
+        const filePaths = helpers.getModFilePaths(modNameSanitized);
 
         // Check if files exist
-        if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
+        if (!helpers.validateModFiles(filePaths, ['lookupFilePath', 'skillsFilePath'])) {
             await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
             return;
         }
@@ -305,71 +188,11 @@ async function onInteractionCreate(interaction) {
         try {
             // Get the explain.js command module to access its functions
             const explainCommand = require('./commands/explain');
-            const parseSkillChunk = (chunk) => {
-                const lines = chunk.trim().split(/\r?\n/);
-                const skillData = {};
-                for (const line of lines) {
-                    const lineTrimmed = line.trim();
-                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                    if (match) {
-                        const key = match[1].toUpperCase();
-                        let value = match[2].trim();
-                        // Remove surrounding quotes if present
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substring(1, value.length - 1);
-                        }
-                        // Keys that can have multiple values
-                        const multiValueKeys = [
-                            'SKILLATTRIBUTE',
-                            'SKILLSTATUS',
-                            'SKILLEFFECT',
-                            'SKILLUSECLASS',
-                            'SKILLMULTIHITDATA',
-                            'SKILLEFFECTCONDITION'
-                        ];
-                        if (multiValueKeys.includes(key)) {
-                            if (skillData[key]) {
-                                if (Array.isArray(skillData[key])) {
-                                    skillData[key].push(value);
-                                } else {
-                                    skillData[key] = [skillData[key], value];
-                                }
-                            } else {
-                                skillData[key] = value;
-                            }
-                        } else {
-                            skillData[key] = value;
-                        }
-                    }
-                }
-                return skillData;
-            };
 
             // Read the lookuptext file for skill names
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const lookupLines = lookupContent.split(/\r?\n/);
-            const lookupTextMap = {};
-            for (const line of lookupLines) {
-                if (!line.trim()) continue;
-                const fields = line.split('^');
-                const id = fields[0].trim();
-                const text = fields[fields.length - 1].trim();
-                lookupTextMap[id] = text;
-            }
+            const { idToText: lookupTextMap, nameToIds: skillNameToEntryIds } = helpers.loadLookupText(filePaths.lookupFilePath);
 
             // Get all entry IDs for the skill name
-            const skillNameToEntryIds = {};
-            for (const line of lookupLines) {
-                if (!line.trim()) continue;
-                const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
-                const name = fields[fields.length - 1].trim().toLowerCase();
-                if (!skillNameToEntryIds[name]) {
-                    skillNameToEntryIds[name] = [];
-                }
-                skillNameToEntryIds[name].push(id);
-            }
-
             const entryIds = skillNameToEntryIds[skillNameSanitized.toLowerCase()] || [];
 
             if (entryIds.length === 0) {
@@ -378,22 +201,22 @@ async function onInteractionCreate(interaction) {
             }
 
             // Read the skills.tok file
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
+            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
+            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
 
             // Collect matching skills for the selected class
             let matchingSkills = [];
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseSkillChunk(chunk);
-                    if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID']))) {
+                    const skillData = helpers.parseSkillChunk(chunk);
+                    if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID'][0]))) {
                         let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                         if (!Array.isArray(skillClasses)) {
                             skillClasses = [skillClasses];
                         }
                         if (skillClasses.some(cls => cls.toLowerCase() === classNameSanitized.toLowerCase())) {
                             matchingSkills.push({
-                                entryId: parseInt(skillData['SKILLDISPLAYNAMEID']),
+                                entryId: parseInt(skillData['SKILLDISPLAYNAMEID'][0]),
                                 chunk: chunk.trim(),
                                 classNames: skillClasses,
                                 skillData: skillData // Include skillData for later use
@@ -441,13 +264,14 @@ async function onInteractionCreate(interaction) {
                 await interaction.followUp({ content: messages[i], ephemeral: false });
             }
         } catch (error) {
-            console.error('Error processing the interaction:', error);
+            logger.error('Error processing the interaction:', error);
             await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
         }
     }
     
     // For itemskill pagination buttons
-    else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|') || customId.startsWith('itemskill-shops|') || customId.startsWith('itemskill-shops-byname|')) {
+    else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|') || 
+             customId.startsWith('itemskill-shops|') || customId.startsWith('itemskill-shops-byname|')) {
         // Parse the custom ID to get information
         const parts = customId.split('|');
         if (parts.length < 3) {
@@ -484,73 +308,31 @@ async function onInteractionCreate(interaction) {
         }
         
         try {
-            // Define file paths securely
-            const baseUploadsPath = path.join(__dirname, '../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
-            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
-            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
-            const itemsFilePath = path.join(modPath, 'data', 'config', 'items.tok');
-            const shopsPath = path.join(modPath, 'data', 'towns', 'shops');
+            // Define file paths using helper
+            const filePaths = helpers.getModFilePaths(modName);
             
             // Check if files exist
-            if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath) || !fs.existsSync(itemsFilePath)) {
+            if (!helpers.validateModFiles(filePaths, ['lookupFilePath', 'skillsFilePath', 'itemsFilePath'])) {
                 await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
                 return;
             }
             
-            // Load lookup text
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const lookupLines = lookupContent.split(/\r?\n/);
-
-            // Build a map of entry IDs to names
-            const entryIdToName = {};
-            for (const line of lookupLines) {
-                if (!line.trim()) continue;
-                const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
-                const name = fields[fields.length - 1].trim();
-                entryIdToName[id] = name;
-            }
-            
-            // Function to parse a chunk into a key-value object
-            const parseChunk = (chunk) => {
-                const lines = chunk.trim().split(/\r?\n/);
-                const data = {};
-                for (const line of lines) {
-                    const lineTrimmed = line.trim();
-                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                    if (match) {
-                        const key = match[1].toUpperCase();
-                        let value = match[2].trim();
-
-                        // Remove surrounding quotes if present
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substring(1, value.length - 1);
-                        }
-
-                        // Store all values as arrays
-                        if (!data[key]) {
-                            data[key] = [];
-                        }
-                        data[key].push(value);
-                    }
-                }
-                return data;
-            };
+            // Load lookup text using helper
+            const { idToText: entryIdToName } = helpers.loadLookupText(filePaths.lookupFilePath);
             
             // Read the skills.tok file
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
+            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
+            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
             
             // Read the items.tok file
-            const itemsContent = fs.readFileSync(itemsFilePath, 'utf8');
-            const itemsChunks = itemsContent.split(/\n\s*\n/);
+            const itemsContent = fs.readFileSync(filePaths.itemsFilePath, 'utf8');
+            const itemsChunks = helpers.splitContentIntoChunks(itemsContent);
             
             // Find all item skills
             const itemSkills = [];
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseChunk(chunk);
+                    const skillData = helpers.parseChunk(chunk);
                     if (skillData['SKILLCREATE'] && skillData['SKILLCREATE'][0].includes('Item ')) {
                         const skillName = skillData['SKILLCREATE'][0].split(',')[0].trim().replace(/"/g, '');
                         
@@ -571,7 +353,7 @@ async function onInteractionCreate(interaction) {
             // Associate items with skills
             for (const chunk of itemsChunks) {
                 if (chunk.includes('ITEMCREATE:')) {
-                    const itemData = parseChunk(chunk);
+                    const itemData = helpers.parseChunk(chunk);
                     if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) {
                         const itemSkillName = itemData['ITEMSKILL'][0].trim().replace(/"/g, '');
                         
@@ -641,13 +423,13 @@ async function onInteractionCreate(interaction) {
                 await interaction.deferReply();
                 
                 // Check if shops directory exists
-                if (!fs.existsSync(shopsPath)) {
+                if (!fs.existsSync(filePaths.shopsPath)) {
                     await interaction.editReply({ content: `The shop files directory does not exist for this mod.` });
                     return;
                 }
                 
                 // Get all shop files
-                const shopFiles = fs.readdirSync(shopsPath).filter(file => file.endsWith('.tok'));
+                const shopFiles = fs.readdirSync(filePaths.shopsPath).filter(file => file.endsWith('.tok'));
                 
                 // Function to extract raw item name from ITEMCREATE line
                 const extractRawItemName = (itemData) => {
@@ -687,7 +469,7 @@ async function onInteractionCreate(interaction) {
                 
                 // Check each shop file
                 for (const shopFile of shopFiles) {
-                    const shopFilePath = path.join(shopsPath, shopFile);
+                    const shopFilePath = path.join(filePaths.shopsPath, shopFile);
                     try {
                         const shopContent = fs.readFileSync(shopFilePath, 'utf8');
                         
@@ -725,7 +507,7 @@ async function onInteractionCreate(interaction) {
                             }
                         }
                     } catch (error) {
-                        console.error(`Error reading shop file ${shopFile}:`, error);
+                        logger.error(`Error reading shop file ${shopFile}:`, error);
                     }
                 }
                 
@@ -815,37 +597,11 @@ async function onInteractionCreate(interaction) {
                 return;
             }
             
-            // Helper function to create embed for a skill
-            function createSkillEmbed(skill, currentPage, totalPages, modName) {
-                const embed = new EmbedBuilder()
-                    .setTitle(`${skill.displayName || skill.skillName}`)
-                    .setDescription(`Item Skill in ${modName} (${currentPage + 1}/${totalPages})`)
-                    .setColor(0x0099FF);
-                
-                // Add skill data
-                const skillLines = skill.chunk.split('\n');
-                const formattedSkill = skillLines.map(line => line.trim()).join('\n');
-                embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`` });
-                
-                // Add items that grant this skill
-                if (skill.items.length > 0) {
-                    const itemsList = skill.items.map(item => `- ${item.itemName}`).join('\n');
-                    embed.addFields({ 
-                        name: `Granted by ${skill.items.length} item(s)`, 
-                        value: itemsList.length > 1024 ? itemsList.substring(0, 1021) + '...' : itemsList 
-                    });
-                } else {
-                    embed.addFields({ name: 'Items', value: 'No items found that grant this skill.' });
-                }
-                
-                return embed;
-            }
-            
             // Get the skill for the new page
             const currentSkill = skillsWithItems[newPage];
             
-            // Create the updated embed
-            const embed = createSkillEmbed(currentSkill, newPage, totalPages, modName);
+            // Create the updated embed using helper function
+            const embed = helpers.createItemSkillEmbed(currentSkill, newPage, totalPages, modName);
             
             // Update the buttons - now with three buttons including "Locate Shop"
             const row = new ActionRowBuilder()
@@ -871,7 +627,7 @@ async function onInteractionCreate(interaction) {
             await interaction.update({ embeds: [embed], components: [row] });
             
         } catch (error) {
-            console.error('Error handling itemskill pagination:', error);
+            logger.error('Error handling itemskill pagination:', error);
             await interaction.reply({ content: 'An error occurred while handling the itemskill command pagination.', ephemeral: true });
         }
     }
@@ -906,127 +662,21 @@ async function onInteractionCreate(interaction) {
         }
         
         try {
-            // Define file paths securely
-            const baseUploadsPath = path.join(__dirname, '../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
-            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
-            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
+            // Get file paths using helper
+            const filePaths = helpers.getModFilePaths(modName);
             
             // Check if files exist
-            if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
+            if (!helpers.validateModFiles(filePaths, ['lookupFilePath', 'skillsFilePath'])) {
                 await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
                 return;
             }
             
-            // Load lookup text
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const lookupLines = lookupContent.split(/\r?\n/);
-
-            // Build a map of entry IDs to names
-            const idToText = {};
-            for (const line of lookupLines) {
-                if (!line.trim()) continue;
-                const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
-                const text = fields[fields.length - 1].trim();
-                idToText[id] = text;
-            }
+            // Load lookup text using helper
+            const { idToText } = helpers.loadLookupText(filePaths.lookupFilePath);
             
             // Read the skills.tok file
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
-            
-            // Function to parse a skill chunk into a key-value object
-            const parseSkillChunk = (chunk) => {
-                const lines = chunk.trim().split(/\r?\n/);
-                const skillData = {};
-                for (const line of lines) {
-                    const lineTrimmed = line.trim();
-                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                    if (match) {
-                        const key = match[1].toUpperCase();
-                        let value = match[2].trim();
-
-                        // Remove surrounding quotes if present
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substring(1, value.length - 1);
-                        }
-
-                        // Store all values as arrays
-                        if (!skillData[key]) {
-                            skillData[key] = [];
-                        }
-                        skillData[key].push(value);
-                    }
-                }
-                return skillData;
-            };
-
-            // Helper function to find the original chunk for a skill
-            const findOriginalChunk = (skillData, skillsChunks) => {
-                if (!skillData['SKILLCREATE']) return '';
-                
-                const skillName = skillData['SKILLCREATE'][0];
-                for (const chunk of skillsChunks) {
-                    if (chunk.includes('SKILLCREATE:') && chunk.includes(skillName)) {
-                        return chunk;
-                    }
-                }
-                return '';
-            };
-            
-            // Function to collect all skills in a combo chain
-            const collectComboChain = (initialSkillData, skillsChunks) => {
-                const comboSkills = [];
-                let currentSkill = initialSkillData;
-                
-                // First, check if this is a combo skill (has SKILLMETER with "Chain")
-                if (currentSkill['SKILLMETER'] && currentSkill['SKILLMETER'][0].includes('Chain')) {
-                    comboSkills.push({ 
-                        skillData: currentSkill, 
-                        isInitial: true,
-                        chunk: findOriginalChunk(currentSkill, skillsChunks)
-                    });
-                    
-                    // Determine the maximum additional hits from the initial SKILLMETER
-                    let meterParts = currentSkill['SKILLMETER'][0].split(',').map(s => s.trim().replace(/"/g, ''));
-                    const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
-                    
-                    // Follow the chain of subskills
-                    let hitNumber = 1;
-                    while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
-                        const subSkillName = currentSkill['SKILLSUBSKILL'][0];
-                        let foundSubSkill = null;
-                        let foundChunk = null;
-                        
-                        // Find the subskill in the chunks
-                        for (const chunk of skillsChunks) {
-                            if (chunk.includes('SKILLCREATE:')) {
-                                const subSkillData = parseSkillChunk(chunk);
-                                if (subSkillData['SKILLCREATE'] && 
-                                    subSkillData['SKILLCREATE'][0].includes(subSkillName)) {
-                                    foundSubSkill = subSkillData;
-                                    foundChunk = chunk;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (!foundSubSkill) break;
-                        
-                        // Add the subskill to our chain
-                        comboSkills.push({ 
-                            skillData: foundSubSkill, 
-                            hitNumber: hitNumber + 1,
-                            chunk: foundChunk
-                        });
-                        
-                        currentSkill = foundSubSkill;
-                        hitNumber++;
-                    }
-                }
-                return comboSkills;
-            };
+            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
+            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
             
             // For the "Explain" action, generate detailed skill description
             if (action === 'learnable-explain' && skillName) {
@@ -1037,7 +687,7 @@ async function onInteractionCreate(interaction) {
                 
                 for (const chunk of skillsChunks) {
                     if (chunk.includes('SKILLCREATE:')) {
-                        const skillData = parseSkillChunk(chunk);
+                        const skillData = helpers.parseSkillChunk(chunk);
                         const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
                         const displayName = displayNameId && idToText[displayNameId] ? idToText[displayNameId] : null;
                         
@@ -1096,7 +746,7 @@ async function onInteractionCreate(interaction) {
             
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseSkillChunk(chunk);
+                    const skillData = helpers.parseSkillChunk(chunk);
                     
                     // Check if this skill is usable by the class
                     let skillClasses = skillData['SKILLUSECLASS'] || [];
@@ -1267,18 +917,16 @@ async function onInteractionCreate(interaction) {
         const newPage = action === 'class-prev' ? currentPage - 1 : currentPage + 1;
 
         try {
-            // Inline helper: read mod files and build class list
-            const baseUploadsPath = path.join(__dirname, '../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
-            const classdefsPath = path.join(modPath, 'data', 'config', 'classdefs.tok');
-            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
-
-            if (!fs.existsSync(classdefsPath) || !fs.existsSync(lookupFilePath)) {
+            // Get file paths using helper
+            const filePaths = helpers.getModFilePaths(modName);
+            
+            if (!helpers.validateModFiles(filePaths, ['classdefsPath', 'lookupFilePath'])) {
                 await interaction.reply({ content: `Required files are missing for mod '${modName}'.`, ephemeral: true });
                 return;
             }
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const classdefsContent = fs.readFileSync(classdefsPath, 'utf8');
+            
+            const lookupContent = fs.readFileSync(filePaths.lookupFilePath, 'utf8');
+            const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
 
             // Build lookup table
             const entryIdToText = {};
@@ -1292,78 +940,32 @@ async function onInteractionCreate(interaction) {
                 }
             });
 
-            // Parse class definitions (minimal parsing)
+            // Parse class definitions using helper function
             let classesList = [];
             const classChunks = classdefsContent.split(/\nCREATECLASS:/);
+            
             for (let rawChunk of classChunks) {
                 let chunk = rawChunk.trim();
                 if (!chunk) continue;
                 if (!chunk.startsWith('CREATECLASS:')) {
                     chunk = 'CREATECLASS:' + chunk;
                 }
-                const lines = chunk.split(/\r?\n/);
-                let className = '';
-                let displayNameId = null;
-                let descriptionId = null;
-                // Also include arrays for additional details to mimic complete output
-                let attributes = [];
-                let weapons = [];
-                let armors = [];
-                let helmets = [];
-                let shields = [];
-                let accessories = [];
-                for (const l of lines) {
-                    const trimmed = l.trim();
-                    if (trimmed.startsWith('CREATECLASS:')) {
-                        className = trimmed.split(':')[1]?.trim() || '';
-                    } else if (trimmed.startsWith('DISPLAYNAMEID:')) {
-                        displayNameId = trimmed.split(':')[1]?.trim() || null;
-                    } else if (trimmed.startsWith('DESCRIPTIONID:')) {
-                        descriptionId = trimmed.split(':')[1]?.trim() || null;
-                    } else if (trimmed.startsWith('ATTRIBUTE:')) {
-                        const attribute = trimmed.split(':')[1]?.trim()?.replace(/"/g, '');
-                        if (attribute) attributes.push(attribute);
-                    } else if (trimmed.startsWith('ITEMCAT:')) {
-                        try {
-                            const parts = trimmed.split(',').map(s => s.trim());
-                            if (parts.length >= 3) {
-                                const [category, type, style] = [parts[0].split(' ')[1], parts[1], parts[2]];
-                                const cleanType = type.replace(/"/g, '');
-                                const cleanStyle = style.replace(/"/g, '');
-                                
-                                switch (category.toLowerCase()) {
-                                    case 'weapon':
-                                        weapons.push(`${cleanType} (${cleanStyle})`);
-                                        break;
-                                    case 'armor':
-                                        armors.push(`${cleanType} (${cleanStyle})`);
-                                        break;
-                                    case 'helmet':
-                                        helmets.push(`${cleanType} (${cleanStyle})`);
-                                        break;
-                                    case 'shield':
-                                        shields.push(`${cleanType} (${cleanStyle})`);
-                                        break;
-                                    case 'accessory':
-                                        accessories.push(`${cleanType} (${cleanStyle})`);
-                                        break;
-                                }
-                            }
-                        } catch (error) {
-                            // Skip malformed ITEMCAT lines
-                        }
-                    }
-                }
-                if (className) {
-                    const displayName = displayNameId ? (entryIdToText[displayNameId] || className) : className;
-                    classesList.push({ 
-                        className, 
-                        displayName, 
-                        description: descriptionId ? (entryIdToText[descriptionId] || '') : '',
-                        attributes, weapons, armors, helmets, shields, accessories 
+                
+                // Use the helper function to parse the class chunk
+                const classData = helpers.parseClassChunk(chunk);
+                
+                if (classData) {
+                    const displayName = classData.DISPLAYNAMEID ? (entryIdToText[classData.DISPLAYNAMEID] || classData.className) : classData.className;
+                    const description = classData.DESCRIPTIONID ? (entryIdToText[classData.DESCRIPTIONID] || '') : '';
+                    
+                    classesList.push({
+                        ...classData,
+                        displayName,
+                        description
                     });
                 }
             }
+            
             classesList.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
             if (classesList.length === 0) {
@@ -1375,45 +977,8 @@ async function onInteractionCreate(interaction) {
                 return;
             }
 
-            // Local helper to create the full embed (replicating ;classes command output)
-            const createClassEmbed = (classData, currentPage, totalPages, modName) => {
-                const embed = new EmbedBuilder()
-                    .setTitle(classData.displayName)
-                    .setDescription(`Class in ${modName} (${currentPage + 1}/${totalPages})`)
-                    .setColor(0x00FF00);
-
-                if (classData.description) {
-                    embed.addFields({ name: 'Description', value: classData.description });
-                }
-
-                if (classData.attributes.length > 0) {
-                    embed.addFields({ 
-                        name: 'Attributes', 
-                        value: classData.attributes.join(', ') 
-                    });
-                }
-
-                const categories = [
-                    { name: 'Weapons', items: classData.weapons },
-                    { name: 'Armor', items: classData.armors },
-                    { name: 'Helmets', items: classData.helmets },
-                    { name: 'Shields', items: classData.shields },
-                    { name: 'Accessories', items: classData.accessories }
-                ];
-
-                for (const category of categories) {
-                    if (category.items.length > 0) {
-                        embed.addFields({ 
-                            name: category.name, 
-                            value: category.items.join('\n'),
-                            inline: true 
-                        });
-                    }
-                }
-                return embed;
-            };
-
-            const embed = createClassEmbed(classesList[newPage], newPage, classesList.length, modName);
+            // Create the embed using helper function
+            const embed = helpers.createClassEmbed(classesList[newPage], newPage, classesList.length, modName);
 
             // Rebuild navigation buttons
             const row = new ActionRowBuilder()
