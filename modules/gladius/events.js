@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 async function onInteractionCreate(interaction) {
+async function onInteractionCreate(interaction) {
     if (interaction.type !== InteractionType.MessageComponent) return;
 
     const customId = interaction.customId;
@@ -1301,11 +1302,17 @@ async function onInteractionCreate(interaction) {
                 if (!chunk.startsWith('CREATECLASS:')) {
                     chunk = 'CREATECLASS:' + chunk;
                 }
-                // Minimal parsing: extract className, display name & description IDs
                 const lines = chunk.split(/\r?\n/);
                 let className = '';
                 let displayNameId = null;
                 let descriptionId = null;
+                // Also include arrays for additional details to mimic complete output
+                let attributes = [];
+                let weapons = [];
+                let armors = [];
+                let helmets = [];
+                let shields = [];
+                let accessories = [];
                 for (const l of lines) {
                     const trimmed = l.trim();
                     if (trimmed.startsWith('CREATECLASS:')) {
@@ -1314,11 +1321,48 @@ async function onInteractionCreate(interaction) {
                         displayNameId = trimmed.split(':')[1]?.trim() || null;
                     } else if (trimmed.startsWith('DESCRIPTIONID:')) {
                         descriptionId = trimmed.split(':')[1]?.trim() || null;
+                    } else if (trimmed.startsWith('ATTRIBUTE:')) {
+                        const attribute = trimmed.split(':')[1]?.trim()?.replace(/"/g, '');
+                        if (attribute) attributes.push(attribute);
+                    } else if (trimmed.startsWith('ITEMCAT:')) {
+                        try {
+                            const parts = trimmed.split(',').map(s => s.trim());
+                            if (parts.length >= 3) {
+                                const [category, type, style] = [parts[0].split(' ')[1], parts[1], parts[2]];
+                                const cleanType = type.replace(/"/g, '');
+                                const cleanStyle = style.replace(/"/g, '');
+                                
+                                switch (category.toLowerCase()) {
+                                    case 'weapon':
+                                        weapons.push(`${cleanType} (${cleanStyle})`);
+                                        break;
+                                    case 'armor':
+                                        armors.push(`${cleanType} (${cleanStyle})`);
+                                        break;
+                                    case 'helmet':
+                                        helmets.push(`${cleanType} (${cleanStyle})`);
+                                        break;
+                                    case 'shield':
+                                        shields.push(`${cleanType} (${cleanStyle})`);
+                                        break;
+                                    case 'accessory':
+                                        accessories.push(`${cleanType} (${cleanStyle})`);
+                                        break;
+                                }
+                            }
+                        } catch (error) {
+                            // Skip malformed ITEMCAT lines
+                        }
                     }
                 }
                 if (className) {
                     const displayName = displayNameId ? (entryIdToText[displayNameId] || className) : className;
-                    classesList.push({ className, displayName, description: descriptionId ? (entryIdToText[descriptionId] || '') : '' });
+                    classesList.push({ 
+                        className, 
+                        displayName, 
+                        description: descriptionId ? (entryIdToText[descriptionId] || ''), 
+                        attributes, weapons, armors, helmets, shields, accessories 
+                    });
                 }
             }
             classesList.sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -1332,19 +1376,44 @@ async function onInteractionCreate(interaction) {
                 return;
             }
 
-            // Inline helper: simple embed creation for a class
-            function createClassEmbed(classData, currentPage, totalPages, modName) {
+            // Local helper to create the full embed (replicating ;classes command output)
+            const createClassEmbed = (classData, currentPage, totalPages, modName) => {
                 const embed = new EmbedBuilder()
                     .setTitle(classData.displayName)
                     .setDescription(`Class in ${modName} (${currentPage + 1}/${totalPages})`)
                     .setColor(0x00FF00);
+
                 if (classData.description) {
                     embed.addFields({ name: 'Description', value: classData.description });
                 }
-                return embed;
-            }
 
-            // Create updated embed using inline helper
+                if (classData.attributes.length > 0) {
+                    embed.addFields({ 
+                        name: 'Attributes', 
+                        value: classData.attributes.join(', ') 
+                    });
+                }
+
+                const categories = [
+                    { name: 'Weapons', items: classData.weapons },
+                    { name: 'Armor', items: classData.armors },
+                    { name: 'Helmets', items: classData.helmets },
+                    { name: 'Shields', items: classData.shields },
+                    { name: 'Accessories', items: classData.accessories }
+                ];
+
+                for (const category of categories) {
+                    if (category.items.length > 0) {
+                        embed.addFields({ 
+                            name: category.name, 
+                            value: category.items.join('\n'),
+                            inline: true 
+                        });
+                    }
+                }
+                return embed;
+            };
+
             const embed = createClassEmbed(classesList[newPage], newPage, classesList.length, modName);
 
             // Rebuild navigation buttons
