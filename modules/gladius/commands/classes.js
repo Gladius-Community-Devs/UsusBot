@@ -10,8 +10,9 @@ module.exports = {
     args_to_lower: true,
     needs_api: false,
     has_state: false,
-    async execute(message, args, extra) {
+    async execute(message, args = [], extra) {  // Add default empty array for args
         const sanitizeInput = (input) => {
+            if (!input || typeof input !== 'string') return '';  // Add input validation
             return input.replace(/[^\w\s''-]/g, '').trim();
         };
 
@@ -24,21 +25,26 @@ module.exports = {
             // Load modders.json and handle mod name
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
 
-            if (args.length > 1) {
+            if (args && args.length > 1) {  // Check if args exists and has elements
                 let modNameInput = sanitizeInput(args[1]);
-                for (const modder in moddersConfig) {
-                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                    if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
-                        modName = moddersConfig[modder].replace(/\s+/g, '_');
-                        index = 2;
-                        break;
+                if (modNameInput) {  // Only process if we have valid input
+                    for (const modder in moddersConfig) {
+                        const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
+                        if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
+                            modName = moddersConfig[modder].replace(/\s+/g, '_');
+                            index = 2;
+                            break;
+                        }
                     }
                 }
             }
 
-            // Get search term if provided
-            if (args.length > index) {
-                searchTerm = args.slice(index).join(' ').toLowerCase();
+            // Get search term if provided, with validation
+            if (args && args.length > index) {
+                searchTerm = args.slice(index)
+                    .filter(arg => arg && typeof arg === 'string')  // Filter out invalid args
+                    .join(' ')
+                    .toLowerCase();
             }
 
             // Sanitize modName and define paths
