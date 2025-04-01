@@ -1267,19 +1267,86 @@ async function onInteractionCreate(interaction) {
         const newPage = action === 'class-prev' ? currentPage - 1 : currentPage + 1;
 
         try {
-            const classesCmd = require('./commands/classes');
-            // Get filtered classes; here we assume no search term (empty string)
-            const filteredClasses = await classesCmd.getFilteredClasses(modName, '');
-            if (filteredClasses.length === 0) {
+            // Inline helper: read mod files and build class list
+            const baseUploadsPath = path.join(__dirname, '../../uploads');
+            const modPath = path.join(baseUploadsPath, modName);
+            const classdefsPath = path.join(modPath, 'data', 'config', 'classdefs.tok');
+            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
+
+            if (!fs.existsSync(classdefsPath) || !fs.existsSync(lookupFilePath)) {
+                await interaction.reply({ content: `Required files are missing for mod '${modName}'.`, ephemeral: true });
+                return;
+            }
+            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+            const classdefsContent = fs.readFileSync(classdefsPath, 'utf8');
+
+            // Build lookup table
+            const entryIdToText = {};
+            lookupContent.split(/\r?\n/).filter(line => line.trim()).forEach(line => {
+                if (!line.includes('^')) return;
+                const parts = line.split('^');
+                if (parts.length >= 2) {
+                    const id = parts[0].trim();
+                    const text = parts[parts.length - 1].trim();
+                    entryIdToText[id] = text;
+                }
+            });
+
+            // Parse class definitions (minimal parsing)
+            let classesList = [];
+            const classChunks = classdefsContent.split(/\nCREATECLASS:/);
+            for (let rawChunk of classChunks) {
+                let chunk = rawChunk.trim();
+                if (!chunk) continue;
+                if (!chunk.startsWith('CREATECLASS:')) {
+                    chunk = 'CREATECLASS:' + chunk;
+                }
+                // Minimal parsing: extract className, display name & description IDs
+                const lines = chunk.split(/\r?\n/);
+                let className = '';
+                let displayNameId = null;
+                let descriptionId = null;
+                for (const l of lines) {
+                    const trimmed = l.trim();
+                    if (trimmed.startsWith('CREATECLASS:')) {
+                        className = trimmed.split(':')[1]?.trim() || '';
+                    } else if (trimmed.startsWith('DISPLAYNAMEID:')) {
+                        displayNameId = trimmed.split(':')[1]?.trim() || null;
+                    } else if (trimmed.startsWith('DESCRIPTIONID:')) {
+                        descriptionId = trimmed.split(':')[1]?.trim() || null;
+                    }
+                }
+                if (className) {
+                    const displayName = displayNameId ? (entryIdToText[displayNameId] || className) : className;
+                    classesList.push({ className, displayName, description: descriptionId ? (entryIdToText[descriptionId] || '') : '' });
+                }
+            }
+            classesList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+            if (classesList.length === 0) {
                 await interaction.reply({ content: `No classes found for mod '${modName}'.`, ephemeral: true });
                 return;
             }
-            if (newPage < 0 || newPage >= filteredClasses.length) {
+            if (newPage < 0 || newPage >= classesList.length) {
                 await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
                 return;
             }
-            // Create updated embed using the exported helper function
-            const embed = classesCmd.createClassEmbed(filteredClasses[newPage], newPage, filteredClasses.length, modName);
+
+            // Inline helper: simple embed creation for a class
+            function createClassEmbed(classData, currentPage, totalPages, modName) {
+                const embed = new EmbedBuilder()
+                    .setTitle(classData.displayName)
+                    .setDescription(`Class in ${modName} (${currentPage + 1}/${totalPages})`)
+                    .setColor(0x00FF00);
+                if (classData.description) {
+                    embed.addFields({ name: 'Description', value: classData.description });
+                }
+                return embed;
+            }
+
+            // Create updated embed using inline helper
+            const embed = createClassEmbed(classesList[newPage], newPage, classesList.length, modName);
+
             // Rebuild navigation buttons
             const row = new ActionRowBuilder()
                 .addComponents(
@@ -1292,9 +1359,9 @@ async function onInteractionCreate(interaction) {
                         .setCustomId(`class-next|${modName}|${newPage}`)
                         .setLabel('Next ▶️')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage === filteredClasses.length - 1),
+                        .setDisabled(newPage === classesList.length - 1),
                     new ButtonBuilder()
-                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(filteredClasses[newPage].className)}`)
+                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[newPage].className)}`)
                         .setLabel('📚 Learnable Skills')
                         .setStyle(ButtonStyle.Secondary)
                 );
