@@ -64,12 +64,30 @@ module.exports = {
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
             const classdefsContent = fs.readFileSync(classdefsPath, 'utf8');
 
-            // Parse lookup text
+            // Parse lookup text with more robust error handling
             const entryIdToText = {};
-            for (const line of lookupContent.split(/\r?\n/)) {
-                if (!line.trim()) continue;
-                const [id, ...textParts] = line.split('^');
-                entryIdToText[id.trim()] = textParts[textParts.length - 1].trim();
+            if (lookupContent && typeof lookupContent === 'string') {
+                try {
+                    const lines = lookupContent.split(/\r?\n/).filter(line => line && line.trim());
+                    
+                    for (const line of lines) {
+                        // Skip invalid lines
+                        if (!line || !line.includes('^')) continue;
+                        
+                        const parts = line.split('^');
+                        if (parts.length >= 2) {
+                            const id = parts[0].trim();
+                            const text = parts[parts.length - 1].trim();
+                            if (id && text) {
+                                entryIdToText[id] = text;
+                            }
+                        }
+                    }
+                } catch (parseError) {
+                    this.logger.error('Error parsing lookup text:', parseError);
+                }
+            } else {
+                this.logger.error('Invalid lookup content format');
             }
 
             // Parse class definitions - update the splitting logic
