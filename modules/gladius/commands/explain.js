@@ -96,7 +96,12 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     
     // Skill Type and Category
     if (skillData['SKILLCREATE']) {
-        const skillCreateParts = skillData['SKILLCREATE'].split(',');
+        // Fix for SKILLCREATE - handle both array and string
+        const skillCreateValue = Array.isArray(skillData['SKILLCREATE']) 
+            ? skillData['SKILLCREATE'][0] 
+            : skillData['SKILLCREATE'];
+            
+        const skillCreateParts = skillCreateValue.split(',');
         const skillType = skillCreateParts[1]?.trim().replace(/"/g, '');
         const skillCategory = skillCreateParts[2]?.trim().replace(/"/g, '');
         if (skillType && skillCategory) {
@@ -200,13 +205,21 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     let baseDamageModifier = 0;
     let damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
     if (skillData['SKILLCOMBATMODS']) {
-        const combatModsParts = skillData['SKILLCOMBATMODS'].split(',').map(part => part.trim());
+        // Ensure SKILLCOMBATMODS is handled properly whether it's an array or string
+        const skillCombatModsValue = Array.isArray(skillData['SKILLCOMBATMODS']) 
+            ? skillData['SKILLCOMBATMODS'][0] 
+            : skillData['SKILLCOMBATMODS'];
+            
+        const combatModsParts = skillCombatModsValue.split(',').map(part => part.trim());
         const accuracyModifier = combatModsParts[0];
-        // CODE CHANGE: Keep baseDamageModifier as a number for accurate arithmetic.
         baseDamageModifier = parseFloat(combatModsParts[1]) || 0;
         
         // Only show combat modifiers line if this is not a combo skill
-        const isComboSkill = skillData['SKILLMETER'] && skillData['SKILLMETER'].includes('Chain');
+        const isComboSkill = skillData['SKILLMETER'] && 
+            (Array.isArray(skillData['SKILLMETER']) 
+                ? skillData['SKILLMETER'][0].includes('Chain') 
+                : skillData['SKILLMETER'].includes('Chain'));
+                
         if (!isComboSkill) {
             const accuracyText = parseFloat(accuracyModifier) === 0 
                 ? 'with no changes to accuracy' 
@@ -215,8 +228,12 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         }
     }
     
-    // CODE CHANGE: Process combo chain if SKILLMETER indicates a combo attack.
-    if (skillData['SKILLMETER'] && skillData['SKILLMETER'].includes('Chain')) {
+    // CODE CHANGE: Process combo chain - updated to handle array or string properties
+    if (skillData['SKILLMETER'] && 
+        (Array.isArray(skillData['SKILLMETER']) 
+            ? skillData['SKILLMETER'][0].includes('Chain') 
+            : skillData['SKILLMETER'].includes('Chain'))) {
+            
         const { totalComboDamage, additionalHits } = parseComboChain(skillData, skillsChunks);
         if (additionalHits.length > 0) {
             const totalCombo = baseDamageModifier + totalComboDamage;
