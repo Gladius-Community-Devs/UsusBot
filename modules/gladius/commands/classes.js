@@ -241,6 +241,9 @@ function parseClassChunk(chunk) {
     return classData.className ? classData : null;  // Only return if we have a valid class name
 }
 
+// Export the parseClassChunk function for reuse
+module.exports.parseClassChunk = parseClassChunk;
+
 // Helper function to create an embed for a class
 function createClassEmbed(classData, currentPage, totalPages, modName) {
     const embed = new EmbedBuilder()
@@ -282,3 +285,8 @@ function createClassEmbed(classData, currentPage, totalPages, modName) {
 
     return embed;
 }
+
+// Export the createClassEmbed function for reuse
+module.exports.createClassEmbed = createClassEmbed;
+
+// New helper to re-read and filter class definitions

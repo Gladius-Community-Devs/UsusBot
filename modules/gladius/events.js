@@ -1257,6 +1257,53 @@ async function onInteractionCreate(interaction) {
             }
         }
     }
+    
+    // New branch for class pagination buttons (prev/next)
+    else if (customId.startsWith('class-prev|') || customId.startsWith('class-next|')) {
+        const parts = customId.split('|');
+        const action = parts[0]; // "class-prev" or "class-next"
+        const modName = parts[1];
+        const currentPage = parseInt(parts[2], 10);
+        const newPage = action === 'class-prev' ? currentPage - 1 : currentPage + 1;
+
+        try {
+            const classesCmd = require('./commands/classes');
+            // Get filtered classes; here we assume no search term (empty string)
+            const filteredClasses = await classesCmd.getFilteredClasses(modName, '');
+            if (filteredClasses.length === 0) {
+                await interaction.reply({ content: `No classes found for mod '${modName}'.`, ephemeral: true });
+                return;
+            }
+            if (newPage < 0 || newPage >= filteredClasses.length) {
+                await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
+                return;
+            }
+            // Create updated embed using the exported helper function
+            const embed = classesCmd.createClassEmbed(filteredClasses[newPage], newPage, filteredClasses.length, modName);
+            // Rebuild navigation buttons
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`class-prev|${modName}|${newPage}`)
+                        .setLabel('◀️ Previous')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(newPage === 0),
+                    new ButtonBuilder()
+                        .setCustomId(`class-next|${modName}|${newPage}`)
+                        .setLabel('Next ▶️')
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(newPage === filteredClasses.length - 1),
+                    new ButtonBuilder()
+                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(filteredClasses[newPage].className)}`)
+                        .setLabel('📚 Learnable Skills')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+            await interaction.update({ embeds: [embed], components: [row] });
+        } catch (error) {
+            logger.error('Error handling class pagination:', error);
+            await interaction.reply({ content: 'An error occurred while processing the request.', ephemeral: true });
+        }
+    }
 }
 
 function register_handlers(event_registry) {
