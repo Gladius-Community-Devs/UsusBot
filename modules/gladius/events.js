@@ -877,15 +877,14 @@ async function onInteractionCreate(interaction) {
     }
     
     // For learnable skills pagination and explanation
-    else if (customId.startsWith('learnable-skills|') || customId.startsWith('learnable-page|') || customId.startsWith('learnable-explain|')) {
-        // Parse the custom ID to get information
-        const parts = customId.split('|');
-        if (parts.length < 3) {
-            await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
-            return;
-        }
+    else if (customId.startsWith('learnable-skills|') || 
+             customId.startsWith('class-skills|') ||      // Add this line to handle both prefixes
+             customId.startsWith('learnable-page|') || 
+             customId.startsWith('learnable-explain|')) {
         
-        const action = parts[0];
+        // Normalize the action prefix for consistent handling
+        const parts = customId.split('|');
+        const action = parts[0].replace('class-skills', 'learnable-skills');  // Normalize the action
         const modName = parts[1];
         const className = parts[2];
         

@@ -391,7 +391,7 @@ module.exports = {
                         const learnableButton = new ActionRowBuilder()
                             .addComponents(
                                 new ButtonBuilder()
-                                    .setCustomId(`learnable-skills|${modName}|${className}`)
+                                    .setCustomId(`learnable-skills|${modName}|${className}`)  // This was likely "class-skills"
                                     .setLabel(`View All ${className} Skills`)
                                     .setStyle(ButtonStyle.Success)
                             );
