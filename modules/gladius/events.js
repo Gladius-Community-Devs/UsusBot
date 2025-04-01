@@ -872,6 +872,123 @@ async function onInteractionCreate(interaction) {
             await interaction.reply({ content: 'An error occurred while handling the itemskill command pagination.', ephemeral: true });
         }
     }
+
+    // For class pagination buttons
+    else if (customId.startsWith('class-prev|') || customId.startsWith('class-next|') || customId.startsWith('class-skills|')) {
+        const parts = customId.split('|');
+        if (parts.length < 3) {
+            await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
+            return;
+        }
+
+        const action = parts[0];
+        const modName = parts[1];
+        
+        try {
+            // Define file paths
+            const baseUploadsPath = path.join(__dirname, '../../uploads');
+            const modPath = path.join(baseUploadsPath, modName);
+            const classdefsPath = path.join(modPath, 'data', 'config', 'classdefs.tok');
+            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
+            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
+
+            if (!fs.existsSync(classdefsPath) || !fs.existsSync(lookupFilePath)) {
+                await interaction.reply({ content: `Required files are missing for mod '${modName}'.` });
+                return;
+            }
+
+            // Load and parse files
+            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+            const classdefsContent = fs.readFileSync(classdefsPath, 'utf8');
+
+            // Parse lookup text
+            const entryIdToText = {};
+            for (const line of lookupContent.split(/\r?\n/)) {
+                if (!line.trim()) continue;
+                const [id, ...textParts] = line.split('^');
+                entryIdToText[id.trim()] = textParts[textParts.length - 1].trim();
+            }
+
+            // Handle class skills button
+            if (action === 'class-skills') {
+                const className = decodeURIComponent(parts[2]);
+                const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
+                const skillsChunks = skillsContent.split(/\n\s*\n/);
+                
+                // Find all skills for this class
+                const classSkills = [];
+                for (const chunk of skillsChunks) {
+                    if (chunk.includes('SKILLCREATE:')) {
+                        const skillData = parseSkillChunk(chunk);
+                        if (skillData['SKILLUSECLASS'] && 
+                            skillData['SKILLUSECLASS'].some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                            const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? skillData['SKILLDISPLAYNAMEID'][0] : null;
+                            const skillName = displayNameId ? entryIdToText[displayNameId] : skillData['SKILLCREATE'][0];
+                            classSkills.push(skillName);
+                        }
+                    }
+                }
+
+                // Create embed for skills
+                const embed = new EmbedBuilder()
+                    .setTitle(`Learnable Skills for ${className}`)
+                    .setDescription(`Skills available to ${className} in ${modName}`)
+                    .setColor(0x00FF00);
+
+                if (classSkills.length > 0) {
+                    // Sort skills alphabetically
+                    classSkills.sort();
+                    
+                    // Split skills into chunks for fields (max 1024 characters per field)
+                    let currentField = '';
+                    let fieldCount = 1;
+                    
+                    for (const skill of classSkills) {
+                        const skillLine = `• ${skill}\n`
+                        if (currentField.length + skillLine.length > 1024) {
+                            embed.addFields({ 
+                                name: `Skills (${fieldCount})`, 
+                                value: currentField 
+                            });
+                            currentField = skillLine;
+                            fieldCount++;
+                        } else {
+                            currentField += skillLine;
+                        }
+                    }
+                    
+                    if (currentField) {
+                        embed.addFields({ 
+                            name: `Skills (${fieldCount})`, 
+                            value: currentField 
+                        });
+                    }
+                } else {
+                    embed.addFields({ 
+                        name: 'Skills', 
+                        value: 'No learnable skills found for this class.' 
+                    });
+                }
+
+                await interaction.reply({ embeds: [embed], ephemeral: true });
+                return;
+            }
+
+            // Handle navigation
+            const currentPage = parseInt(parts[2]);
+            if (isNaN(currentPage)) {
+                await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
+                return;
+            }
+
+            // Parse classes and create the classes array
+            // ...rest of the navigation handling code similar to itemskill command...
+
+        } catch (error) {
+            console.error('Error handling class interaction:', error);
+            await interaction.reply({ content: 'An error occurred while processing the request.', ephemeral: true });
+        }
+    }
 }
 
 function register_handlers(event_registry) {
