@@ -644,7 +644,7 @@ async function onInteractionCreate(interaction) {
         const modName = parts[1];
         const className = parts[2];
         
-        logger.info(`Learnable skills action: ${action} for mod: ${modName}, class: ${className}`);
+        logger.info(`Processing learnable skills interaction: action=${action}, mod=${modName}, class=${className}`);
         
         let currentPage = 0;
         let skillName = null;
@@ -653,38 +653,49 @@ async function onInteractionCreate(interaction) {
         if (action === 'learnable-skills') {
             // Initial request, page defaults to 0
             currentPage = 0;
+            logger.debug(`Initial learnable skills request, starting at page 0`);
         } else if (action === 'learnable-page') {
             // Page navigation
             currentPage = parseInt(parts[3]) || 0;
+            logger.debug(`Navigating to learnable skills page ${currentPage}`);
         } else if (action === 'learnable-explain') {
             // Explain a specific skill
             skillName = decodeURIComponent(parts[3]);
+            logger.debug(`Explaining skill "${skillName}" for class "${className}"`);
         }
         
         try {
             // Get file paths using helper
+            logger.debug(`Getting file paths for mod ${modName}`);
             const filePaths = helpers.getModFilePaths(modName);
             
             // Check if files exist
+            logger.debug(`Validating mod files for ${modName}`);
             if (!helpers.validateModFiles(filePaths, ['lookupFilePath', 'skillsFilePath'])) {
+                logger.warn(`Required mod files missing for ${modName}: lookupFilePath and/or skillsFilePath`);
                 await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
                 return;
             }
             
             // Load lookup text using helper
+            logger.debug(`Loading lookup text for mod ${modName}`);
             const { idToText } = helpers.loadLookupText(filePaths.lookupFilePath);
             
             // Read the skills.tok file
+            logger.debug(`Reading skills.tok file for mod ${modName}`);
             const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
             const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
+            logger.debug(`Split skills.tok into ${skillsChunks.length} chunks`);
             
             // For the "Explain" action, generate detailed skill description
             if (action === 'learnable-explain' && skillName) {
+                logger.info(`Generating explanation for skill "${skillName}" for class "${className}"`);
                 const explainCommand = require('./commands/explain');
                 
                 // Find the skill with the given name for this class
                 let matchingSkill = null;
                 
+                logger.debug(`Searching for skill "${skillName}" for class "${className}"`);
                 for (const chunk of skillsChunks) {
                     if (chunk.includes('SKILLCREATE:')) {
                         const skillData = helpers.parseSkillChunk(chunk);
@@ -703,6 +714,7 @@ async function onInteractionCreate(interaction) {
                                     skillData,
                                     chunk
                                 };
+                                logger.debug(`Found matching skill "${displayName}" for class "${className}"`);
                                 break;
                             }
                         }
@@ -710,6 +722,7 @@ async function onInteractionCreate(interaction) {
                 }
                 
                 if (!matchingSkill) {
+                    logger.warn(`Could not find skill "${skillName}" for class "${className}" in ${modName}`);
                     await interaction.reply({ 
                         content: `Could not find skill "${skillName}" for class "${className}" in ${modName}.`, 
                         ephemeral: true 
@@ -718,9 +731,11 @@ async function onInteractionCreate(interaction) {
                 }
                 
                 // Generate the skill description
+                logger.debug(`Generating skill description for "${skillName}"`);
                 const skillDescription = explainCommand.generateSkillDescription(matchingSkill.skillData, idToText, skillsChunks);
                 
                 // Create an embed for the skill explanation
+                logger.debug(`Creating embed for skill "${skillName}"`);
                 const embed = new EmbedBuilder()
                     .setTitle(`${skillName} (${className})`)
                     .setDescription(skillDescription)
@@ -737,11 +752,13 @@ async function onInteractionCreate(interaction) {
                     );
                 
                 // Reply with the embed
+                logger.info(`Sending skill explanation for "${skillName}" to user`);
                 await interaction.reply({ embeds: [embed], components: [row] });
                 return;
             }
             
             // Find all learnable skills for this class
+            logger.info(`Finding learnable skills for class "${className}" in mod "${modName}"`);
             const learnableSkills = [];
             
             for (const chunk of skillsChunks) {
@@ -778,27 +795,39 @@ async function onInteractionCreate(interaction) {
                             chunk: chunk,
                             skillData
                         });
+                        logger.debug(`Found learnable skill "${displayName}" for class "${className}"`);
                     }
                 }
             }
             
+            logger.info(`Found ${learnableSkills.length} learnable skills for class "${className}"`);
+            
             // Sort skills alphabetically by name
             learnableSkills.sort((a, b) => a.name.localeCompare(b.name));
+            logger.debug(`Sorted learnable skills alphabetically`);
             
             // Calculate pagination
             const itemsPerPage = 5;
             const pageCount = Math.ceil(learnableSkills.length / itemsPerPage);
             
             // Validate current page
-            if (currentPage < 0) currentPage = 0;
-            if (currentPage >= pageCount) currentPage = pageCount - 1;
+            if (currentPage < 0) {
+                logger.debug(`Correcting negative page number to 0`);
+                currentPage = 0;
+            }
+            if (currentPage >= pageCount) {
+                logger.debug(`Correcting excessive page number from ${currentPage} to ${pageCount - 1}`);
+                currentPage = pageCount - 1;
+            }
             
             // Get skills for the current page
             const startIdx = currentPage * itemsPerPage;
             const endIdx = Math.min(startIdx + itemsPerPage, learnableSkills.length);
             const currentSkills = learnableSkills.slice(startIdx, endIdx);
+            logger.debug(`Displaying skills ${startIdx+1}-${endIdx} (page ${currentPage+1}/${pageCount})`);
             
             // Create embed with skill list
+            logger.debug(`Creating embed for learnable skills page ${currentPage+1}`);
             const embed = new EmbedBuilder()
                 .setTitle(`Learnable Skills for ${className}`)
                 .setDescription(`Skills that can be learned by ${className} in ${modName} (Page ${currentPage + 1}/${pageCount})`)
@@ -831,9 +860,11 @@ async function onInteractionCreate(interaction) {
                     name: skill.name, 
                     value: description || 'No additional information available'
                 });
+                logger.debug(`Added skill "${skill.name}" to embed`);
             }
             
             // Create pagination buttons
+            logger.debug(`Creating navigation buttons for page ${currentPage+1}/${pageCount}`);
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -849,6 +880,7 @@ async function onInteractionCreate(interaction) {
                 );
             
             // Add explain buttons for each skill on this page
+            logger.debug(`Creating explanation buttons for skills on page ${currentPage+1}`);
             const explainRow = new ActionRowBuilder();
             for (let i = 0; i < currentSkills.length; i++) {
                 explainRow.addComponents(
@@ -857,9 +889,13 @@ async function onInteractionCreate(interaction) {
                         .setLabel(`Explain ${currentSkills[i].name}`)
                         .setStyle(ButtonStyle.Secondary)
                 );
+                logger.debug(`Added explain button for skill "${currentSkills[i].name}"`);
                 
                 // Discord only allows 5 buttons per row
-                if (i === 4) break;
+                if (i === 4) {
+                    logger.debug(`Reached maximum button limit (5), stopping button creation`);
+                    break;
+                }
             }
             
             // Determine components to include
@@ -871,37 +907,46 @@ async function onInteractionCreate(interaction) {
             // Send response based on the action type
             if (action === 'learnable-skills') {
                 // First time invocation - reply with a new message
+                logger.info(`Sending initial learnable skills response for class "${className}"`);
                 await interaction.reply({ 
                     embeds: [embed], 
                     components
                 });
             } else {
                 // Update existing message
+                logger.info(`Updating existing learnable skills message for class "${className}"`);
                 await interaction.update({ 
                     embeds: [embed], 
                     components
                 });
             }
+            logger.info(`Successfully processed learnable skills interaction for class "${className}" in mod "${modName}"`);
             
         } catch (error) {
-            logger.error('Error handling learnable skills:', error);
+            logger.error(`Error handling learnable skills for class "${className}" in mod "${modName}":`, error);
+            logger.error(`Error stack trace: ${error.stack}`);
             
             // More detailed error handling
             try {
+                logger.debug(`Attempting to reply with error message`);
                 await interaction.reply({ 
                     content: 'An error occurred while processing learnable skills.', 
                     ephemeral: true 
                 });
+                logger.debug(`Successfully sent error reply`);
             } catch (replyError) {
                 // If replying fails (e.g., interaction already replied to), try to update instead
-                logger.error('Failed to reply to interaction:', replyError);
+                logger.error(`Failed to reply to interaction: ${replyError.message}`);
                 try {
+                    logger.debug(`Attempting to update interaction with error message`);
                     await interaction.update({ 
                         content: 'An error occurred while processing learnable skills.',
                         components: [] 
                     });
+                    logger.debug(`Successfully updated interaction with error message`);
                 } catch (updateError) {
-                    logger.error('Failed to update interaction:', updateError);
+                    logger.error(`Failed to update interaction: ${updateError.message}`);
+                    logger.error(`Both reply and update failed, cannot respond to user`);
                     // At this point we can't do much else
                 }
             }
@@ -915,20 +960,29 @@ async function onInteractionCreate(interaction) {
         const modName = parts[1];
         const currentPage = parseInt(parts[2], 10);
         const newPage = action === 'class-prev' ? currentPage - 1 : currentPage + 1;
+        
+        logger.info(`Processing class pagination: action=${action}, mod=${modName}, currentPage=${currentPage}, newPage=${newPage}`);
 
         try {
             // Get file paths using helper
+            logger.debug(`Getting file paths for mod "${modName}"`);
             const filePaths = helpers.getModFilePaths(modName);
             
+            logger.debug(`Validating mod files for "${modName}"`);
             if (!helpers.validateModFiles(filePaths, ['classdefsPath', 'lookupFilePath'])) {
+                logger.warn(`Required files missing for mod "${modName}": classdefsPath and/or lookupFilePath`);
                 await interaction.reply({ content: `Required files are missing for mod '${modName}'.`, ephemeral: true });
                 return;
             }
             
+            logger.debug(`Reading lookup file for mod "${modName}"`);
             const lookupContent = fs.readFileSync(filePaths.lookupFilePath, 'utf8');
+            
+            logger.debug(`Reading class definitions file for mod "${modName}"`);
             const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
 
             // Build lookup table
+            logger.debug(`Building lookup table from ${filePaths.lookupFilePath}`);
             const entryIdToText = {};
             lookupContent.split(/\r?\n/).filter(line => line.trim()).forEach(line => {
                 if (!line.includes('^')) return;
@@ -941,8 +995,10 @@ async function onInteractionCreate(interaction) {
             });
 
             // Parse class definitions using helper function
+            logger.debug(`Parsing class definitions`);
             let classesList = [];
             const classChunks = classdefsContent.split(/\nCREATECLASS:/);
+            logger.debug(`Split class definitions into ${classChunks.length} chunks`);
             
             for (let rawChunk of classChunks) {
                 let chunk = rawChunk.trim();
@@ -963,24 +1019,30 @@ async function onInteractionCreate(interaction) {
                         displayName,
                         description
                     });
+                    logger.debug(`Parsed class: ${displayName}`);
                 }
             }
             
             classesList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+            logger.debug(`Sorted ${classesList.length} classes alphabetically`);
 
             if (classesList.length === 0) {
+                logger.warn(`No classes found for mod "${modName}"`);
                 await interaction.reply({ content: `No classes found for mod '${modName}'.`, ephemeral: true });
                 return;
             }
             if (newPage < 0 || newPage >= classesList.length) {
+                logger.warn(`Invalid page number: ${newPage}. Valid range: 0-${classesList.length-1}`);
                 await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
                 return;
             }
 
             // Create the embed using helper function
+            logger.debug(`Creating embed for class "${classesList[newPage].displayName}"`);
             const embed = helpers.createClassEmbed(classesList[newPage], newPage, classesList.length, modName);
 
             // Rebuild navigation buttons
+            logger.debug(`Creating navigation buttons for class page ${newPage+1}/${classesList.length}`);
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -998,9 +1060,13 @@ async function onInteractionCreate(interaction) {
                         .setLabel('📚 Learnable Skills')
                         .setStyle(ButtonStyle.Secondary)
                 );
+            
+            logger.info(`Updating interaction with class information for "${classesList[newPage].displayName}"`);
             await interaction.update({ embeds: [embed], components: [row] });
+            logger.info(`Successfully processed class pagination for "${classesList[newPage].displayName}" in mod "${modName}"`);
         } catch (error) {
-            logger.error('Error handling class pagination:', error);
+            logger.error(`Error handling class pagination for mod "${modName}":`, error);
+            logger.error(`Error stack trace: ${error.stack}`);
             await interaction.reply({ content: 'An error occurred while processing the request.', ephemeral: true });
         }
     }
