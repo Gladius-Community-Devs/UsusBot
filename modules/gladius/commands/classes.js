@@ -131,7 +131,7 @@ module.exports = {
             message.channel.send({ embeds: [embed], components: [row] });
 
         } catch (error) {
-            console.error('Error in classes command:', error);
+            this.logger.error('Error in classes command:', error);
             message.channel.send({ content: 'An error occurred while fetching class information.' });
         }
     }

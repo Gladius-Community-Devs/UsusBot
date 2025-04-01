@@ -722,7 +722,7 @@ async function onInteractionCreate(interaction) {
                             }
                         }
                     } catch (error) {
-                        console.error(`Error reading shop file ${shopFile}:`, error);
+                        this.logger.error(`Error reading shop file ${shopFile}:`, error);
                     }
                 }
                 
@@ -985,7 +985,7 @@ async function onInteractionCreate(interaction) {
             // ...rest of the navigation handling code similar to itemskill command...
 
         } catch (error) {
-            console.error('Error handling class interaction:', error);
+            this.logger.error('Error handling class interaction:', error);
             await interaction.reply({ content: 'An error occurred while processing the request.', ephemeral: true });
         }
     }

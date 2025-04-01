@@ -329,7 +329,7 @@ module.exports = {
             }
 
         } catch (error) {
-            console.error('Error finding item skills:', error);
+            this.logger.error('Error finding item skills:', error);
             message.channel.send({ content: 'An error occurred while finding item skills.' });
         }
     }
