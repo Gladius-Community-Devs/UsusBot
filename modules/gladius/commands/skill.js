@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
     name: 'skill',
@@ -386,7 +386,21 @@ module.exports = {
             // Send the messages
             for (const [index, msg] of messages.entries()) {
                 if (index === messages.length - 1) {
-                    await message.channel.send({ content: msg, components: rows });
+                    // Create a "View Learnable Skills" button for the class
+                    if (className) {
+                        const learnableButton = new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(`learnable-skills|${modName}|${className}`)
+                                    .setLabel(`View All ${className} Skills`)
+                                    .setStyle(ButtonStyle.Success)
+                            );
+                        
+                        // Add the button along with the class select dropdown
+                        await message.channel.send({ content: msg, components: [...rows, learnableButton] });
+                    } else {
+                        await message.channel.send({ content: msg, components: rows });
+                    }
                 } else {
                     await message.channel.send({ content: msg });
                 }

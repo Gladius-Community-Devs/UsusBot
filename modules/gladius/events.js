@@ -722,7 +722,7 @@ async function onInteractionCreate(interaction) {
                             }
                         }
                     } catch (error) {
-                        this.logger.error(`Error reading shop file ${shopFile}:`, error);
+                        console.error(`Error reading shop file ${shopFile}:`, error);
                     }
                 }
                 
@@ -872,213 +872,368 @@ async function onInteractionCreate(interaction) {
             await interaction.reply({ content: 'An error occurred while handling the itemskill command pagination.', ephemeral: true });
         }
     }
-
-    // For class pagination buttons
-    else if (customId.startsWith('class-prev|') || customId.startsWith('class-next|') || customId.startsWith('class-skills|')) {
+    
+    // For learnable skills pagination and explanation
+    else if (customId.startsWith('learnable-skills|') || customId.startsWith('learnable-page|') || customId.startsWith('learnable-explain|')) {
+        // Parse the custom ID to get information
         const parts = customId.split('|');
         if (parts.length < 3) {
             await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
             return;
         }
-
+        
         const action = parts[0];
         const modName = parts[1];
+        const className = parts[2];
+        let currentPage = 0;
+        let skillName = null;
+        
+        // Determine the action type and extract additional parameters
+        if (action === 'learnable-skills') {
+            // Initial request, page defaults to 0
+            currentPage = 0;
+        } else if (action === 'learnable-page') {
+            // Page navigation
+            currentPage = parseInt(parts[3]) || 0;
+        } else if (action === 'learnable-explain') {
+            // Explain a specific skill
+            skillName = decodeURIComponent(parts[3]);
+        }
         
         try {
-            // Define file paths
+            // Define file paths securely
             const baseUploadsPath = path.join(__dirname, '../../uploads');
             const modPath = path.join(baseUploadsPath, modName);
-            const classdefsPath = path.join(modPath, 'data', 'config', 'classdefs.tok');
             const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
             const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
-
-            if (!fs.existsSync(classdefsPath) || !fs.existsSync(lookupFilePath)) {
-                await interaction.reply({ content: `Required files are missing for mod '${modName}'.` });
+            
+            // Check if files exist
+            if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
+                await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
                 return;
             }
-
-            // Load and parse files
+            
+            // Load lookup text
             const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const classdefsContent = fs.readFileSync(classdefsPath, 'utf8');
+            const lookupLines = lookupContent.split(/\r?\n/);
 
-            // Parse lookup text
-            const entryIdToText = {};
-            if (lookupContent && typeof lookupContent === 'string') {
-                try {
-                    const lines = lookupContent.split(/\r?\n/).filter(line => line && line.trim());
+            // Build a map of entry IDs to names
+            const idToText = {};
+            for (const line of lookupLines) {
+                if (!line.trim()) continue;
+                const fields = line.split('^');
+                const id = parseInt(fields[0].trim());
+                const text = fields[fields.length - 1].trim();
+                idToText[id] = text;
+            }
+            
+            // Read the skills.tok file
+            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
+            const skillsChunks = skillsContent.split(/\n\s*\n/);
+            
+            // Function to parse a skill chunk into a key-value object
+            const parseSkillChunk = (chunk) => {
+                const lines = chunk.trim().split(/\r?\n/);
+                const skillData = {};
+                for (const line of lines) {
+                    const lineTrimmed = line.trim();
+                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
+                    if (match) {
+                        const key = match[1].toUpperCase();
+                        let value = match[2].trim();
+
+                        // Remove surrounding quotes if present
+                        if (value.startsWith('"') && value.endsWith('"')) {
+                            value = value.substring(1, value.length - 1);
+                        }
+
+                        // Store all values as arrays
+                        if (!skillData[key]) {
+                            skillData[key] = [];
+                        }
+                        skillData[key].push(value);
+                    }
+                }
+                return skillData;
+            };
+
+            // Helper function to find the original chunk for a skill
+            const findOriginalChunk = (skillData, skillsChunks) => {
+                if (!skillData['SKILLCREATE']) return '';
+                
+                const skillName = skillData['SKILLCREATE'][0];
+                for (const chunk of skillsChunks) {
+                    if (chunk.includes('SKILLCREATE:') && chunk.includes(skillName)) {
+                        return chunk;
+                    }
+                }
+                return '';
+            };
+            
+            // Function to collect all skills in a combo chain
+            const collectComboChain = (initialSkillData, skillsChunks) => {
+                const comboSkills = [];
+                let currentSkill = initialSkillData;
+                
+                // First, check if this is a combo skill (has SKILLMETER with "Chain")
+                if (currentSkill['SKILLMETER'] && currentSkill['SKILLMETER'][0].includes('Chain')) {
+                    comboSkills.push({ 
+                        skillData: currentSkill, 
+                        isInitial: true,
+                        chunk: findOriginalChunk(currentSkill, skillsChunks)
+                    });
                     
-                    for (const line of lines) {
-                        // Skip invalid lines
-                        if (!line || !line.includes('^')) continue;
+                    // Determine the maximum additional hits from the initial SKILLMETER
+                    let meterParts = currentSkill['SKILLMETER'][0].split(',').map(s => s.trim().replace(/"/g, ''));
+                    const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
+                    
+                    // Follow the chain of subskills
+                    let hitNumber = 1;
+                    while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
+                        const subSkillName = currentSkill['SKILLSUBSKILL'][0];
+                        let foundSubSkill = null;
+                        let foundChunk = null;
                         
-                        const parts = line.split('^');
-                        if (parts.length >= 2) {
-                            const id = parts[0].trim();
-                            const text = parts[parts.length - 1].trim();
-                            if (id && text) {
-                                entryIdToText[id] = text;
+                        // Find the subskill in the chunks
+                        for (const chunk of skillsChunks) {
+                            if (chunk.includes('SKILLCREATE:')) {
+                                const subSkillData = parseSkillChunk(chunk);
+                                if (subSkillData['SKILLCREATE'] && 
+                                    subSkillData['SKILLCREATE'][0].includes(subSkillName)) {
+                                    foundSubSkill = subSkillData;
+                                    foundChunk = chunk;
+                                    break;
+                                }
                             }
                         }
+                        
+                        if (!foundSubSkill) break;
+                        
+                        // Add the subskill to our chain
+                        comboSkills.push({ 
+                            skillData: foundSubSkill, 
+                            hitNumber: hitNumber + 1,
+                            chunk: foundChunk
+                        });
+                        
+                        currentSkill = foundSubSkill;
+                        hitNumber++;
                     }
-                } catch (parseError) {
-                    this.logger.error('Error parsing lookup text:', parseError);
                 }
-            }
-
-            // Handle class skills button
-            if (action === 'class-skills') {
-                const className = decodeURIComponent(parts[2]);
-                const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-                const skillsChunks = skillsContent.split(/\n\s*\n/);
+                return comboSkills;
+            };
+            
+            // For the "Explain" action, generate detailed skill description
+            if (action === 'learnable-explain' && skillName) {
+                const explainCommand = require('./commands/explain');
                 
-                // Find all skills for this class
-                const classSkills = [];
+                // Find the skill with the given name for this class
+                let matchingSkill = null;
+                
                 for (const chunk of skillsChunks) {
                     if (chunk.includes('SKILLCREATE:')) {
                         const skillData = parseSkillChunk(chunk);
-                        if (skillData['SKILLUSECLASS'] && 
-                            skillData['SKILLUSECLASS'].some(cls => cls.toLowerCase() === className.toLowerCase())) {
-                            const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? skillData['SKILLDISPLAYNAMEID'][0] : null;
-                            const skillName = displayNameId ? entryIdToText[displayNameId] : skillData['SKILLCREATE'][0];
-                            classSkills.push(skillName);
+                        const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
+                        const displayName = displayNameId && idToText[displayNameId] ? idToText[displayNameId] : null;
+                        
+                        // Check if it matches the skill name and class
+                        if (displayName && displayName.toLowerCase() === skillName.toLowerCase()) {
+                            let skillClasses = skillData['SKILLUSECLASS'] || [];
+                            if (!Array.isArray(skillClasses)) {
+                                skillClasses = [skillClasses];
+                            }
+                            
+                            if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                                matchingSkill = {
+                                    skillData,
+                                    chunk
+                                };
+                                break;
+                            }
                         }
                     }
                 }
-
-                // Create embed for skills
+                
+                if (!matchingSkill) {
+                    await interaction.reply({ 
+                        content: `Could not find skill "${skillName}" for class "${className}" in ${modName}.`, 
+                        ephemeral: true 
+                    });
+                    return;
+                }
+                
+                // Generate the skill description
+                const skillDescription = explainCommand.generateSkillDescription(matchingSkill.skillData, idToText, skillsChunks);
+                
+                // Create an embed for the skill explanation
                 const embed = new EmbedBuilder()
-                    .setTitle(`Learnable Skills for ${className}`)
-                    .setDescription(`Skills available to ${className} in ${modName}`)
-                    .setColor(0x00FF00);
-
-                if (classSkills.length > 0) {
-                    // Sort skills alphabetically
-                    classSkills.sort();
+                    .setTitle(`${skillName} (${className})`)
+                    .setDescription(skillDescription)
+                    .setColor(0x00AAFF)
+                    .setFooter({ text: `Mod: ${modName}` });
+                
+                // Create a button to go back to the learnable skills list
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`learnable-page|${modName}|${className}|${currentPage}`)
+                            .setLabel('Back to Learnable Skills')
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+                
+                // Reply with the embed
+                await interaction.reply({ embeds: [embed], components: [row] });
+                return;
+            }
+            
+            // Find all learnable skills for this class
+            const learnableSkills = [];
+            
+            for (const chunk of skillsChunks) {
+                if (chunk.includes('SKILLCREATE:')) {
+                    const skillData = parseSkillChunk(chunk);
                     
-                    // Split skills into chunks for fields (max 1024 characters per field)
-                    let currentField = '';
-                    let fieldCount = 1;
-                    
-                    for (const skill of classSkills) {
-                        const skillLine = `• ${skill}\n`
-                        if (currentField.length + skillLine.length > 1024) {
-                            embed.addFields({ 
-                                name: `Skills (${fieldCount})`, 
-                                value: currentField 
-                            });
-                            currentField = skillLine;
-                            fieldCount++;
-                        } else {
-                            currentField += skillLine;
-                        }
+                    // Check if this skill is usable by the class
+                    let skillClasses = skillData['SKILLUSECLASS'] || [];
+                    if (!Array.isArray(skillClasses)) {
+                        skillClasses = [skillClasses];
                     }
                     
-                    if (currentField) {
-                        embed.addFields({ 
-                            name: `Skills (${fieldCount})`, 
-                            value: currentField 
+                    if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                        // Get the display name
+                        const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
+                        const displayName = displayNameId && idToText[displayNameId] ? idToText[displayNameId] : 'Unknown Skill';
+                        
+                        // Extract skill creation info
+                        let skillType = '';
+                        let skillCategory = '';
+                        if (skillData['SKILLCREATE'] && skillData['SKILLCREATE'][0]) {
+                            const createParts = skillData['SKILLCREATE'][0].split(',');
+                            if (createParts.length >= 3) {
+                                skillType = createParts[1].trim().replace(/"/g, '');
+                                skillCategory = createParts[2].trim().replace(/"/g, '');
+                            }
+                        }
+                        
+                        // Add the skill to our list
+                        learnableSkills.push({
+                            name: displayName,
+                            type: skillType,
+                            category: skillCategory,
+                            chunk: chunk,
+                            skillData
                         });
                     }
-                } else {
-                    embed.addFields({ 
-                        name: 'Skills', 
-                        value: 'No learnable skills found for this class.' 
-                    });
                 }
-
-                await interaction.reply({ embeds: [embed], ephemeral: true });
-                return;
             }
-
-            // Handle navigation
-            const currentPage = parseInt(parts[2]);
-            if (isNaN(currentPage)) {
-                await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
-                return;
-            }
-
-            // Parse classes similar to the classes.js command
-            const classes = [];
-            const classChunks = classdefsContent.split(/\nCREATECLASS:/);
             
-            for (let i = 0; i < classChunks.length; i++) {
-                let chunk = classChunks[i].trim();
-                if (!chunk) continue;
+            // Sort skills alphabetically by name
+            learnableSkills.sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Calculate pagination
+            const itemsPerPage = 5;
+            const pageCount = Math.ceil(learnableSkills.length / itemsPerPage);
+            
+            // Validate current page
+            if (currentPage < 0) currentPage = 0;
+            if (currentPage >= pageCount) currentPage = pageCount - 1;
+            
+            // Get skills for the current page
+            const startIdx = currentPage * itemsPerPage;
+            const endIdx = Math.min(startIdx + itemsPerPage, learnableSkills.length);
+            const currentSkills = learnableSkills.slice(startIdx, endIdx);
+            
+            // Create embed with skill list
+            const embed = new EmbedBuilder()
+                .setTitle(`Learnable Skills for ${className}`)
+                .setDescription(`Skills that can be learned by ${className} in ${modName} (Page ${currentPage + 1}/${pageCount})`)
+                .setColor(0x3498db);
+            
+            // Add each skill to the embed
+            for (const skill of currentSkills) {
+                // Create a short description
+                let description = '';
                 
-                if (!chunk.startsWith('CREATECLASS:')) {
-                    chunk = 'CREATECLASS:' + chunk;
+                // Add skill type and category if available
+                if (skill.type && skill.category) {
+                    description += `**Type:** ${skill.type} (${skill.category})\n`;
                 }
-
-                // Skip if the chunk appears to be just a comment
-                if (chunk.trim().startsWith('CREATECLASS: //')) continue;
-
-                const classData = parseClassChunk(chunk);
-                if (classData && classData.className && !classData.className.startsWith('//')) {
-                    // Get display name and description
-                    const displayName = classData.DISPLAYNAMEID ? 
-                        entryIdToText[classData.DISPLAYNAMEID] || classData.className : 
-                        classData.className;
-                    const description = classData.DESCRIPTIONID ? 
-                        entryIdToText[classData.DESCRIPTIONID] || '' : 
-                        '';
-
-                    // Skip entries that look like comments
-                    if (displayName.startsWith('//')) continue;
-
-                    classes.push({
-                        ...classData,
-                        displayName,
-                        description
-                    });
+                
+                // Add JP cost if available
+                if (skill.skillData['SKILLJOBPOINTCOST'] && skill.skillData['SKILLJOBPOINTCOST'][0]) {
+                    description += `**JP Cost:** ${skill.skillData['SKILLJOBPOINTCOST'][0]}\n`;
                 }
+                
+                // Add skill costs if available
+                if (skill.skillData['SKILLCOSTS'] && skill.skillData['SKILLCOSTS'][0]) {
+                    const costsParts = skill.skillData['SKILLCOSTS'][0].split(',').map(part => part.trim());
+                    const turns = costsParts[0];
+                    description += `**Turns:** ${turns}\n`;
+                }
+                
+                // Add field to embed
+                embed.addFields({ 
+                    name: skill.name, 
+                    value: description || 'No additional information available'
+                });
             }
-
-            // Sort classes alphabetically
-            classes.sort((a, b) => a.displayName.localeCompare(b.displayName));
-
-            // Calculate the new page number based on the action
-            let newPage = currentPage;
-            if (action === 'class-prev') {
-                newPage = Math.max(0, currentPage - 1);
-            } else if (action === 'class-next') {
-                newPage = Math.min(classes.length - 1, currentPage + 1);
-            }
-
-            // Check if the new page is valid
-            if (newPage < 0 || newPage >= classes.length) {
-                await interaction.reply({ content: 'Invalid page number. No more pages in that direction.', ephemeral: true });
-                return;
-            }
-
-            // Create the embed for the new page
-            const classData = classes[newPage];
-            const embed = createClassEmbed(classData, newPage, classes.length, modName);
-
-            // Create updated navigation buttons
+            
+            // Create pagination buttons
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
-                        .setCustomId(`class-prev|${modName}|${newPage}`)
-                        .setLabel('◀️ Previous')
+                        .setCustomId(`learnable-page|${modName}|${className}|${Math.max(0, currentPage - 1)}`)
+                        .setLabel('Previous')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage === 0),
+                        .setDisabled(currentPage === 0),
                     new ButtonBuilder()
-                        .setCustomId(`class-next|${modName}|${newPage}`)
-                        .setLabel('Next ▶️')
+                        .setCustomId(`learnable-page|${modName}|${className}|${Math.min(pageCount - 1, currentPage + 1)}`)
+                        .setLabel('Next')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage === classes.length - 1),
+                        .setDisabled(currentPage === pageCount - 1)
+                );
+            
+            // Add explain buttons for each skill on this page
+            const explainRow = new ActionRowBuilder();
+            for (let i = 0; i < currentSkills.length; i++) {
+                explainRow.addComponents(
                     new ButtonBuilder()
-                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classData.className)}`)
-                        .setLabel('📚 Learnable Skills')
+                        .setCustomId(`learnable-explain|${modName}|${className}|${encodeURIComponent(currentSkills[i].name)}`)
+                        .setLabel(`Explain ${currentSkills[i].name}`)
                         .setStyle(ButtonStyle.Secondary)
                 );
-
-            // Update the message
-            await interaction.update({ embeds: [embed], components: [row] });
-
+                
+                // Discord only allows 5 buttons per row
+                if (i === 4) break;
+            }
+            
+            // Determine components to include
+            const components = [row];
+            if (currentSkills.length > 0) {
+                components.push(explainRow);
+            }
+            
+            // Send response based on the action type
+            if (action === 'learnable-skills') {
+                // First time invocation - reply with a new message
+                await interaction.reply({ 
+                    embeds: [embed], 
+                    components
+                });
+            } else {
+                // Update existing message
+                await interaction.update({ 
+                    embeds: [embed], 
+                    components
+                });
+            }
+            
         } catch (error) {
-            this.logger.error('Error handling class interaction:', error);
-            await interaction.reply({ content: 'An error occurred while processing the request.', ephemeral: true });
+            console.error('Error handling learnable skills:', error);
+            await interaction.reply({ 
+                content: 'An error occurred while processing learnable skills.', 
+                ephemeral: true 
+            });
         }
     }
 }
@@ -1088,135 +1243,3 @@ function register_handlers(event_registry) {
 }
 
 module.exports = register_handlers;
-
-// Add the missing function
-function parseSkillChunk(chunk) {
-    const lines = chunk.trim().split(/\r?\n/);
-    const skillData = {};
-    for (const line of lines) {
-        const lineTrimmed = line.trim();
-        const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-        if (match) {
-            const key = match[1].toUpperCase();
-            let value = match[2].trim();
-            if (value.startsWith('"') && value.endsWith('"')) {
-                value = value.substring(1, value.length - 1);
-            }
-            if (!skillData[key]) {
-                skillData[key] = [];
-            }
-            skillData[key].push(value);
-        }
-    }
-    return skillData;
-}
-
-// Add the createClassEmbed function to the events.js file
-function createClassEmbed(classData, currentPage, totalPages, modName) {
-    const embed = new EmbedBuilder()
-        .setTitle(classData.displayName)
-        .setDescription(`Class in ${modName} (${currentPage + 1}/${totalPages})`)
-        .setColor(0x00FF00);
-
-    // Add description if available
-    if (classData.description) {
-        embed.addFields({ name: 'Description', value: classData.description });
-    }
-
-    // Add attributes
-    if (classData.attributes.length > 0) {
-        embed.addFields({ 
-            name: 'Attributes', 
-            value: classData.attributes.join(', ') 
-        });
-    }
-
-    // Add equipment categories
-    const categories = [
-        { name: 'Weapons', items: classData.weapons },
-        { name: 'Armor', items: classData.armors },
-        { name: 'Helmets', items: classData.helmets },
-        { name: 'Shields', items: classData.shields },
-        { name: 'Accessories', items: classData.accessories }
-    ];
-
-    for (const category of categories) {
-        if (category.items.length > 0) {
-            embed.addFields({ 
-                name: category.name, 
-                value: category.items.join('\n'),
-                inline: true 
-            });
-        }
-    }
-
-    return embed;
-}
-
-// Add the parseClassChunk function to events.js
-function parseClassChunk(chunk) {
-    if (!chunk || typeof chunk !== 'string') return null;
-
-    const lines = chunk.trim().split(/\r?\n/);
-    const classData = {
-        className: '',
-        DISPLAYNAMEID: null,
-        DESCRIPTIONID: null,
-        attributes: [],
-        weapons: [],
-        armors: [],
-        helmets: [],
-        shields: [],
-        accessories: []
-    };
-
-    for (const line of lines) {
-        if (!line || typeof line !== 'string') continue;
-        
-        const trimmedLine = line.trim();
-        if (!trimmedLine || trimmedLine.startsWith('//')) continue;
-
-        if (trimmedLine.startsWith('CREATECLASS:')) {
-            classData.className = trimmedLine.split(':')[1]?.trim() || '';
-        } else if (trimmedLine.startsWith('DISPLAYNAMEID:')) {
-            classData.DISPLAYNAMEID = trimmedLine.split(':')[1]?.trim() || null;
-        } else if (trimmedLine.startsWith('DESCRIPTIONID:')) {
-            classData.DESCRIPTIONID = trimmedLine.split(':')[1]?.trim() || null;
-        } else if (trimmedLine.startsWith('ATTRIBUTE:')) {
-            const attribute = trimmedLine.split(':')[1]?.trim()?.replace(/"/g, '');
-            if (attribute) classData.attributes.push(attribute);
-        } else if (trimmedLine.startsWith('ITEMCAT:')) {
-            try {
-                const parts = trimmedLine.split(',').map(s => s.trim());
-                if (parts.length >= 3) {
-                    const [category, type, style] = [parts[0].split(' ')[1], parts[1], parts[2]];
-                    const cleanType = type.replace(/"/g, '');
-                    const cleanStyle = style.replace(/"/g, '');
-                    
-                    switch (category.toLowerCase()) {
-                        case 'weapon':
-                            classData.weapons.push(`${cleanType} (${cleanStyle})`);
-                            break;
-                        case 'armor':
-                            classData.armors.push(`${cleanType} (${cleanStyle})`);
-                            break;
-                        case 'helmet':
-                            classData.helmets.push(`${cleanType} (${cleanStyle})`);
-                            break;
-                        case 'shield':
-                            classData.shields.push(`${cleanType} (${cleanStyle})`);
-                            break;
-                        case 'accessory':
-                            classData.accessories.push(`${cleanType} (${cleanStyle})`);
-                            break;
-                    }
-                }
-            } catch (error) {
-                // Skip malformed ITEMCAT lines
-                continue;
-            }
-        }
-    }
-
-    return classData.className ? classData : null;  // Only return if we have a valid class name
-}
