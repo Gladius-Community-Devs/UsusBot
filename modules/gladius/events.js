@@ -997,12 +997,20 @@ async function onInteractionCreate(interaction) {
             // Parse class definitions using helper function
             logger.debug(`Parsing class definitions`);
             let classesList = [];
-            const classChunks = classdefsContent.split(/\nCREATECLASS:/);
+            // Ignore header text before first CREATECLASS
+            const mainContent = classdefsContent.split('CREATECLASS:')[1];
+            if (!mainContent) {
+                logger.warn(`No class definitions found in file`);
+                return;
+            }
+
+            const classChunks = ('CREATECLASS:' + mainContent).split(/\n\s*CREATECLASS:/);
             logger.debug(`Split class definitions into ${classChunks.length} chunks`);
             
-            for (let rawChunk of classChunks) {
-                let chunk = rawChunk.trim();
-                if (!chunk) continue;
+            for (let chunk of classChunks) {
+                chunk = chunk.trim();
+                if (!chunk || chunk.toLowerCase().includes('numclassdefs')) continue;
+                
                 if (!chunk.startsWith('CREATECLASS:')) {
                     chunk = 'CREATECLASS:' + chunk;
                 }
@@ -1010,13 +1018,21 @@ async function onInteractionCreate(interaction) {
                 // Use the helper function to parse the class chunk
                 const classData = helpers.parseClassChunk(chunk);
                 
-                if (classData) {
+                if (classData && classData.className && !classData.className.includes('ClassDefs')) {
                     const displayName = classData.DISPLAYNAMEID ? (entryIdToText[classData.DISPLAYNAMEID] || classData.className) : classData.className;
                     const description = classData.DESCRIPTIONID ? (entryIdToText[classData.DESCRIPTIONID] || '') : '';
+
+                    // Process display names for classes
+                    function processClassName(displayName, createClassName) {
+                        if (!displayName || displayName === '0') {
+                            return createClassName;
+                        }
+                        return `${displayName} (${createClassName})`;
+                    }
                     
                     classesList.push({
                         ...classData,
-                        displayName,
+                        displayName: processClassName(displayName, classData.className),
                         description
                     });
                     logger.debug(`Parsed class: ${displayName}`);
