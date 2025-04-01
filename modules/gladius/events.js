@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 
 async function onInteractionCreate(interaction) {
-async function onInteractionCreate(interaction) {
     if (interaction.type !== InteractionType.MessageComponent) return;
 
     const customId = interaction.customId;
@@ -1360,7 +1359,7 @@ async function onInteractionCreate(interaction) {
                     classesList.push({ 
                         className, 
                         displayName, 
-                        description: descriptionId ? (entryIdToText[descriptionId] || ''), 
+                        description: descriptionId ? (entryIdToText[descriptionId] || '') : '',
                         attributes, weapons, armors, helmets, shields, accessories 
                     });
                 }
