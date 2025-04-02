@@ -959,7 +959,7 @@ async function onInteractionCreate(interaction) {
         const action = parts[0]; // "class-prev" or "class-next"
         const modName = parts[1];
         const currentPage = parseInt(parts[2], 10);
-        // Calculate newPage as before
+        // Calculate new page number as before
         const newPage = action === 'class-prev' ? currentPage - 1 : currentPage + 1;
         
         logger.info(`Processing class pagination: action=${action}, mod=${modName}, currentPage=${currentPage}, newPage=${newPage}`);
@@ -995,26 +995,20 @@ async function onInteractionCreate(interaction) {
                 }
             });
     
-            // Parse class definitions using helper function
-            logger.debug(`Parsing class definitions`);
-            let classesList = [];
-            // Ignore header text before first CREATECLASS
-            const mainContent = classdefsContent.split('CREATECLASS:')[1];
-            if (!mainContent) {
+            // --- CHANGE 1: Use a regex to split the class definitions file ---
+            // This regex matches every block starting with "CREATECLASS:" until the next "CREATECLASS:" or end of file.
+            const classChunks = classdefsContent.match(/CREATECLASS:[\s\S]*?(?=CREATECLASS:|$)/g);
+            if (!classChunks || classChunks.length === 0) {
                 logger.warn(`No class definitions found in file`);
                 return;
             }
+            logger.debug(`Found ${classChunks.length} class definition chunks`);
     
-            const classChunks = ('CREATECLASS:' + mainContent).split(/\n\s*CREATECLASS:/);
-            logger.debug(`Split class definitions into ${classChunks.length} chunks`);
-            
+            // Parse each class chunk into a structured object
+            let classesList = [];
             for (let chunk of classChunks) {
                 chunk = chunk.trim();
                 if (!chunk || chunk.toLowerCase().includes('numclassdefs')) continue;
-                
-                if (!chunk.startsWith('CREATECLASS:')) {
-                    chunk = 'CREATECLASS:' + chunk;
-                }
                 
                 // Use the helper function to parse the class chunk
                 const classData = helpers.parseClassChunk(chunk);
@@ -1049,8 +1043,8 @@ async function onInteractionCreate(interaction) {
                 return;
             }
             
-            // === CHANGE: Introduce pageSize and totalPages ===
-            const pageSize = 1; // Each page shows one class
+            // --- CHANGE 2: Introduce pageSize set to 1 ---
+            const pageSize = 1; // Each page will show exactly one class
             const totalPages = Math.ceil(classesList.length / pageSize);
             
             if (newPage < 0 || newPage >= totalPages) {
@@ -1059,12 +1053,11 @@ async function onInteractionCreate(interaction) {
                 return;
             }
     
-            // Calculate the index based on pageSize
+            // Calculate the index for the current page (since pageSize is 1, index = newPage)
             const startIndex = newPage * pageSize;
-            // Use the class at startIndex (since pageSize is 1, this is the class to display)
             logger.debug(`Creating embed for class "${classesList[startIndex].displayName}"`);
             const embed = helpers.createClassEmbed(classesList[startIndex], newPage, totalPages, modName);
-            // === END CHANGE ===
+            // --- END CHANGE 2 ---
     
             // Rebuild navigation buttons using totalPages instead of classesList.length
             logger.debug(`Creating navigation buttons for class page ${newPage+1}/${totalPages}`);
@@ -1079,7 +1072,7 @@ async function onInteractionCreate(interaction) {
                         .setCustomId(`class-next|${modName}|${newPage}`)
                         .setLabel('Next ▶️')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage >= totalPages - 1), // Updated condition using totalPages
+                        .setDisabled(newPage >= totalPages - 1), // Use totalPages for validation
                     new ButtonBuilder()
                         .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[startIndex].className)}`)
                         .setLabel('📚 Learnable Skills')
@@ -1089,7 +1082,7 @@ async function onInteractionCreate(interaction) {
             logger.info(`Updating interaction with class information for "${classesList[startIndex].displayName}"`);
             await interaction.deferUpdate();
             await interaction.editReply({ embeds: [embed], components: [row] });
-            logger.info(`Successfully processed class pagination for "${classesList[startIndex].displayName}" in mod "${modName}"`);
+            logger.info(`Successfully processed class pagination for "${classesList[startIndex].displayName}" in mod "${modName}"`);    
         } catch (error) {
             logger.error(`Error handling class pagination for mod "${modName}":`, error);
             logger.error(`Error stack trace: ${error.stack}`);
