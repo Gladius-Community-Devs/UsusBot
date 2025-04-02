@@ -1067,7 +1067,7 @@ async function onInteractionCreate(interaction) {
                         .setStyle(ButtonStyle.Primary)
                         .setDisabled(newPage >= totalPages - 1), // Use totalPages for validation
                     new ButtonBuilder()
-                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[startIndex].className)}`)
+                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[startIndex].skillUseName)}`)
                         .setLabel('📚 Learnable Skills')
                         .setStyle(ButtonStyle.Secondary)
                 );
