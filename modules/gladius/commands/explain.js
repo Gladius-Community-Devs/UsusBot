@@ -44,15 +44,15 @@ function parseComboChain(skillData, skillsChunks) {
     let totalComboDamage = 0;
     let additionalHits = []; // Array to hold damage modifier (as a number) for each additional hit.
     let currentSkill = skillData;
-    
+
     // Determine the maximum additional hits from the initial SKILLMETER.
     // For example, SKILLMETER: "Chain", 0, 3 means 3 hits total so 2 additional hits.
-    let meterParts = currentSkill['SKILLMETER'] 
+    let meterParts = currentSkill['SKILLMETER']
         ? currentSkill['SKILLMETER'].split(',').map(s => s.trim().replace(/"/g, ''))
         : [];
     const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
     let hitNumber = 1; // hitNumber = 1 for the first additional hit.
-    
+
     while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
         const subSkillName = currentSkill['SKILLSUBSKILL'];
         let foundSubSkill = null;
@@ -93,14 +93,14 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         description += `*${skillDesc}*\n\n`;
     }
     description += '-# Skills.tok Information:\n';
-    
+
     // Skill Type and Category
     if (skillData['SKILLCREATE']) {
         // Fix for SKILLCREATE - handle both array and string
-        const skillCreateValue = Array.isArray(skillData['SKILLCREATE']) 
-            ? skillData['SKILLCREATE'][0] 
+        const skillCreateValue = Array.isArray(skillData['SKILLCREATE'])
+            ? skillData['SKILLCREATE'][0]
             : skillData['SKILLCREATE'];
-            
+
         const skillCreateParts = skillCreateValue.split(',');
         const skillType = skillCreateParts[1]?.trim().replace(/"/g, '');
         const skillCategory = skillCreateParts[2]?.trim().replace(/"/g, '');
@@ -110,7 +110,7 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
             description += `**Type:** ${skillType}\n`;
         }
     }
-    
+
     // Job Point Cost
     if (skillData['SKILLJOBPOINTCOST']) {
         description += `**Job Point Cost:** ${skillData['SKILLJOBPOINTCOST']}\n`;
@@ -126,8 +126,8 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
             attributes = [attributes];
         }
         const relevantAttributes = attributes.filter(attr => [
-            'affinity', 'cantmiss', 'charge', 'melee', 'movetoattack', 
-            'noninterface', 'okwithnotargets', 'piercing', 'ranged', 
+            'affinity', 'cantmiss', 'charge', 'melee', 'movetoattack',
+            'noninterface', 'okwithnotargets', 'piercing', 'ranged',
             'shield', 'spell', 'suicide', 'weapon', 'teleport'
         ].includes(attr));
         relevantAttributes.forEach(attr => {
@@ -179,18 +179,18 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
             }
         });
     }
-    
+
     // Skill Costs
     if (skillData['SKILLCOSTS']) {
         let skillCostsParts;
-        
+
         // Handle SKILLCOSTS whether it's a string or array
         if (Array.isArray(skillData['SKILLCOSTS'])) {
             skillCostsParts = skillData['SKILLCOSTS'][0].split(',').map(part => part.trim());
         } else {
             skillCostsParts = skillData['SKILLCOSTS'].split(',').map(part => part.trim());
         }
-        
+
         const turns = skillCostsParts[0];
         const sp = skillCostsParts[1] / 10;
         let costDescription = `The skill costs ${turns} turn${turns !== '1' ? 's' : ''}`;
@@ -201,47 +201,52 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
             const affinityOrbs = skillData['SKILLAFFCOST'] / 20;
             costDescription += ` and ${affinityOrbs} affinity orb${affinityOrbs !== 1 ? 's' : ''}`;
             if (skillData['SKILLAFFINITY']) {
-                let affinityType = skillData['SKILLAFFINITY'].toLowerCase();
+                // Handle SKILLAFFINITY whether it's a string or array
+                const affinityValue = Array.isArray(skillData['SKILLAFFINITY'])
+                    ? skillData['SKILLAFFINITY'][0]
+                    : skillData['SKILLAFFINITY'];
+
+                let affinityType = typeof affinityValue === 'string' ? affinityValue.toLowerCase() : 'unknown';
                 affinityType = affinityType === 'none' ? 'any' : affinityType;
                 costDescription += ` (${affinityType})`;
             }
         }
         description += `**Costs:** ${costDescription}\n`;
     }
-    
+
     // Combat Modifiers (Base)
     let baseDamageModifier = 0;
     let damageType = hasWeaponAttribute ? 'total DAM' : 'total PWR';
     if (skillData['SKILLCOMBATMODS']) {
         // Ensure SKILLCOMBATMODS is handled properly whether it's an array or string
-        const skillCombatModsValue = Array.isArray(skillData['SKILLCOMBATMODS']) 
-            ? skillData['SKILLCOMBATMODS'][0] 
+        const skillCombatModsValue = Array.isArray(skillData['SKILLCOMBATMODS'])
+            ? skillData['SKILLCOMBATMODS'][0]
             : skillData['SKILLCOMBATMODS'];
-            
+
         const combatModsParts = skillCombatModsValue.split(',').map(part => part.trim());
         const accuracyModifier = combatModsParts[0];
         baseDamageModifier = parseFloat(combatModsParts[1]) || 0;
-        
+
         // Only show combat modifiers line if this is not a combo skill
-        const isComboSkill = skillData['SKILLMETER'] && 
-            (Array.isArray(skillData['SKILLMETER']) 
-                ? skillData['SKILLMETER'][0].includes('Chain') 
+        const isComboSkill = skillData['SKILLMETER'] &&
+            (Array.isArray(skillData['SKILLMETER'])
+                ? skillData['SKILLMETER'][0].includes('Chain')
                 : skillData['SKILLMETER'].includes('Chain'));
-                
+
         if (!isComboSkill) {
-            const accuracyText = parseFloat(accuracyModifier) === 0 
-                ? 'with no changes to accuracy' 
+            const accuracyText = parseFloat(accuracyModifier) === 0
+                ? 'with no changes to accuracy'
                 : `with a ${accuracyModifier.startsWith('-') ? '' : '+'}${accuracyModifier} to accuracy`;
             description += `**Combat Modifiers:** This skill deals ${(baseDamageModifier * 100).toFixed(2)}% ${damageType} per hit ${accuracyText}\n`;
         }
     }
-    
+
     // CODE CHANGE: Process combo chain - updated to handle array or string properties
-    if (skillData['SKILLMETER'] && 
-        (Array.isArray(skillData['SKILLMETER']) 
-            ? skillData['SKILLMETER'][0].includes('Chain') 
+    if (skillData['SKILLMETER'] &&
+        (Array.isArray(skillData['SKILLMETER'])
+            ? skillData['SKILLMETER'][0].includes('Chain')
             : skillData['SKILLMETER'].includes('Chain'))) {
-            
+
         const { totalComboDamage, additionalHits } = parseComboChain(skillData, skillsChunks);
         if (additionalHits.length > 0) {
             const totalCombo = baseDamageModifier + totalComboDamage;
@@ -252,7 +257,7 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
             });
         }
     }
-    
+
     // Multi-Hit Data (if any)
     if (skillData['SKILLMULTIHITDATA']) {
         const multiHitData = skillData['SKILLMULTIHITDATA'].split(',').map(part => part.trim());
@@ -273,27 +278,41 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         }).join(' | ');
         description += `**Multi-Hit:** Hits ${uniqueUnitsHit} total ${uniqueUnitsHit === 1 ? 'person' : 'people'} across ${numberOfHits} hits for ${totalDamage}% ${damageType}. **Hitting**: ${hitDescriptions}\n`;
     }
-    
+
     // Move to Attack
     if (skillData['SKILLMOVETOATTACKMOD']) {
         const moveToAttackMod = parseInt(skillData['SKILLMOVETOATTACKMOD'], 10);
         const movementText = moveToAttackMod > 0 ? `${moveToAttackMod} more` : `${Math.abs(moveToAttackMod)} less`;
         description += `**Move to Attack:** This unit can move to attack with ${movementText} ${Math.abs(moveToAttackMod) === 1 ? 'space' : 'spaces'} of movement\n`;
     }
-    
+
     // Range
     if (skillData['SKILLRANGE']) {
-        const skillRangeParts = skillData['SKILLRANGE'].split(',').map(part => part.trim());
+        // Handle SKILLRANGE whether it's a string or array
+        const skillRangeValue = Array.isArray(skillData['SKILLRANGE'])
+            ? skillData['SKILLRANGE'][0]
+            : skillData['SKILLRANGE'];
+
+        const skillRangeParts = skillRangeValue.split(',').map(part => part.trim());
         const range = skillRangeParts[0];
         const pattern = skillRangeParts[1]?.replace(/"/g, '');
+
         if (parseInt(range) === 0 && skillData['SKILLEFFECTRANGE'] && skillData['SKILLEFFECTCONDITION']) {
-            const effectRangeParts = skillData['SKILLEFFECTRANGE'].split(',').map(part => part.trim());
+            // Handle SKILLEFFECTRANGE whether it's a string or array
+            const effectRangeValue = Array.isArray(skillData['SKILLEFFECTRANGE'])
+                ? skillData['SKILLEFFECTRANGE'][0]
+                : skillData['SKILLEFFECTRANGE'];
+
+            const effectRangeParts = effectRangeValue.split(',').map(part => part.trim());
             const effectRange = effectRangeParts[0];
             const effectPattern = effectRangeParts[1]?.replace(/"/g, '');
+
             let effectConditions = Array.isArray(skillData['SKILLEFFECTCONDITION'])
                 ? skillData['SKILLEFFECTCONDITION']
                 : [skillData['SKILLEFFECTCONDITION']];
-            effectConditions = effectConditions.map(cond => cond.replace(/"/g, ''));
+
+            effectConditions = effectConditions.map(cond =>
+                typeof cond === 'string' ? cond.replace(/"/g, '') : cond);
             let effectCondition = '';
             effectConditions.forEach(cond => {
                 if (cond.startsWith('targetstatus ign')) {
@@ -335,7 +354,7 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
             description += `${rangeDescription}\n`;
         }
     }
-    
+
     // Teleport Range
     if (hasTeleportAttribute && skillData['SKILLMOVERANGE']) {
         const moveRangeParts = skillData['SKILLMOVERANGE'].split(',').map(part => part.trim());
@@ -343,12 +362,12 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         const movePattern = moveRangeParts[1]?.replace(/"/g, '');
         description += `**Teleport Range:** Teleports the user within ${moveRange} tile${moveRange !== '1' ? 's' : ''} in a ${movePattern}\n`;
     }
-    
+
     // Prerequisites
     if (skillData['SKILLPREREQ']) {
         description += `**Prerequisites:** ${skillData['SKILLPREREQ']}\n`;
     }
-    
+
     // Effects
     if (skillData['SKILLEFFECT']) {
         let effects = skillData['SKILLEFFECT'];
@@ -357,7 +376,7 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         }
         description += `**Effects:** ${effects.join(', ')}\n`;
     }
-    
+
     // Status Effects
     if (skillData['SKILLSTATUS']) {
         let statuses = skillData['SKILLSTATUS'];
@@ -366,7 +385,7 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         }
         description += `**Status Effects:** ${statuses.join(', ')}\n`;
     }
-    
+
     return description;
 };
 
@@ -565,20 +584,20 @@ module.exports = {
             if (currentMessage.length > 0) {
                 messages.push(currentMessage);
             }
-            
+
             // Create dropdown menus for class selection
             const allClasses = [...new Set([...matchingSkillClassNames, ...otherClasses])];
-            
+
             // URL encode the modName and skillName for safe inclusion in customId
             const encodedModName = encodeURIComponent(modName);
             const encodedSkillName = encodeURIComponent(skillName);
-            
+
             // Create options for the select menus
             const classOptions = allClasses.map(cls => ({
                 label: cls.charAt(0).toUpperCase() + cls.slice(1),
                 value: encodeURIComponent(cls.toLowerCase())
             }));
-            
+
             // Create select menus, splitting options into groups of 25 if necessary
             const rows = [];
             for (let i = 0; i < classOptions.length; i += 25) {
@@ -590,7 +609,7 @@ module.exports = {
                 const row = new ActionRowBuilder().addComponents(selectMenu);
                 rows.push(row);
             }
-            
+
             // Send messages with dropdown menus on the last message
             for (const [index, msg] of messages.entries()) {
                 if (index === messages.length - 1) {
