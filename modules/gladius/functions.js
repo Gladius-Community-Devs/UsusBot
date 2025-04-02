@@ -20,6 +20,7 @@ function parseClassChunk(chunk) {
     const lines = chunk.trim().split(/\r?\n/);
     const classData = {
         className: '',
+        skillUseName: '',
         DISPLAYNAMEID: null,
         DESCRIPTIONID: null,
         attributes: [],
@@ -38,7 +39,10 @@ function parseClassChunk(chunk) {
 
         if (trimmedLine.startsWith('CREATECLASS:')) {
             classData.className = trimmedLine.split(':')[1]?.trim() || '';
-        } else if (trimmedLine.startsWith('DISPLAYNAMEID:')) {
+        } else if (trimmedLine.startsWith('SKILLUSENAME:')) {
+            // Extract the skill use name and remove any surrounding quotes.
+            classData.skillUseName = trimmedLine.split(':')[1]?.trim().replace(/"/g, '') || '';
+        }else if (trimmedLine.startsWith('DISPLAYNAMEID:')) {
             classData.DISPLAYNAMEID = trimmedLine.split(':')[1]?.trim() || null;
         } else if (trimmedLine.startsWith('DESCRIPTIONID:')) {
             classData.DESCRIPTIONID = trimmedLine.split(':')[1]?.trim() || null;

@@ -631,326 +631,305 @@ async function onInteractionCreate(interaction) {
             await interaction.reply({ content: 'An error occurred while handling the itemskill command pagination.', ephemeral: true });
         }
     }
-    
     // For learnable skills pagination and explanation
     else if (customId.startsWith('learnable-skills|') || 
-             customId.startsWith('class-skills|') ||      // Add this line to handle both prefixes
-             customId.startsWith('learnable-page|') || 
-             customId.startsWith('learnable-explain|')) {
-        
-        // Normalize the action prefix for consistent handling
-        const parts = customId.split('|');
-        const action = parts[0].replace('class-skills', 'learnable-skills');  // Normalize the action
-        const modName = parts[1];
-        const className = parts[2];
-        
-        logger.info(`Processing learnable skills interaction: action=${action}, mod=${modName}, class=${className}`);
-        
-        let currentPage = 0;
-        let skillName = null;
-        
-        // Determine the action type and extract additional parameters
-        if (action === 'learnable-skills') {
-            // Initial request, page defaults to 0
-            currentPage = 0;
-            logger.debug(`Initial learnable skills request, starting at page 0`);
-        } else if (action === 'learnable-page') {
-            // Page navigation
-            currentPage = parseInt(parts[3]) || 0;
-            logger.debug(`Navigating to learnable skills page ${currentPage}`);
-        } else if (action === 'learnable-explain') {
-            // Explain a specific skill
-            skillName = decodeURIComponent(parts[3]);
-            logger.debug(`Explaining skill "${skillName}" for class "${className}"`);
+    customId.startsWith('class-skills|') ||      // Handle both prefixes
+    customId.startsWith('learnable-page|') || 
+    customId.startsWith('learnable-explain|')) {
+
+    // Normalize the action prefix for consistent handling
+    const parts = customId.split('|');
+    const action = parts[0].replace('class-skills', 'learnable-skills');  // Normalize the action
+    const modName = parts[1];
+    const className = parts[2];  // This is the class name as provided by the button
+
+    logger.info(`Processing learnable skills interaction: action=${action}, mod=${modName}, class=${className}`);
+
+    let currentPage = 0;
+    let skillName = null;
+
+    // Determine the action type and extract additional parameters
+    if (action === 'learnable-skills') {
+    // Initial request, page defaults to 0
+    currentPage = 0;
+    logger.debug(`Initial learnable skills request, starting at page 0`);
+    } else if (action === 'learnable-page') {
+    // Page navigation
+    currentPage = parseInt(parts[3]) || 0;
+    logger.debug(`Navigating to learnable skills page ${currentPage}`);
+    } else if (action === 'learnable-explain') {
+    // Explain a specific skill
+    skillName = decodeURIComponent(parts[3]);
+    logger.debug(`Explaining skill "${skillName}" for class "${className}"`);
+    }
+
+    try {
+    // Get file paths using helper
+    logger.debug(`Getting file paths for mod ${modName}`);
+    const filePaths = helpers.getModFilePaths(modName);
+
+    // Check if files exist
+    logger.debug(`Validating mod files for ${modName}`);
+    if (!helpers.validateModFiles(filePaths, ['lookupFilePath', 'skillsFilePath', 'classdefsPath'])) {
+    logger.warn(`Required mod files missing for ${modName}: lookupFilePath, skillsFilePath and/or classdefsPath`);
+    await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
+    return;
+    }
+
+    // Load lookup text using helper
+    logger.debug(`Loading lookup text for mod ${modName}`);
+    const { idToText } = helpers.loadLookupText(filePaths.lookupFilePath);
+
+    // *** NEW STEP: Determine the correct SKILLUSENAME for this class ***
+    // Instead of using the raw className from the button, we load the class definitions
+    // file and look up the corresponding SKILLUSENAME.
+    let skillUseNameForClass = className;  // fallback to raw value
+    try {
+    const classDefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
+    const classChunks = helpers.splitContentIntoChunks(classDefsContent);
+    for (const chunk of classChunks) {
+        const classData = helpers.parseClassChunk(chunk);
+        if (classData && classData.className.toLowerCase() === className.toLowerCase() && classData.skillUseName) {
+            skillUseNameForClass = classData.skillUseName;
+            logger.debug(`Found SKILLUSENAME "${skillUseNameForClass}" for class "${className}"`);
+            break;
         }
-        
-        try {
-            // Get file paths using helper
-            logger.debug(`Getting file paths for mod ${modName}`);
-            const filePaths = helpers.getModFilePaths(modName);
+    }
+    } catch (lookupError) {
+    logger.error("Error looking up SKILLUSENAME in class definitions:", lookupError);
+    // Proceed using the raw className as fallback
+    }
+    // *** End of new lookup step ***
+
+    // Read the skills.tok file
+    logger.debug(`Reading skills.tok file for mod ${modName}`);
+    const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
+    const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
+    logger.debug(`Split skills.tok into ${skillsChunks.length} chunks`);
+
+    // For the "Explain" action, generate detailed skill description
+    if (action === 'learnable-explain' && skillName) {
+    logger.info(`Generating explanation for skill "${skillName}" for class "${className}"`);
+    const explainCommand = require('./commands/explain');
+    
+    // Find the skill with the given name for this class
+    let matchingSkill = null;
+    logger.debug(`Searching for skill "${skillName}" for class "${className}" using SKILLUSENAME "${skillUseNameForClass}"`);
+    for (const chunk of skillsChunks) {
+        if (chunk.includes('SKILLCREATE:')) {
+            const skillData = helpers.parseSkillChunk(chunk);
+            const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
+            const displayName = displayNameId && idToText[displayNameId] ? idToText[displayNameId] : null;
             
-            // Check if files exist
-            logger.debug(`Validating mod files for ${modName}`);
-            if (!helpers.validateModFiles(filePaths, ['lookupFilePath', 'skillsFilePath'])) {
-                logger.warn(`Required mod files missing for ${modName}: lookupFilePath and/or skillsFilePath`);
-                await interaction.reply({ content: `The mod files are missing or incomplete.`, ephemeral: true });
-                return;
-            }
-            
-            // Load lookup text using helper
-            logger.debug(`Loading lookup text for mod ${modName}`);
-            const { idToText } = helpers.loadLookupText(filePaths.lookupFilePath);
-            
-            // Read the skills.tok file
-            logger.debug(`Reading skills.tok file for mod ${modName}`);
-            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
-            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
-            logger.debug(`Split skills.tok into ${skillsChunks.length} chunks`);
-            
-            // For the "Explain" action, generate detailed skill description
-            if (action === 'learnable-explain' && skillName) {
-                logger.info(`Generating explanation for skill "${skillName}" for class "${className}"`);
-                const explainCommand = require('./commands/explain');
-                
-                // Find the skill with the given name for this class
-                let matchingSkill = null;
-                
-                logger.debug(`Searching for skill "${skillName}" for class "${className}"`);
-                for (const chunk of skillsChunks) {
-                    if (chunk.includes('SKILLCREATE:')) {
-                        const skillData = helpers.parseSkillChunk(chunk);
-                        const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
-                        const displayName = displayNameId && idToText[displayNameId] ? idToText[displayNameId] : null;
-                        
-                        // Check if it matches the skill name and class
-                        if (displayName && displayName.toLowerCase() === skillName.toLowerCase()) {
-                            let skillClasses = skillData['SKILLUSECLASS'] || [];
-                            if (!Array.isArray(skillClasses)) {
-                                skillClasses = [skillClasses];
-                            }
-                            
-                            if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
-                                matchingSkill = {
-                                    skillData,
-                                    chunk
-                                };
-                                logger.debug(`Found matching skill "${displayName}" for class "${className}"`);
-                                break;
-                            }
-                        }
-                    }
+            // Check if it matches the skill name and is available for the class (using SKILLUSENAME)
+            if (displayName && displayName.toLowerCase() === skillName.toLowerCase()) {
+                let skillClasses = skillData['SKILLUSECLASS'] || [];
+                if (!Array.isArray(skillClasses)) {
+                    skillClasses = [skillClasses];
                 }
                 
-                if (!matchingSkill) {
-                    logger.warn(`Could not find skill "${skillName}" for class "${className}" in ${modName}`);
-                    await interaction.reply({ 
-                        content: `Could not find skill "${skillName}" for class "${className}" in ${modName}.`, 
-                        ephemeral: true 
-                    });
-                    return;
-                }
-                
-                // Generate the skill description
-                logger.debug(`Generating skill description for "${skillName}"`);
-                const skillDescription = explainCommand.generateSkillDescription(matchingSkill.skillData, idToText, skillsChunks);
-                
-                // Create an embed for the skill explanation
-                logger.debug(`Creating embed for skill "${skillName}"`);
-                const embed = new EmbedBuilder()
-                    .setTitle(`${skillName} (${className})`)
-                    .setDescription(skillDescription)
-                    .setColor(0x00AAFF)
-                    .setFooter({ text: `Mod: ${modName}` });
-                
-                // Create a button to go back to the learnable skills list
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`learnable-page|${modName}|${className}|${currentPage}`)
-                            .setLabel('Back to Learnable Skills')
-                            .setStyle(ButtonStyle.Secondary)
-                    );
-                
-                // Reply with the embed
-                logger.info(`Sending skill explanation for "${skillName}" to user`);
-                await interaction.reply({ embeds: [embed], components: [row] });
-                return;
-            }
-            
-            // Find all learnable skills for this class
-            logger.info(`Finding learnable skills for class "${className}" in mod "${modName}"`);
-            const learnableSkills = [];
-            
-            for (const chunk of skillsChunks) {
-                if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = helpers.parseSkillChunk(chunk);
-                    
-                    // Check if this skill is usable by the class
-                    let skillClasses = skillData['SKILLUSECLASS'] || [];
-                    if (!Array.isArray(skillClasses)) {
-                        skillClasses = [skillClasses];
-                    }
-                    
-                    if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
-                        // Get the display name
-                        const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
-                        const displayName = displayNameId && idToText[displayNameId] ? idToText[displayNameId] : 'Unknown Skill';
-                        
-                        // Extract skill creation info
-                        let skillType = '';
-                        let skillCategory = '';
-                        if (skillData['SKILLCREATE'] && skillData['SKILLCREATE'][0]) {
-                            const createParts = skillData['SKILLCREATE'][0].split(',');
-                            if (createParts.length >= 3) {
-                                skillType = createParts[1].trim().replace(/"/g, '');
-                                skillCategory = createParts[2].trim().replace(/"/g, '');
-                            }
-                        }
-                        
-                        // Add the skill to our list
-                        learnableSkills.push({
-                            name: displayName,
-                            type: skillType,
-                            category: skillCategory,
-                            chunk: chunk,
-                            skillData
-                        });
-                        logger.debug(`Found learnable skill "${displayName}" for class "${className}"`);
-                    }
-                }
-            }
-            
-            logger.info(`Found ${learnableSkills.length} learnable skills for class "${className}"`);
-            
-            // Sort skills alphabetically by name
-            learnableSkills.sort((a, b) => a.name.localeCompare(b.name));
-            logger.debug(`Sorted learnable skills alphabetically`);
-            
-            // Calculate pagination
-            const itemsPerPage = 5;
-            const pageCount = Math.ceil(learnableSkills.length / itemsPerPage);
-            
-            // Validate current page
-            if (currentPage < 0) {
-                logger.debug(`Correcting negative page number to 0`);
-                currentPage = 0;
-            }
-            if (currentPage >= pageCount) {
-                logger.debug(`Correcting excessive page number from ${currentPage} to ${pageCount - 1}`);
-                currentPage = pageCount - 1;
-            }
-            
-            // Get skills for the current page
-            const startIdx = currentPage * itemsPerPage;
-            const endIdx = Math.min(startIdx + itemsPerPage, learnableSkills.length);
-            const currentSkills = learnableSkills.slice(startIdx, endIdx);
-            logger.debug(`Displaying skills ${startIdx+1}-${endIdx} (page ${currentPage+1}/${pageCount})`);
-            
-            // Create embed with skill list
-            logger.debug(`Creating embed for learnable skills page ${currentPage+1}`);
-            const embed = new EmbedBuilder()
-                .setTitle(`Learnable Skills for ${className}`)
-                .setDescription(`Skills that can be learned by ${className} in ${modName} (Page ${currentPage + 1}/${pageCount})`)
-                .setColor(0x3498db);
-            
-            // Add each skill to the embed
-            for (const skill of currentSkills) {
-                // Create a short description
-                let description = '';
-                
-                // Add skill type and category if available
-                if (skill.type && skill.category) {
-                    description += `**Type:** ${skill.type} (${skill.category})\n`;
-                }
-                
-                // Add JP cost if available
-                if (skill.skillData['SKILLJOBPOINTCOST'] && skill.skillData['SKILLJOBPOINTCOST'][0]) {
-                    description += `**JP Cost:** ${skill.skillData['SKILLJOBPOINTCOST'][0]}\n`;
-                }
-                
-                // Add skill costs if available
-                if (skill.skillData['SKILLCOSTS'] && skill.skillData['SKILLCOSTS'][0]) {
-                    const costsParts = skill.skillData['SKILLCOSTS'][0].split(',').map(part => part.trim());
-                    const turns = costsParts[0];
-                    description += `**Turns:** ${turns}\n`;
-                }
-                
-                // Add field to embed
-                embed.addFields({ 
-                    name: skill.name, 
-                    value: description || 'No additional information available'
-                });
-                logger.debug(`Added skill "${skill.name}" to embed`);
-            }
-            
-            // Create pagination buttons
-            logger.debug(`Creating navigation buttons for page ${currentPage+1}/${pageCount}`);
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`learnable-page|${modName}|${className}|${Math.max(0, currentPage - 1)}`)
-                        .setLabel('Previous')
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(currentPage === 0),
-                    new ButtonBuilder()
-                        .setCustomId(`learnable-page|${modName}|${className}|${Math.min(pageCount - 1, currentPage + 1)}`)
-                        .setLabel('Next')
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(currentPage === pageCount - 1)
-                );
-            
-            // Add explain buttons for each skill on this page
-            logger.debug(`Creating explanation buttons for skills on page ${currentPage+1}`);
-            const explainRow = new ActionRowBuilder();
-            for (let i = 0; i < currentSkills.length; i++) {
-                explainRow.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`learnable-explain|${modName}|${className}|${encodeURIComponent(currentSkills[i].name)}`)
-                        .setLabel(`Explain ${currentSkills[i].name}`)
-                        .setStyle(ButtonStyle.Secondary)
-                );
-                logger.debug(`Added explain button for skill "${currentSkills[i].name}"`);
-                
-                // Discord only allows 5 buttons per row
-                if (i === 4) {
-                    logger.debug(`Reached maximum button limit (5), stopping button creation`);
+                if (skillClasses.some(cls => cls.toLowerCase() === skillUseNameForClass.toLowerCase())) {
+                    matchingSkill = {
+                        skillData,
+                        chunk
+                    };
+                    logger.debug(`Found matching skill "${displayName}" for class "${skillUseNameForClass}"`);
                     break;
                 }
             }
+        }
+    }
+    
+    if (!matchingSkill) {
+        logger.warn(`Could not find skill "${skillName}" for class "${skillUseNameForClass}" in ${modName}`);
+        await interaction.reply({ 
+            content: `Could not find skill "${skillName}" for class "${className}" in ${modName}.`, 
+            ephemeral: true 
+        });
+        return;
+    }
+    
+    // Generate the skill description
+    logger.debug(`Generating skill description for "${skillName}"`);
+    const skillDescription = explainCommand.generateSkillDescription(matchingSkill.skillData, idToText, skillsChunks);
+    
+    // Create an embed for the skill explanation
+    logger.debug(`Creating embed for skill "${skillName}"`);
+    const embed = new EmbedBuilder()
+        .setTitle(`${skillName} (${className})`)
+        .setDescription(skillDescription)
+        .setColor(0x00AAFF)
+        .setFooter({ text: `Mod: ${modName}` });
+    
+    // Create a button to go back to the learnable skills list
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`learnable-page|${modName}|${className}|${currentPage}`)
+                .setLabel('Back to Learnable Skills')
+                .setStyle(ButtonStyle.Secondary)
+        );
+    
+    // Reply with the embed
+    logger.info(`Sending skill explanation for "${skillName}" to user`);
+    await interaction.reply({ embeds: [embed], components: [row] });
+    return;
+    }
+
+    // Find all learnable skills for this class
+    logger.info(`Finding learnable skills for class "${skillUseNameForClass}" in mod "${modName}"`);
+    const learnableSkills = [];
+
+    for (const chunk of skillsChunks) {
+    if (chunk.includes('SKILLCREATE:')) {
+        const skillData = helpers.parseSkillChunk(chunk);
+        
+        // Check if this skill is usable by the class, using the SKILLUSENAME lookup result
+        let skillClasses = skillData['SKILLUSECLASS'] || [];
+        if (!Array.isArray(skillClasses)) {
+            skillClasses = [skillClasses];
+        }
+        
+        if (skillClasses.some(cls => cls.toLowerCase() === skillUseNameForClass.toLowerCase())) {
+            // Get the display name
+            const displayNameId = skillData['SKILLDISPLAYNAMEID'] ? parseInt(skillData['SKILLDISPLAYNAMEID'][0]) : null;
+            const displayName = displayNameId && idToText[displayNameId] ? idToText[displayNameId] : 'Unknown Skill';
             
-            // Determine components to include
-            const components = [row];
-            if (currentSkills.length > 0) {
-                components.push(explainRow);
-            }
-            
-            // Send response based on the action type
-            if (action === 'learnable-skills') {
-                // First time invocation - reply with a new message
-                logger.info(`Sending initial learnable skills response for class "${className}"`);
-                await interaction.reply({ 
-                    embeds: [embed], 
-                    components
-                });
-            } else {
-                // Update existing message
-                logger.info(`Updating existing learnable skills message for class "${className}"`);
-                await interaction.update({ 
-                    embeds: [embed], 
-                    components
-                });
-            }
-            logger.info(`Successfully processed learnable skills interaction for class "${className}" in mod "${modName}"`);
-            
-        } catch (error) {
-            logger.error(`Error handling learnable skills for class "${className}" in mod "${modName}":`, error);
-            logger.error(`Error stack trace: ${error.stack}`);
-            
-            // More detailed error handling
-            try {
-                logger.debug(`Attempting to reply with error message`);
-                await interaction.reply({ 
-                    content: 'An error occurred while processing learnable skills.', 
-                    ephemeral: true 
-                });
-                logger.debug(`Successfully sent error reply`);
-            } catch (replyError) {
-                // If replying fails (e.g., interaction already replied to), try to update instead
-                logger.error(`Failed to reply to interaction: ${replyError.message}`);
-                try {
-                    logger.debug(`Attempting to update interaction with error message`);
-                    await interaction.update({ 
-                        content: 'An error occurred while processing learnable skills.',
-                        components: [] 
-                    });
-                    logger.debug(`Successfully updated interaction with error message`);
-                } catch (updateError) {
-                    logger.error(`Failed to update interaction: ${updateError.message}`);
-                    logger.error(`Both reply and update failed, cannot respond to user`);
-                    // At this point we can't do much else
+            // Extract skill creation info
+            let skillType = '';
+            let skillCategory = '';
+            if (skillData['SKILLCREATE'] && skillData['SKILLCREATE'][0]) {
+                const createParts = skillData['SKILLCREATE'][0].split(',');
+                if (createParts.length >= 3) {
+                    skillType = createParts[1].trim().replace(/"/g, '');
+                    skillCategory = createParts[2].trim().replace(/"/g, '');
                 }
             }
+            
+            // Add the skill to our list
+            learnableSkills.push({
+                name: displayName,
+                type: skillType,
+                category: skillCategory,
+                chunk: chunk,
+                skillData
+            });
+            logger.debug(`Found learnable skill "${displayName}" for class "${skillUseNameForClass}"`);
         }
+    }
+    }
+
+    logger.info(`Found ${learnableSkills.length} learnable skills for class "${skillUseNameForClass}"`);
+
+    // Sort skills alphabetically by name
+    learnableSkills.sort((a, b) => a.name.localeCompare(b.name));
+    logger.debug(`Sorted learnable skills alphabetically`);
+
+    // Calculate pagination
+    const itemsPerPage = 5;
+    const pageCount = Math.ceil(learnableSkills.length / itemsPerPage);
+
+    // Validate current page
+    if (currentPage < 0) {
+    logger.debug(`Correcting negative page number to 0`);
+    currentPage = 0;
+    }
+    if (currentPage >= pageCount) {
+    logger.debug(`Correcting excessive page number from ${currentPage} to ${pageCount - 1}`);
+    currentPage = pageCount - 1;
+    }
+
+    // Get skills for the current page
+    const startIdx = currentPage * itemsPerPage;
+    const endIdx = Math.min(startIdx + itemsPerPage, learnableSkills.length);
+    const currentSkills = learnableSkills.slice(startIdx, endIdx);
+    logger.debug(`Displaying skills ${startIdx+1}-${endIdx} (page ${currentPage+1}/${pageCount})`);
+
+    // Create embed with skill list
+    logger.debug(`Creating embed for learnable skills page ${currentPage+1}`);
+    const embed = new EmbedBuilder()
+    .setTitle(`Learnable Skills for ${className}`)
+    .setDescription(`Skills that can be learned by ${className} (Page ${currentPage + 1}/${pageCount})`)
+    .setColor(0x3498db);
+
+    // Add each skill to the embed
+    for (const skill of currentSkills) {
+    let description = '';
+    if (skill.type && skill.category) {
+        description += `**Type:** ${skill.type} (${skill.category})\n`;
+    }
+    if (skill.skillData['SKILLJOBPOINTCOST'] && skill.skillData['SKILLJOBPOINTCOST'][0]) {
+        description += `**JP Cost:** ${skill.skillData['SKILLJOBPOINTCOST'][0]}\n`;
+    }
+    if (skill.skillData['SKILLCOSTS'] && skill.skillData['SKILLCOSTS'][0]) {
+        const costsParts = skill.skillData['SKILLCOSTS'][0].split(',').map(part => part.trim());
+        const turns = costsParts[0];
+        description += `**Turns:** ${turns}\n`;
+    }
+    embed.addFields({ 
+        name: skill.name, 
+        value: description || 'No additional information available'
+    });
+    logger.debug(`Added skill "${skill.name}" to embed`);
+    }
+
+    // Create pagination buttons
+    logger.debug(`Creating navigation buttons for page ${currentPage+1}/${pageCount}`);
+    const row = new ActionRowBuilder()
+    .addComponents(
+        new ButtonBuilder()
+            .setCustomId(`learnable-page|${modName}|${className}|${Math.max(0, currentPage - 1)}`)
+            .setLabel('Previous')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === 0),
+        new ButtonBuilder()
+            .setCustomId(`learnable-page|${modName}|${className}|${Math.min(pageCount - 1, currentPage + 1)}`)
+            .setLabel('Next')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === pageCount - 1)
+    );
+
+    // Add explain buttons for each skill on this page (up to 5 buttons per row)
+    logger.debug(`Creating explanation buttons for skills on page ${currentPage+1}`);
+    const explainRow = new ActionRowBuilder();
+    for (let i = 0; i < currentSkills.length; i++) {
+    explainRow.addComponents(
+        new ButtonBuilder()
+            .setCustomId(`learnable-explain|${modName}|${className}|${encodeURIComponent(currentSkills[i].name)}`)
+            .setLabel(`Explain ${currentSkills[i].name}`)
+            .setStyle(ButtonStyle.Secondary)
+    );
+    logger.debug(`Added explain button for skill "${currentSkills[i].name}"`);
+    if (i === 4) break; // Discord allows a maximum of 5 buttons per row
+    }
+
+    const components = [row];
+    if (currentSkills.length > 0) {
+    components.push(explainRow);
+    }
+
+    // Send response based on the action type
+    if (action === 'learnable-skills') {
+    logger.info(`Sending initial learnable skills response for class "${className}"`);
+    await interaction.reply({ embeds: [embed], components });
+    } else {
+    logger.info(`Updating existing learnable skills message for class "${className}"`);
+    await interaction.update({ embeds: [embed], components });
+    }
+    logger.info(`Successfully processed learnable skills interaction for class "${className}" in mod "${modName}"`);
+
+    } catch (error) {
+    logger.error(`Error handling learnable skills for class "${className}" in mod "${modName}":`, error);
+    try {
+    await interaction.reply({ content: 'An error occurred while processing learnable skills.', ephemeral: true });
+    } catch (replyError) {
+    try {
+        await interaction.update({ content: 'An error occurred while processing learnable skills.', components: [] });
+    } catch (updateError) {
+        logger.error(`Failed to update interaction with error message: ${updateError.message}`);
+    }
+    }
+    }
     }
     
     // New branch for class pagination buttons (prev/next)
