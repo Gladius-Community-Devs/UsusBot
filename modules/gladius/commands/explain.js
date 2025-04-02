@@ -182,7 +182,15 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     
     // Skill Costs
     if (skillData['SKILLCOSTS']) {
-        const skillCostsParts = skillData['SKILLCOSTS'].split(',').map(part => part.trim());
+        let skillCostsParts;
+        
+        // Handle SKILLCOSTS whether it's a string or array
+        if (Array.isArray(skillData['SKILLCOSTS'])) {
+            skillCostsParts = skillData['SKILLCOSTS'][0].split(',').map(part => part.trim());
+        } else {
+            skillCostsParts = skillData['SKILLCOSTS'].split(',').map(part => part.trim());
+        }
+        
         const turns = skillCostsParts[0];
         const sp = skillCostsParts[1] / 10;
         let costDescription = `The skill costs ${turns} turn${turns !== '1' ? 's' : ''}`;
