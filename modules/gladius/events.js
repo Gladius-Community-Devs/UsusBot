@@ -659,8 +659,11 @@ async function onInteractionCreate(interaction) {
             logger.debug(`Navigating to learnable skills page ${currentPage}`);
         } else if (action === 'learnable-explain') {
             // Explain a specific skill
-            skillName = decodeURIComponent(parts[3]);
-            logger.debug(`Explaining skill "${skillName}" for class "${className}"`);
+            const skillIdParts = parts[3].split('_');
+            skillName = decodeURIComponent(skillIdParts[0]);
+            // If there's an index part, use it for exact matching later
+            const skillIndex = skillIdParts.length > 1 ? parseInt(skillIdParts[1]) : -1;
+            logger.debug(`Explaining skill "${skillName}" (index: ${skillIndex}) for class "${className}"`);
         }
 
         try {
@@ -907,13 +910,15 @@ async function onInteractionCreate(interaction) {
             logger.debug(`Creating explanation buttons for skills on page ${currentPage + 1}`);
             const explainRow = new ActionRowBuilder();
             for (let i = 0; i < currentSkills.length; i++) {
+                // Create a unique ID by adding the index as a suffix when a skill name appears multiple times
+                const skillId = `${encodeURIComponent(currentSkills[i].name)}_${i}`;
                 explainRow.addComponents(
                     new ButtonBuilder()
-                        .setCustomId(`learnable-explain|${modName}|${className}|${encodeURIComponent(currentSkills[i].name)}`)
+                        .setCustomId(`learnable-explain|${modName}|${className}|${skillId}`)
                         .setLabel(`Explain ${currentSkills[i].name}`)
                         .setStyle(ButtonStyle.Secondary)
                 );
-                logger.debug(`Added explain button for skill "${currentSkills[i].name}"`);
+                logger.debug(`Added explain button for skill "${currentSkills[i].name}" with ID "${skillId}"`);
                 if (i === 4) break; // Discord allows a maximum of 5 buttons per row
             }
 
