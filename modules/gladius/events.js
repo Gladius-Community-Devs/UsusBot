@@ -959,10 +959,11 @@ async function onInteractionCreate(interaction) {
         const action = parts[0]; // "class-prev" or "class-next"
         const modName = parts[1];
         const currentPage = parseInt(parts[2], 10);
+        // Calculate newPage as before
         const newPage = action === 'class-prev' ? currentPage - 1 : currentPage + 1;
         
         logger.info(`Processing class pagination: action=${action}, mod=${modName}, currentPage=${currentPage}, newPage=${newPage}`);
-
+    
         try {
             // Get file paths using helper
             logger.debug(`Getting file paths for mod "${modName}"`);
@@ -980,7 +981,7 @@ async function onInteractionCreate(interaction) {
             
             logger.debug(`Reading class definitions file for mod "${modName}"`);
             const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
-
+    
             // Build lookup table
             logger.debug(`Building lookup table from ${filePaths.lookupFilePath}`);
             const entryIdToText = {};
@@ -993,7 +994,7 @@ async function onInteractionCreate(interaction) {
                     entryIdToText[id] = text;
                 }
             });
-
+    
             // Parse class definitions using helper function
             logger.debug(`Parsing class definitions`);
             let classesList = [];
@@ -1003,7 +1004,7 @@ async function onInteractionCreate(interaction) {
                 logger.warn(`No class definitions found in file`);
                 return;
             }
-
+    
             const classChunks = ('CREATECLASS:' + mainContent).split(/\n\s*CREATECLASS:/);
             logger.debug(`Split class definitions into ${classChunks.length} chunks`);
             
@@ -1021,7 +1022,7 @@ async function onInteractionCreate(interaction) {
                 if (classData && classData.className && !classData.className.includes('ClassDefs')) {
                     const displayName = classData.DISPLAYNAMEID ? (entryIdToText[classData.DISPLAYNAMEID] || classData.className) : classData.className;
                     const description = classData.DESCRIPTIONID ? (entryIdToText[classData.DESCRIPTIONID] || '') : '';
-
+    
                     // Process display names for classes
                     function processClassName(displayName, createClassName) {
                         if (!displayName || displayName === '0') {
@@ -1041,24 +1042,32 @@ async function onInteractionCreate(interaction) {
             
             classesList.sort((a, b) => a.displayName.localeCompare(b.displayName));
             logger.debug(`Sorted ${classesList.length} classes alphabetically`);
-
+    
             if (classesList.length === 0) {
                 logger.warn(`No classes found for mod "${modName}"`);
                 await interaction.reply({ content: `No classes found for mod '${modName}'.`, ephemeral: true });
                 return;
             }
-            if (newPage < 0 || newPage >= classesList.length) {
-                logger.warn(`Invalid page number: ${newPage}. Valid range: 0-${classesList.length-1}`);
-                await interaction.reply({ content: 'Invalid page number.', ephemeral: true });
+            
+            // === CHANGE: Introduce pageSize and totalPages ===
+            const pageSize = 1; // Each page shows one class
+            const totalPages = Math.ceil(classesList.length / pageSize);
+            
+            if (newPage < 0 || newPage >= totalPages) {
+                logger.warn(`Invalid page number: ${newPage}. Valid range: 0-${totalPages - 1}`);
+                await interaction.reply({ content: `Invalid page number. Valid range: 0-${totalPages - 1}`, ephemeral: true });
                 return;
             }
-
-            // Create the embed using helper function
-            logger.debug(`Creating embed for class "${classesList[newPage].displayName}"`);
-            const embed = helpers.createClassEmbed(classesList[newPage], newPage, classesList.length, modName);
-
-            // Rebuild navigation buttons
-            logger.debug(`Creating navigation buttons for class page ${newPage+1}/${classesList.length}`);
+    
+            // Calculate the index based on pageSize
+            const startIndex = newPage * pageSize;
+            // Use the class at startIndex (since pageSize is 1, this is the class to display)
+            logger.debug(`Creating embed for class "${classesList[startIndex].displayName}"`);
+            const embed = helpers.createClassEmbed(classesList[startIndex], newPage, totalPages, modName);
+            // === END CHANGE ===
+    
+            // Rebuild navigation buttons using totalPages instead of classesList.length
+            logger.debug(`Creating navigation buttons for class page ${newPage+1}/${totalPages}`);
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -1070,16 +1079,17 @@ async function onInteractionCreate(interaction) {
                         .setCustomId(`class-next|${modName}|${newPage}`)
                         .setLabel('Next ▶️')
                         .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage >= classesList.length - 1), // Updated condition
+                        .setDisabled(newPage >= totalPages - 1), // Updated condition using totalPages
                     new ButtonBuilder()
-                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[newPage].className)}`)
+                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[startIndex].className)}`)
                         .setLabel('📚 Learnable Skills')
                         .setStyle(ButtonStyle.Secondary)
                 );
             
-            logger.info(`Updating interaction with class information for "${classesList[newPage].displayName}"`);
-            await interaction.update({ embeds: [embed], components: [row] });
-            logger.info(`Successfully processed class pagination for "${classesList[newPage].displayName}" in mod "${modName}"`);
+            logger.info(`Updating interaction with class information for "${classesList[startIndex].displayName}"`);
+            await interaction.deferUpdate();
+            await interaction.editReply({ embeds: [embed], components: [row] });
+            logger.info(`Successfully processed class pagination for "${classesList[startIndex].displayName}" in mod "${modName}"`);
         } catch (error) {
             logger.error(`Error handling class pagination for mod "${modName}":`, error);
             logger.error(`Error stack trace: ${error.stack}`);
