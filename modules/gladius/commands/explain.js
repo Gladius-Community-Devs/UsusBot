@@ -343,7 +343,12 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
         } else {
             let rangeDescription = `**Range:** The skill can choose a target within ${range} tile${range !== '1' ? 's' : ''} in a ${pattern}`;
             if (skillData['SKILLEXCLUDERANGE']) {
-                const skillExcludeRangeParts = skillData['SKILLEXCLUDERANGE'].split(',').map(part => part.trim());
+                // Handle SKILLEXCLUDERANGE whether it's a string or array
+                const skillExcludeRangeValue = Array.isArray(skillData['SKILLEXCLUDERANGE'])
+                    ? skillData['SKILLEXCLUDERANGE'][0]
+                    : skillData['SKILLEXCLUDERANGE'];
+
+                const skillExcludeRangeParts = skillExcludeRangeValue.split(',').map(part => part.trim());
                 const excludeRange = skillExcludeRangeParts[0];
                 const excludePattern = skillExcludeRangeParts[1]?.replace(/"/g, '');
                 rangeDescription += ` and cannot attack within ${excludeRange} tile${excludeRange !== '1' ? 's' : ''} in a ${excludePattern} around themselves`;
