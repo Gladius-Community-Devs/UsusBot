@@ -353,8 +353,14 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
                 const excludePattern = skillExcludeRangeParts[1]?.replace(/"/g, '');
                 rangeDescription += ` and cannot attack within ${excludeRange} tile${excludeRange !== '1' ? 's' : ''} in a ${excludePattern} around themselves`;
             }
-            if (skillData['SKILLPROJECTILEATTR'] && skillData['SKILLPROJECTILEATTR'].trim().replace(/"/g, '') === 'indirect') {
-                rangeDescription += ' and does not need line of sight';
+            if (skillData['SKILLPROJECTILEATTR']) {
+                const projectileAttr = Array.isArray(skillData['SKILLPROJECTILEATTR'])
+                    ? skillData['SKILLPROJECTILEATTR'][0]
+                    : skillData['SKILLPROJECTILEATTR'];
+
+                if (typeof projectileAttr === 'string' && projectileAttr.trim().replace(/"/g, '') === 'indirect') {
+                    rangeDescription += ' and does not need line of sight';
+                }
             }
             description += `${rangeDescription}\n`;
         }
@@ -362,10 +368,16 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
 
     // Teleport Range
     if (hasTeleportAttribute && skillData['SKILLMOVERANGE']) {
-        const moveRangeParts = skillData['SKILLMOVERANGE'].split(',').map(part => part.trim());
-        const moveRange = moveRangeParts[0];
-        const movePattern = moveRangeParts[1]?.replace(/"/g, '');
-        description += `**Teleport Range:** Teleports the user within ${moveRange} tile${moveRange !== '1' ? 's' : ''} in a ${movePattern}\n`;
+        const moveRangeValue = Array.isArray(skillData['SKILLMOVERANGE'])
+            ? skillData['SKILLMOVERANGE'][0]
+            : skillData['SKILLMOVERANGE'];
+
+        if (typeof moveRangeValue === 'string') {
+            const moveRangeParts = moveRangeValue.split(',').map(part => part.trim());
+            const moveRange = moveRangeParts[0];
+            const movePattern = moveRangeParts[1]?.replace(/"/g, '');
+            description += `**Teleport Range:** Teleports the user within ${moveRange} tile${moveRange !== '1' ? 's' : ''} in a ${movePattern}\n`;
+        }
     }
 
     // Prerequisites
