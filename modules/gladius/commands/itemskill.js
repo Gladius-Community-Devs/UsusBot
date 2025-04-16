@@ -345,7 +345,7 @@ function createSkillEmbed(skill, currentPage, totalPages, modName) {
     // Add skill data
     const skillLines = skill.chunk.split('\n');
     const formattedSkill = skillLines.map(line => line.trim()).join('\n');
-    embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`}` });
+    embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`` });
     
     // Add items that grant this skill
     if (skill.items.length > 0) {
