@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 
 module.exports = {
     name: 'prizes',
@@ -203,9 +203,7 @@ module.exports = {
                         prizeData[prizeName] = data;
                     }
                 }
-            }
-
-            // Function to format prize information
+            }            // Function to format prize information
             const formatPrize = (prizeName) => {
                 const prize = prizeData[prizeName];
                 if (!prize) return `Prize "${prizeName}" not found`;
@@ -253,60 +251,112 @@ module.exports = {
                 return result;
             };
 
-            // Prepare the response
-            let messages = [];
-            let header = `Prize information for '${searchName}' in '${modName}':\n\n`;
-            let currentMessage = header;
+            // Function to get tier name
+            const getTierName = (tier) => {
+                switch(tier) {
+                    case 0: return 'Amateur';
+                    case 1: return 'Semi-Pro';
+                    case 2: return 'Pro';
+                    default: return `Tier ${tier}`;
+                }
+            };
 
-            for (const item of matchingItems) {
-                let itemText = `**${item.type}: ${item.name}**\n\n`;
+            // Create embed
+            const embed = new EmbedBuilder()
+                .setTitle(`🏆 Prize Information`)
+                .setDescription(`Prizes for **${searchName}** in **${modName}**`)
+                .setColor(0x00AE86)
+                .setTimestamp();
+
+            let fieldCount = 0;
+            const maxFields = 25; // Discord embed limit            for (const item of matchingItems) {
+                if (fieldCount >= maxFields) break;
                 
                 if (item.type === 'LEAGUE') {
                     // Handle PRIZECOMPLETION and PRIZEMASTERY
                     if (item.data['PRIZECOMPLETION']) {
-                        itemText += `**Completion Prizes:**\n`;
                         const uniquePrizes = [...new Set(item.data['PRIZECOMPLETION'].map(p => p.split(' ')[0].replace(/"/g, '')))];
+                        let completionText = '';
                         for (const prizeName of uniquePrizes) {
-                            itemText += formatPrize(prizeName) + '\n';
+                            const prizeInfo = formatPrize(prizeName);
+                            if (prizeInfo.length + completionText.length < 1024) {
+                                completionText += prizeInfo + '\n';
+                            }
+                        }
+                        if (completionText && fieldCount < maxFields) {
+                            embed.addFields({
+                                name: `🎯 ${item.name} - Completion Prizes`,
+                                value: completionText.trim() || 'No completion prizes found',
+                                inline: false
+                            });
+                            fieldCount++;
                         }
                     }
                     
                     if (item.data['PRIZEMASTERY']) {
-                        itemText += `**Mastery Prizes:**\n`;
                         const uniquePrizes = [...new Set(item.data['PRIZEMASTERY'].map(p => p.split(' ')[0].replace(/"/g, '')))];
+                        let masteryText = '';
                         for (const prizeName of uniquePrizes) {
-                            itemText += formatPrize(prizeName + '_Mastery') + '\n';
+                            const prizeInfo = formatPrize(prizeName + '_Mastery');
+                            if (prizeInfo.length + masteryText.length < 1024) {
+                                masteryText += prizeInfo + '\n';
+                            }
+                        }
+                        if (masteryText && fieldCount < maxFields) {
+                            embed.addFields({
+                                name: `⭐ ${item.name} - Mastery Prizes`,
+                                value: masteryText.trim() || 'No mastery prizes found',
+                                inline: false
+                            });
+                            fieldCount++;
                         }
                     }
                 } else if (item.type === 'ENCOUNTER') {
-                    // Handle PRIZETIER
+                    // Handle PRIZETIER with tier information
                     if (item.data['PRIZETIER']) {
-                        itemText += `**Encounter Prizes:**\n`;
-                        const uniquePrizes = [...new Set(item.data['PRIZETIER'].map(p => p.split(' ')[0].replace(/"/g, '')))];
-                        for (const prizeName of uniquePrizes) {
-                            itemText += formatPrize(prizeName) + '\n';
+                        // Group prizes by tier
+                        const prizesByTier = {};
+                        for (const prizeEntry of item.data['PRIZETIER']) {
+                            const parts = prizeEntry.split(' ');
+                            const prizeName = parts[0].replace(/"/g, '');
+                            const tier = parseInt(parts[1]);
+                            
+                            if (!prizesByTier[tier]) {
+                                prizesByTier[tier] = new Set();
+                            }
+                            prizesByTier[tier].add(prizeName);
+                        }
+                        
+                        // Create a field for each tier
+                        for (const [tier, prizeSet] of Object.entries(prizesByTier)) {
+                            if (fieldCount >= maxFields) break;
+                            
+                            const tierNum = parseInt(tier);
+                            const tierName = getTierName(tierNum);
+                            let tierText = '';
+                            
+                            for (const prizeName of prizeSet) {
+                                const prizeInfo = formatPrize(prizeName);
+                                if (prizeInfo.length + tierText.length < 1024) {
+                                    tierText += prizeInfo + '\n';
+                                }
+                            }
+                            
+                            if (tierText) {
+                                embed.addFields({
+                                    name: `🎲 ${item.name} - ${tierName} Tier`,
+                                    value: tierText.trim() || `No ${tierName.toLowerCase()} tier prizes found`,
+                                    inline: false
+                                });
+                                fieldCount++;
+                            }
                         }
                     }
                 }
-
-                itemText += '\n';
-
-                if (currentMessage.length + itemText.length > 2000) {
-                    messages.push(currentMessage);
-                    currentMessage = itemText;
-                } else {
-                    currentMessage += itemText;
-                }
             }
 
-            if (currentMessage.length > 0) {
-                messages.push(currentMessage);
-            }
-
-            // Send the messages
-            for (const msg of messages) {
-                await message.channel.send({ content: msg });
-            }
+            // Send the embed
+            await message.channel.send({ embeds: [embed] });
 
         } catch (error) {
             console.error('Error finding prizes:', error);
