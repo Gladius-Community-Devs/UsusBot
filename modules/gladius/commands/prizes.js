@@ -5,11 +5,11 @@ const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, E
 module.exports = {
     name: 'prizes',
     description: 'Finds and displays prize information for a specified encounter or league.',
-    syntax: 'prizes [mod (optional)] [encounter/league name]',
-    num_args: 1,
+    syntax: 'prizes [mod (optional)] [encounter/league name]',    num_args: 1,
     args_to_lower: true,
     needs_api: false,
-    has_state: false,    async execute(message, args, extra) {
+    has_state: false,
+    async execute(message, args, extra) {
         // Adjusted sanitizeInput to allow apostrophes, hyphens, and ampersands
         const sanitizeInput = (input) => {
             return input.replace(/[^\w\s''&-]/g, '').trim();
@@ -191,9 +191,7 @@ module.exports = {
 
             // Read prizes.tok file
             const prizesContent = fs.readFileSync(prizesFilePath, 'utf8');
-            const prizeChunks = prizesContent.split(/\n\s*\n/);
-
-            // Parse prize chunks
+            const prizeChunks = prizesContent.split(/\n\s*\n/);            // Parse prize chunks
             const prizeData = {};
             for (const chunk of prizeChunks) {
                 if (chunk.includes('PRIZE')) {
@@ -203,7 +201,9 @@ module.exports = {
                         prizeData[prizeName] = data;
                     }
                 }
-            }            // Function to format prize information
+            }
+
+            // Function to format prize information
             const formatPrize = (prizeName) => {
                 const prize = prizeData[prizeName];
                 if (!prize) return `Prize "${prizeName}" not found`;
@@ -266,10 +266,10 @@ module.exports = {
                 .setTitle(`🏆 Prize Information`)
                 .setDescription(`Prizes for **${searchName}** in **${modName}**`)
                 .setColor(0x00AE86)
-                .setTimestamp();
+                .setTimestamp();            let fieldCount = 0;
+            const maxFields = 25; // Discord embed limit
 
-            let fieldCount = 0;
-            const maxFields = 25; // Discord embed limit            for (const item of matchingItems) {
+            for (const item of matchingItems) {
                 if (fieldCount >= maxFields) break;
                 
                 if (item.type === 'LEAGUE') {
