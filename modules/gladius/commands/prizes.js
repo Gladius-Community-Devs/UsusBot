@@ -9,11 +9,10 @@ module.exports = {
     num_args: 1,
     args_to_lower: true,
     needs_api: false,
-    has_state: false,
-    async execute(message, args, extra) {
-        // Adjusted sanitizeInput to allow apostrophes and hyphens
+    has_state: false,    async execute(message, args, extra) {
+        // Adjusted sanitizeInput to allow apostrophes, hyphens, and ampersands
         const sanitizeInput = (input) => {
-            return input.replace(/[^\w\s''-]/g, '').trim();
+            return input.replace(/[^\w\s''&-]/g, '').trim();
         };
 
         if (args.length <= 1) {
