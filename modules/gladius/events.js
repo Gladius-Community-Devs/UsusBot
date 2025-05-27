@@ -292,23 +292,22 @@ async function onInteractionCreate(interaction) {
         const classNameSanitized = helpers.sanitizeInput(className);
         const statSetSanitized = helpers.sanitizeInput(statSet);
 
-        logger.debug(`Sanitized inputs: mod="${modNameSanitized}", class="${classNameSanitized}", statSet="${statSetSanitized}"`);
+        logger.debug(`Sanitized inputs: mod="${modNameSanitized}", class="${classNameSanitized}", statSet="${statSetSanitized}"`);        try {
+            // Define file paths using helper
+            const filePaths = helpers.getModFilePaths(modNameSanitized);
 
-        try {            // Define file paths
-            const baseUploadsPath = path.join(__dirname, '../../../uploads');
-            const modPath = path.join(baseUploadsPath, modNameSanitized);
-            const statsetsFilePath = path.join(modPath, 'data', 'units', 'statsets.txt');
-
-            logger.debug(`Looking for statsets file at: ${statsetsFilePath}`);
+            logger.debug(`Looking for statsets file at: ${filePaths.statsetsFilePath}`);
 
             // Check if file exists
-            if (!fs.existsSync(statsetsFilePath)) {
-                logger.error(`Statsets file not found for mod "${modNameSanitized}" at path: ${statsetsFilePath}`);
+            if (!fs.existsSync(filePaths.statsetsFilePath)) {
+                logger.error(`Statsets file not found for mod "${modNameSanitized}" at path: ${filePaths.statsetsFilePath}`);
                 await interaction.reply({ content: `The statsets.txt file is missing for this mod.`, ephemeral: true });
                 return;
-            }            // Read statsets.txt and find the stat set
+            }
+
+            // Read statsets.txt and find the stat set
             logger.debug(`Reading statsets file for mod "${modNameSanitized}"`);
-            const statsetsContent = fs.readFileSync(statsetsFilePath, 'utf8');
+            const statsetsContent = fs.readFileSync(filePaths.statsetsFilePath, 'utf8');
             const statsetChunks = statsetsContent.split(/\n\s*\n/);
             
             logger.debug(`Found ${statsetChunks.length} statset chunks, searching for statset ${statSetSanitized}`);

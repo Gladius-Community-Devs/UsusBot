@@ -334,7 +334,9 @@ function getModFilePaths(modName) {
         skillsFilePath: path.join(modPath, 'data', 'config', 'skills.tok'),
         itemsFilePath: path.join(modPath, 'data', 'config', 'items.tok'),
         classdefsPath: path.join(modPath, 'data', 'config', 'classdefs.tok'),
-        shopsPath: path.join(modPath, 'data', 'towns', 'shops')
+        shopsPath: path.join(modPath, 'data', 'towns', 'shops'),
+        statsetsFilePath: path.join(modPath, 'data', 'units', 'statsets.txt'),
+        gladiatorsFilePath: path.join(modPath, 'data', 'units', 'gladiators.txt')
     };
 }
 

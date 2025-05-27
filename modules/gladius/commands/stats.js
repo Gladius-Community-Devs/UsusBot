@@ -38,24 +38,19 @@ module.exports = {
                     index = 2; // Move index to next argument
                     break;
                 }
-            }
-
-            // Sanitize modName
+            }            // Sanitize modName
             modName = path.basename(helpers.sanitizeInput(modName));
 
-            // Define file paths securely
-            const baseUploadsPath = path.join(__dirname, '../../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
-            const gladiatorsFilePath = path.join(modPath, 'data', 'units', 'gladiators.txt');
-            const statsetsFilePath = path.join(modPath, 'data', 'units', 'statsets.txt');
+            // Define file paths using helper
+            const filePaths = helpers.getModFilePaths(modName);
 
             // Check if files exist
-            if (!fs.existsSync(gladiatorsFilePath)) {
+            if (!fs.existsSync(filePaths.gladiatorsFilePath)) {
                 message.channel.send({ content: `That mod does not have gladiators.txt file!` });
                 return;
             }
 
-            if (!fs.existsSync(statsetsFilePath)) {
+            if (!fs.existsSync(filePaths.statsetsFilePath)) {
                 message.channel.send({ content: `That mod does not have statsets.txt file!` });
                 return;
             }
@@ -79,10 +74,8 @@ module.exports = {
                     if (isNaN(potentialLevel) || potentialLevel < 1 || potentialLevel > 30) {
                         continue; // Invalid level, try next split
                     }
-                }
-
-                // Check if this class exists in gladiators.txt
-                const gladiatorsContent = fs.readFileSync(gladiatorsFilePath, 'utf8');
+                }                // Check if this class exists in gladiators.txt
+                const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
                 const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
 
                 // Apply class variant regex patterns
@@ -128,10 +121,8 @@ module.exports = {
             if (!foundMatchingClass) {
                 message.channel.send({ content: `No class named '${args.slice(index).join(' ')}' found in '${modName}'.` });
                 return;
-            }
-
-            // Find all gladiators with the matching base class and collect their stat sets
-            const gladiatorsContent = fs.readFileSync(gladiatorsFilePath, 'utf8');
+            }            // Find all gladiators with the matching base class and collect their stat sets
+            const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
             const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
             const statSetCounts = new Map();
 
@@ -187,10 +178,8 @@ module.exports = {
                     maxCount = count;
                     mostCommonStatSet = statSet;
                 }
-            }
-
-            // Read statsets.txt and find the stat set
-            const statsetsContent = fs.readFileSync(statsetsFilePath, 'utf8');
+            }            // Read statsets.txt and find the stat set
+            const statsetsContent = fs.readFileSync(filePaths.statsetsFilePath, 'utf8');
             const statsetChunks = statsetsContent.split(/\n\s*\n/);
             
             let targetStatsetData = null;
