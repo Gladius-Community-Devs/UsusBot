@@ -48,10 +48,13 @@ module.exports = {
             if (!fs.existsSync(filePaths.gladiatorsFilePath)) {
                 message.channel.send({ content: `That mod does not have gladiators.txt file!` });
                 return;
+            }            if (!fs.existsSync(filePaths.leaguesPath)) {
+                message.channel.send({ content: `That mod does not have leagues folder!` });
+                return;
             }
 
-            if (!fs.existsSync(filePaths.leaguesPath)) {
-                message.channel.send({ content: `That mod does not have leagues folder!` });
+            if (!fs.existsSync(filePaths.lookupFilePath)) {
+                message.channel.send({ content: `That mod does not have lookuptext_eng.txt file!` });
                 return;
             }
 
@@ -211,14 +214,30 @@ module.exports = {
                 const stats = topStatSet.stats;
                 filterDescription = `\n*Showing only gladiators with the top stat set by level 30 average stats*\n`;
                 filterDescription += `**Top Stat Set:** ${topStatSet.statSet} (Avg: ${topStatSet.average.toFixed(1)}) - CON:${stats.con} PWR:${stats.pwr} ACC:${stats.acc} DEF:${stats.def} INI:${stats.ini}\n\n`;
-            }            // Read all league files and find where these gladiators can be recruited
+            }            // Load lookup text for arena names
+            let lookupTextMap = {};
+            if (fs.existsSync(filePaths.lookupFilePath)) {
+                const { idToText } = helpers.loadLookupText(filePaths.lookupFilePath);
+                lookupTextMap = idToText;
+            }
+
+            // Read all league files and find where these gladiators can be recruited
             const leagueFiles = fs.readdirSync(filePaths.leaguesPath).filter(file => file.endsWith('.tok'));
             const recruitmentData = new Map(); // Map gladiator name to arenas
 
             for (const file of leagueFiles) {
-                const arenaName = file.replace('_league.tok', '').replace('.tok', '');
                 const filePath = path.join(filePaths.leaguesPath, file);
                 const leagueContent = fs.readFileSync(filePath, 'utf8');
+                
+                // Extract arena name from OFFICENAME line
+                let arenaName = file.replace('_league.tok', '').replace('.tok', ''); // fallback
+                const officeNameMatch = leagueContent.match(/OFFICENAME\s+"[^"]*",\s*(\d+)/);
+                if (officeNameMatch) {
+                    const lookupId = parseInt(officeNameMatch[1]);
+                    if (lookupTextMap[lookupId]) {
+                        arenaName = lookupTextMap[lookupId];
+                    }
+                }
                 
                 // Check each target gladiator in this league file
                 for (const gladiator of targetGladiators) {
@@ -282,9 +301,8 @@ module.exports = {
                     if (gladiatorList.length > 1024) {
                         gladiatorList = gladiatorList.substring(0, 1021) + '...';
                     }
-                    
-                    embed.addFields({
-                        name: `🏟️ ${arena.charAt(0).toUpperCase() + arena.slice(1)}`,
+                      embed.addFields({
+                        name: `🏟️ ${arena}`,
                         value: gladiatorList || 'No gladiators found',
                         inline: true
                     });
