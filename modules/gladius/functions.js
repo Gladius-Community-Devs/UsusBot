@@ -327,14 +327,14 @@ function loadLookupText(lookupFilePath) {
 function getModFilePaths(modName) {
     const baseUploadsPath = path.join(__dirname, '../../uploads');
     const modPath = path.join(baseUploadsPath, modName);
-    
-    return {
+      return {
         modPath,
         lookupFilePath: path.join(modPath, 'data', 'config', 'lookuptext_eng.txt'),
         skillsFilePath: path.join(modPath, 'data', 'config', 'skills.tok'),
         itemsFilePath: path.join(modPath, 'data', 'config', 'items.tok'),
         classdefsPath: path.join(modPath, 'data', 'config', 'classdefs.tok'),
         shopsPath: path.join(modPath, 'data', 'towns', 'shops'),
+        leaguesPath: path.join(modPath, 'data', 'towns', 'leagues'),
         statsetsFilePath: path.join(modPath, 'data', 'units', 'statsets.txt'),
         gladiatorsFilePath: path.join(modPath, 'data', 'units', 'gladiators.txt')
     };
