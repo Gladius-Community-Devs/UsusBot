@@ -272,56 +272,62 @@ async function onInteractionCreate(interaction) {
     // For level selection dropdowns from the stats.js command
     else if (customId.startsWith('level-select-1|') || customId.startsWith('level-select-2|')) {
         // Extract modName, className, statSet, and selected level from customId and interaction
-        const parts = customId.split('|');
-        if (parts.length < 4) {
+        const parts = customId.split('|');        if (parts.length < 4) {
+            logger.error(`Invalid level selection interaction data: customId has ${parts.length} parts, expected 4+`);
             await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
             return;
         }
 
         const encodedModName = parts[1];
         const encodedClassName = parts[2];
-        const encodedStatSet = parts[3];
-
-        const modName = decodeURIComponent(encodedModName);
+        const encodedStatSet = parts[3];        const modName = decodeURIComponent(encodedModName);
         const className = decodeURIComponent(encodedClassName);
         const statSet = decodeURIComponent(encodedStatSet);
         const selectedLevel = parseInt(interaction.values[0]);
+
+        logger.info(`Processing level selection: mod="${modName}", class="${className}", statSet="${statSet}", level=${selectedLevel}`);
 
         // Sanitize inputs
         const modNameSanitized = path.basename(helpers.sanitizeInput(modName));
         const classNameSanitized = helpers.sanitizeInput(className);
         const statSetSanitized = helpers.sanitizeInput(statSet);
 
-        try {
-            // Define file paths
+        logger.debug(`Sanitized inputs: mod="${modNameSanitized}", class="${classNameSanitized}", statSet="${statSetSanitized}"`);
+
+        try {            // Define file paths
             const baseUploadsPath = path.join(__dirname, '../../../uploads');
             const modPath = path.join(baseUploadsPath, modNameSanitized);
             const statsetsFilePath = path.join(modPath, 'data', 'units', 'statsets.txt');
 
+            logger.debug(`Looking for statsets file at: ${statsetsFilePath}`);
+
             // Check if file exists
             if (!fs.existsSync(statsetsFilePath)) {
+                logger.error(`Statsets file not found for mod "${modNameSanitized}" at path: ${statsetsFilePath}`);
                 await interaction.reply({ content: `The statsets.txt file is missing for this mod.`, ephemeral: true });
                 return;
-            }
-
-            // Read statsets.txt and find the stat set
+            }            // Read statsets.txt and find the stat set
+            logger.debug(`Reading statsets file for mod "${modNameSanitized}"`);
             const statsetsContent = fs.readFileSync(statsetsFilePath, 'utf8');
             const statsetChunks = statsetsContent.split(/\n\s*\n/);
+            
+            logger.debug(`Found ${statsetChunks.length} statset chunks, searching for statset ${statSetSanitized}`);
             
             let targetStatsetData = null;
             for (const chunk of statsetChunks) {
                 if (chunk.includes(`Statset ${statSetSanitized}:`)) {
                     targetStatsetData = chunk.trim();
+                    logger.debug(`Found target statset ${statSetSanitized}`);
                     break;
                 }
             }
 
             if (!targetStatsetData) {
+                logger.error(`Stat set ${statSetSanitized} not found in statsets.txt for mod "${modNameSanitized}"`);
                 await interaction.reply({ content: `Stat set ${statSetSanitized} not found.`, ephemeral: true });
                 return;
-            }
-
-            // Parse the stat set data
+            }            // Parse the stat set data
+            logger.debug(`Parsing stat set data for level ${selectedLevel}`);
             const statLines = targetStatsetData.split(/\r?\n/).slice(1); // Skip the "Statset X:" line
             let stats = null;
             
@@ -340,6 +346,7 @@ async function onInteractionCreate(interaction) {
                                 def: statValues[3],
                                 ini: statValues[4]
                             };
+                            logger.debug(`Found stats for level ${selectedLevel}: CON=${stats.con}, PWR=${stats.pwr}, ACC=${stats.acc}, DEF=${stats.def}, INI=${stats.ini}`);
                         }
                         break;
                     }
@@ -347,6 +354,7 @@ async function onInteractionCreate(interaction) {
             }
 
             if (!stats) {
+                logger.error(`Level ${selectedLevel} not found in stat set ${statSetSanitized} for mod "${modNameSanitized}"`);
                 await interaction.reply({ content: `Level ${selectedLevel} not found in stat set ${statSetSanitized}.`, ephemeral: true });
                 return;
             }
