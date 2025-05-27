@@ -5,7 +5,7 @@ const helpers = require('../functions');
 
 module.exports = {
     name: 'recruits',
-    description: 'Shows where to recruit gladiators of a specified class, optionally filtered by stat set quality.',
+    description: 'Shows where to recruit gladiators of a specified class, optionally filtered by the best stat set.',
     syntax: 'recruits [mod (optional)] [class name] [statset5 (optional)]',
     num_args: 1,
     args_to_lower: true,
@@ -187,9 +187,7 @@ module.exports = {
                             }
                         }
                     }
-                }
-
-                // Find stat sets used by our matching gladiators and sort by average
+                }                // Find stat sets used by our matching gladiators and sort by average
                 const relevantStatSets = Array.from(statSetData.keys())
                     .filter(statSet => statSetAverages.has(statSet))
                     .map(statSet => ({
@@ -199,23 +197,20 @@ module.exports = {
                         gladiators: statSetData.get(statSet)
                     }))
                     .sort((a, b) => b.average - a.average) // Sort by highest average first
-                    .slice(0, 5); // Take top 5
+                    .slice(0, 1); // Take only top 1
 
                 if (relevantStatSets.length === 0) {
                     message.channel.send({ content: `No stat set data found for class '${className}' in '${modName}'.` });
                     return;
                 }
 
-                // Get gladiators from top 5 stat sets
+                // Get gladiators from top stat set only
                 targetGladiators = relevantStatSets.flatMap(statSetInfo => statSetInfo.gladiators);
                 
-                filterDescription = `\n*Showing only gladiators with the top 5 stat sets by level 30 average stats*\n`;
-                filterDescription += `**Top Stat Sets:**\n`;
-                relevantStatSets.forEach((statSetInfo, index) => {
-                    const stats = statSetInfo.stats;
-                    filterDescription += `${index + 1}. Stat Set ${statSetInfo.statSet} (Avg: ${statSetInfo.average.toFixed(1)}) - CON:${stats.con} PWR:${stats.pwr} ACC:${stats.acc} DEF:${stats.def} INI:${stats.ini}\n`;
-                });
-                filterDescription += '\n';
+                const topStatSet = relevantStatSets[0];
+                const stats = topStatSet.stats;
+                filterDescription = `\n*Showing only gladiators with the top stat set by level 30 average stats*\n`;
+                filterDescription += `**Top Stat Set:** ${topStatSet.statSet} (Avg: ${topStatSet.average.toFixed(1)}) - CON:${stats.con} PWR:${stats.pwr} ACC:${stats.acc} DEF:${stats.def} INI:${stats.ini}\n\n`;
             }            // Read all league files and find where these gladiators can be recruited
             const leagueFiles = fs.readdirSync(filePaths.leaguesPath).filter(file => file.endsWith('.tok'));
             const recruitmentData = new Map(); // Map gladiator name to arenas
