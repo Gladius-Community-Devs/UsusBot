@@ -269,6 +269,104 @@ async function onInteractionCreate(interaction) {
         }
     }
 
+    // For level selection dropdowns from the stats.js command
+    else if (customId.startsWith('level-select-1|') || customId.startsWith('level-select-2|')) {
+        // Extract modName, className, statSet, and selected level from customId and interaction
+        const parts = customId.split('|');
+        if (parts.length < 4) {
+            await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
+            return;
+        }
+
+        const encodedModName = parts[1];
+        const encodedClassName = parts[2];
+        const encodedStatSet = parts[3];
+
+        const modName = decodeURIComponent(encodedModName);
+        const className = decodeURIComponent(encodedClassName);
+        const statSet = decodeURIComponent(encodedStatSet);
+        const selectedLevel = parseInt(interaction.values[0]);
+
+        // Sanitize inputs
+        const modNameSanitized = path.basename(helpers.sanitizeInput(modName));
+        const classNameSanitized = helpers.sanitizeInput(className);
+        const statSetSanitized = helpers.sanitizeInput(statSet);
+
+        try {
+            // Define file paths
+            const baseUploadsPath = path.join(__dirname, '../../../uploads');
+            const modPath = path.join(baseUploadsPath, modNameSanitized);
+            const statsetsFilePath = path.join(modPath, 'data', 'units', 'statsets.txt');
+
+            // Check if file exists
+            if (!fs.existsSync(statsetsFilePath)) {
+                await interaction.reply({ content: `The statsets.txt file is missing for this mod.`, ephemeral: true });
+                return;
+            }
+
+            // Read statsets.txt and find the stat set
+            const statsetsContent = fs.readFileSync(statsetsFilePath, 'utf8');
+            const statsetChunks = statsetsContent.split(/\n\s*\n/);
+            
+            let targetStatsetData = null;
+            for (const chunk of statsetChunks) {
+                if (chunk.includes(`Statset ${statSetSanitized}:`)) {
+                    targetStatsetData = chunk.trim();
+                    break;
+                }
+            }
+
+            if (!targetStatsetData) {
+                await interaction.reply({ content: `Stat set ${statSetSanitized} not found.`, ephemeral: true });
+                return;
+            }
+
+            // Parse the stat set data
+            const statLines = targetStatsetData.split(/\r?\n/).slice(1); // Skip the "Statset X:" line
+            let stats = null;
+            
+            for (const line of statLines) {
+                const trimmed = line.trim();
+                if (trimmed.includes(':')) {
+                    const parts = trimmed.split(':');
+                    const levelNum = parseInt(parts[0].trim());
+                    if (levelNum === selectedLevel) {
+                        const statValues = parts[1].trim().split(' ').map(s => parseInt(s.trim()));
+                        if (statValues.length === 5) { // CON PWR ACC DEF INI
+                            stats = {
+                                con: statValues[0],
+                                pwr: statValues[1],
+                                acc: statValues[2],
+                                def: statValues[3],
+                                ini: statValues[4]
+                            };
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (!stats) {
+                await interaction.reply({ content: `Level ${selectedLevel} not found in stat set ${statSetSanitized}.`, ephemeral: true });
+                return;
+            }
+
+            const response = `**Stats for ${classNameSanitized} (Level ${selectedLevel}) in ${modNameSanitized}**\n` +
+                `*Using stat set ${statSetSanitized} (most common for this class)*\n\n` +
+                `**CON:** ${stats.con} | **PWR:** ${stats.pwr} | **ACC:** ${stats.acc} | **DEF:** ${stats.def} | **INI:** ${stats.ini}`;
+
+            // Defer update to acknowledge the interaction without sending a new reply
+            await interaction.deferUpdate();
+
+            // Edit the original message with the stats result and retain the dropdown menus
+            await interaction.editReply({ content: response, components: interaction.message.components });
+
+        } catch (error) {
+            logger.error('Error processing level selection:', error);
+            await interaction.reply({ content: 'An error occurred while processing your level selection.', ephemeral: true });
+        }
+    }
+
     // For itemskill pagination buttons
     else if (customId.startsWith('itemskill-prev|') || customId.startsWith('itemskill-next|') ||
         customId.startsWith('itemskill-shops|') || customId.startsWith('itemskill-shops-byname|')) {
@@ -916,8 +1014,7 @@ async function onInteractionCreate(interaction) {
                     new ButtonBuilder()
                         .setCustomId(`learnable-explain|${modName}|${className}|${skillId}`)
                         .setLabel(`Explain ${currentSkills[i].name}`)
-                        .setStyle(ButtonStyle.Secondary)
-                );
+                        .setStyle(ButtonStyle.Secondary)                );
                 logger.debug(`Added explain button for skill "${currentSkills[i].name}" with ID "${skillId}"`);
                 if (i === 4) break; // Discord allows a maximum of 5 buttons per row
             }
