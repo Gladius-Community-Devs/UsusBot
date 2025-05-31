@@ -112,7 +112,8 @@ module.exports = {
 
             for (let i = 0; i < classChunks.length; i++) {
                 const chunk = classChunks[i];
-                this.logger.info(`Recruits command: [CHUNK ${i+1}/${classChunks.length}] Raw chunk (first 200 chars): ${chunk.substring(0, 200).replace(/[\\r\\n]+/g, ' ')}`);
+                // Corrected comment about chunk definition
+                this.logger.info(`Recruits command: [CHUNK ${i+1}/${classChunks.length}] Processing chunk (separated by blank lines)...`); 
 
                 const classData = helpers.parseClassChunk(chunk);
                 
