@@ -12,10 +12,7 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async execute(message, args, extra) {
-        this.logger.info(`Recruits command initiated by ${message.author.tag} with args: ${args.join(' ')}`);
-
         if (args.length <= 1) {
-            this.logger.info('Recruits command: Not enough arguments provided.');
             message.channel.send({ content: 'Please provide the class name.' });
             return;
         }
@@ -27,7 +24,6 @@ module.exports = {
         try {
             // Load modders.json
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-            this.logger.info('Recruits command: Successfully loaded modders.json.');
 
             // Sanitize modNameInput
             let modNameInput = helpers.sanitizeInput(args[1]);
@@ -47,30 +43,18 @@ module.exports = {
             // Sanitize modName
             modName = path.basename(helpers.sanitizeInput(modName));            // Define file paths using helper
             const filePaths = helpers.getModFilePaths(modName);
-            this.logger.info(`Recruits command: Using mod '${modName}'. File paths set.`);
 
             // Check if required files exist
             if (!fs.existsSync(filePaths.gladiatorsFilePath)) {
-                this.logger.error(`Recruits command: gladiators.txt not found for mod '${modName}'. Path: ${filePaths.gladiatorsFilePath}`);
                 message.channel.send({ content: `That mod does not have gladiators.txt file!` });
                 return;
-            }
-
-            if (!fs.existsSync(filePaths.leaguesPath)) {
-                this.logger.error(`Recruits command: leagues folder not found for mod '${modName}'. Path: ${filePaths.leaguesPath}`);
+            }            if (!fs.existsSync(filePaths.leaguesPath)) {
                 message.channel.send({ content: `That mod does not have leagues folder!` });
                 return;
             }
 
             if (!fs.existsSync(filePaths.lookupFilePath)) {
-                this.logger.error(`Recruits command: lookuptext_eng.txt not found for mod '${modName}'. Path: ${filePaths.lookupFilePath}`);
                 message.channel.send({ content: `That mod does not have lookuptext_eng.txt file!` });
-                return;
-            }
-
-            if (!fs.existsSync(filePaths.classdefsPath)) {
-                this.logger.error(`Recruits command: classdefs.tok not found for mod '${modName}'. Path: ${filePaths.classdefsPath}`);
-                message.channel.send({ content: `That mod does not have classdefs.tok file!` });
                 return;
             }
 
@@ -81,118 +65,22 @@ module.exports = {
             if (argsToProcess[argsToProcess.length - 1] === 'statset5') {
                 useStatSetFilter = true;
                 argsToProcess = argsToProcess.slice(0, -1); // Remove 'statset5' from the end
-                this.logger.info('Recruits command: statset5 filter enabled.');
+                
                 // Check if statsets file exists when using statset filter
                 if (!fs.existsSync(filePaths.statsetsFilePath)) {
-                    this.logger.error(`Recruits command: statsets.txt not found for mod '${modName}' when statset5 filter is active. Path: ${filePaths.statsetsFilePath}`);
                     message.channel.send({ content: `That mod does not have statsets.txt file!` });
                     return;
                 }
-            }            // Parse class name from remaining arguments
+            }
+
+            // Parse class name from remaining arguments
             const className = argsToProcess.join(' ').trim();
             if (!className) {
-                this.logger.info('Recruits command: Class name not provided after processing mod and statset5 args.');
                 message.channel.send({ content: 'Please provide the class name.' });
                 return;
-            }            const sanitizedClassName = helpers.sanitizeInput(className);
-            this.logger.info(`Recruits command: Searching for class: '${sanitizedClassName}'.`);
-
-            // Load lookup text for class display name resolution
-            const { idToText, nameToIds } = helpers.loadLookupText(filePaths.lookupFilePath);
-            this.logger.info('Recruits command: Loaded lookuptext_eng.txt.');
-
-            // Read and parse classdefs.tok to find matching classes
-            const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
-            const classChunks = helpers.splitContentIntoChunks(classdefsContent);
-            this.logger.info(`Recruits command: Loaded and split classdefs.tok into ${classChunks.length} chunks.`);
-
-            let matchingCreateClasses = [];
-
-            this.logger.info(`Recruits command: === BEGINNING CLASSDEFS CHUNK PROCESSING === User input: '${className}', Sanitized: '${sanitizedClassName}'`);
-
-            for (let i = 0; i < classChunks.length; i++) {
-                const chunk = classChunks[i];
-                // Corrected comment about chunk definition
-                this.logger.info(`Recruits command: [CHUNK ${i+1}/${classChunks.length}] Processing chunk (separated by blank lines)...`); 
-
-                const classData = helpers.parseClassChunk(chunk);
-                
-                if (!classData) {
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] helpers.parseClassChunk returned null or falsy. Skipping.`);
-                    continue;
-                }
-                
-                this.logger.info(`Recruits command: [CHUNK ${i+1}] Parsed classData.className: '${classData.className}', classData.DISPLAYNAMEID: '${classData.DISPLAYNAMEID}' (type: ${typeof classData.DISPLAYNAMEID})`);
-
-                if (!classData.DISPLAYNAMEID) {
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] No DISPLAYNAMEID found in parsed classData. Skipping.`);
-                    continue;
-                }
-
-                const displayNameIdKey = parseInt(classData.DISPLAYNAMEID, 10);
-                if (isNaN(displayNameIdKey)) {
-                    this.logger.warn(`Recruits command: [CHUNK ${i+1}] DISPLAYNAMEID '${classData.DISPLAYNAMEID}' is not a valid number. Skipping.`);
-                    continue;
-                }
-                this.logger.info(`Recruits command: [CHUNK ${i+1}] Attempting lookup with ID_AS_INT: ${displayNameIdKey}`);
-
-                let displayNameFromLookup = '';
-                if (idToText.hasOwnProperty(displayNameIdKey)) {
-                    displayNameFromLookup = idToText[displayNameIdKey];
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] Lookup SUCCEEDED for ID ${displayNameIdKey}. Raw looked-up name: '${displayNameFromLookup}'`);
-                } else {
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] Lookup FAILED for ID ${displayNameIdKey} (original string: '${classData.DISPLAYNAMEID}') in idToText map.`);
-                }
-                
-                this.logger.info(`Recruits command: [CHUNK ${i+1}] PRE-COMPARISON. Looked-up Name: '${displayNameFromLookup}', User Input (sanitized): '${sanitizedClassName}'`);
-
-                if (displayNameFromLookup && displayNameFromLookup.toLowerCase().includes(sanitizedClassName.toLowerCase())) {
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] === DISPLAY NAME MATCH SUCCESS === Looked-up: '${displayNameFromLookup}' (matches input '${sanitizedClassName}'). Now searching for CREATECLASS entries in this chunk.`);
-                    
-                    const linesInChunk = chunk.split(/\r?\n/);
-                    let createClassesFoundInThisMatchedChunk = [];
-                    for (let j = 0; j < linesInChunk.length; j++) {
-                        const line = linesInChunk[j];
-                        const trimmedLine = line.trim();
-                        this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Checking line for CREATECLASS: '${trimmedLine}'`);
-                        if (trimmedLine.startsWith('CREATECLASS:')) {
-                            this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Line starts with CREATECLASS.`);
-                            const match = trimmedLine.match(/^CREATECLASS:\\s*(?:\\"([^\\"]+)\\"|(\\S+))/);
-                            const createClassName = match ? (match[1] || match[2]) : null;
-
-                            if (createClassName) {
-                                if (!matchingCreateClasses.includes(createClassName)) {
-                                    matchingCreateClasses.push(createClassName);
-                                    createClassesFoundInThisMatchedChunk.push(createClassName); // Also track for this specific chunk log
-                                    this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Found and ADDED CREATECLASS: '${createClassName}' (derived from display name '${displayNameFromLookup}')`);
-                                } else {
-                                    this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Found CREATECLASS: '${createClassName}', but it's already in the list.`);
-                                }
-                            } else {
-                                this.logger.warn(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Line started with CREATECLASS: but regex did not extract a name. Line: \\"${trimmedLine}\\"`);
-                            }
-                        }
-                    }
-                    if (createClassesFoundInThisMatchedChunk.length > 0) {
-                        this.logger.info(`Recruits command: [CHUNK ${i+1}] For matched display name '${displayNameFromLookup}', the following CREATECLASS entries were extracted from this chunk: ${createClassesFoundInThisMatchedChunk.join(', ')}`);
-                    } else {
-                        this.logger.info(`Recruits command: [CHUNK ${i+1}] Display name matched, but NO CREATECLASS entries were found or extracted in this chunk.`);
-                    }
-                } else if (displayNameFromLookup) {
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] Display name MISMATCH. Looked-up (lower): '${displayNameFromLookup.toLowerCase()}', Input (lower): '${sanitizedClassName.toLowerCase()}'. The 'includes' check failed.`);
-                } else {
-                    // This case is covered by the "Lookup FAILED" log earlier if displayNameFromLookup is empty due to failed lookup
-                    // If displayNameFromLookup is empty for other reasons (e.g. empty string in file), this might be relevant
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] No valid display name from lookup ('${displayNameFromLookup}') to compare with user input '${sanitizedClassName}'.`);
-                }
             }
-            this.logger.info(`Recruits command: === FINISHED CLASSDEFS CHUNK PROCESSING === Total unique CREATECLASS entries gathered: ${matchingCreateClasses.length} -> [${matchingCreateClasses.join(', ')}]`);
 
-            if (matchingCreateClasses.length === 0) {
-                this.logger.info(`Recruits command: No CREATECLASS entries found for display name matching '${className}' in mod '${modName}'.`);
-                message.channel.send({ content: `Could not find a class whose display name matches '${className}', or the matched class(es) had no CREATECLASS entries in '${modName}'.` });
-                return;
-            }
+            const sanitizedClassName = helpers.sanitizeInput(className);
 
             // Function to apply class variant regex patterns
             const applyClassVariantPatterns = (classInFile) => {
@@ -216,10 +104,9 @@ module.exports = {
                 return baseClass;
             };
 
-            // Step 2: Read gladiators.txt and find all units matching the CREATECLASS entries
+            // Read gladiators.txt and find all units with the matching class
             const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
             const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
-            this.logger.info(`Recruits command: Loaded and split gladiators.txt into ${gladiatorChunks.length} chunks. Will match against CREATECLASS list: [${matchingCreateClasses.join(', ')}]`);
 
             let matchingGladiators = [];
             let statSetData = new Map(); // Map stat set number to gladiator info
@@ -231,51 +118,35 @@ module.exports = {
                     class: '',
                     statSet: ''
                 };
-                let currentGladNameForLog = 'UNKNOWN_GLAD'; // For logging before name is parsed
                 
                 for (const line of lines) {
                     if (line.startsWith('Name:')) {
                         gladiatorData.name = line.split(':')[1].trim();
-                        currentGladNameForLog = gladiatorData.name;
                     } else if (line.startsWith('Class:')) {
                         gladiatorData.class = line.split(':')[1].trim();
                     } else if (line.startsWith('Stat set:')) {
                         gladiatorData.statSet = line.split(':')[1].trim();
                     }
                 }
-                this.logger.info(`Recruits command: [GLAD_CHUNK] Processing Gladiator: '${currentGladNameForLog}', Class from file: '${gladiatorData.class}'`);
 
                 if (gladiatorData.name && gladiatorData.class && gladiatorData.statSet !== '') {
+                    // Apply regex patterns to get base class
                     const baseClass = applyClassVariantPatterns(gladiatorData.class);
-                    this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] Original Class: '${gladiatorData.class}', Base Class (after patterns): '${baseClass}'`);
 
-                    let gladiatorMatchedAClass = false;
-                    for (const createClass of matchingCreateClasses) {
-                        this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] Comparing Base Class '${baseClass.toLowerCase()}' with CREATECLASS '${createClass.toLowerCase()}'`);
-                        if (baseClass.toLowerCase() === createClass.toLowerCase()) {
-                            this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] === GLADIATOR MATCH SUCCESS === Base Class '${baseClass}' matches CREATECLASS '${createClass}'. Adding to list.`);
-                            matchingGladiators.push(gladiatorData);
-                            gladiatorMatchedAClass = true;
-                            
-                            if (!statSetData.has(gladiatorData.statSet)) {
-                                statSetData.set(gladiatorData.statSet, []);
-                            }
-                            statSetData.get(gladiatorData.statSet).push(gladiatorData);
-                            break; // Found a match for this gladiator, no need to check other createClasses
+                    if (baseClass.toLowerCase() === sanitizedClassName.toLowerCase()) {
+                        matchingGladiators.push(gladiatorData);
+                        
+                        // Store stat set data for filtering
+                        if (!statSetData.has(gladiatorData.statSet)) {
+                            statSetData.set(gladiatorData.statSet, []);
                         }
+                        statSetData.get(gladiatorData.statSet).push(gladiatorData);
                     }
-                    if (!gladiatorMatchedAClass) {
-                        this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] No match found for Base Class '${baseClass}' against any in [${matchingCreateClasses.join(', ')}]`);
-                    }
-                } else {
-                    this.logger.info(`Recruits command: [GLAD_CHUNK '${currentGladNameForLog}'] Skipped due to missing name, class, or statSet data.`);
                 }
             }
-            this.logger.info(`Recruits command: === FINISHED GLADIATOR PROCESSING === Found ${matchingGladiators.length} total matching gladiators.`);
 
             if (matchingGladiators.length === 0) {
-                this.logger.info(`Recruits command: No gladiators found for derived classes: ${matchingCreateClasses.join(', ')} in mod '${modName}'.`);
-                message.channel.send({ content: `No gladiators found for the classes derived from '${className}' in '${modName}'. The derived classes were: ${matchingCreateClasses.join(', ')}.` });
+                message.channel.send({ content: `No gladiators found for class '${className}' in '${modName}'.` });
                 return;
             }
 
@@ -286,7 +157,6 @@ module.exports = {
             if (useStatSetFilter) {
                 // Read and parse statsets.txt
                 const statsetsContent = fs.readFileSync(filePaths.statsetsFilePath, 'utf8');
-                this.logger.info('Recruits command: Loaded statsets.txt for statset5 filter.');
                 const statsetChunks = statsetsContent.split(/\n\s*\n/);
                 
                 // Calculate average stats at level 30 for each stat set
@@ -333,14 +203,12 @@ module.exports = {
                     .slice(0, 1); // Take only top 1
 
                 if (relevantStatSets.length === 0) {
-                    this.logger.info(`Recruits command: No relevant stat set data found for class '${className}' in mod '${modName}' after filtering.`);
                     message.channel.send({ content: `No stat set data found for class '${className}' in '${modName}'.` });
                     return;
                 }
 
                 // Get gladiators from top stat set only
                 targetGladiators = relevantStatSets.flatMap(statSetInfo => statSetInfo.gladiators);
-                this.logger.info(`Recruits command: Filtered gladiators by top stat set. ${targetGladiators.length} gladiators remain.`);
                 
                 const topStatSet = relevantStatSets[0];
                 const stats = topStatSet.stats;
@@ -355,7 +223,6 @@ module.exports = {
 
             // Read all league files and find where these gladiators can be recruited
             const leagueFiles = fs.readdirSync(filePaths.leaguesPath).filter(file => file.endsWith('.tok'));
-            this.logger.info(`Recruits command: Found ${leagueFiles.length} league files to process.`);
             const recruitmentData = new Map(); // Map gladiator name to arenas
 
             for (const file of leagueFiles) {
@@ -384,10 +251,12 @@ module.exports = {
                         recruitmentData.get(gladiator.name).arenas.push(arenaName);
                     }
                 }
-            }            // Create embed response
+            }
+
+            // Create embed response
             const embed = new EmbedBuilder()
                 .setTitle(`🏛️ Recruitment Locations for ${className}`)
-                .setDescription(`**Mod:** ${modName}\n**Matching Classes:** ${matchingCreateClasses.join(', ')}${filterDescription}`)
+                .setDescription(`**Mod:** ${modName}${filterDescription}`)
                 .setColor(0x00AE86)
                 .setTimestamp();
 
@@ -396,7 +265,6 @@ module.exports = {
                     name: 'No Recruitment Data Found',
                     value: `No recruitment information found for class '${className}' in any league files.`
                 });
-                this.logger.info(`Recruits command: No recruitment data found in league files for class '${className}'.`);
             } else {
                 // Group by arena for better display
                 const arenaGroups = new Map();
@@ -443,7 +311,6 @@ module.exports = {
                 // Add summary field
                 const totalGladiators = Array.from(recruitmentData.keys()).length;
                 const totalArenas = arenaGroups.size;
-                this.logger.info(`Recruits command: Found ${totalGladiators} gladiators in ${totalArenas} arenas for class '${className}'.`);
                 
                 embed.addFields({
                     name: '📊 Summary',
@@ -453,11 +320,9 @@ module.exports = {
             }
 
             await message.channel.send({ embeds: [embed] });
-            this.logger.info(`Recruits command: Successfully sent recruitment embed for class '${className}' in mod '${modName}'.`);
 
         } catch (error) {
-            this.logger.error(`Error in recruits command: ${error.message}\\nStack: ${error.stack}`);
-            // console.error('Error finding recruits:', error); // Replaced by logger
+            console.error('Error finding recruits:', error);
             message.channel.send({ content: 'An error occurred while finding recruitment information.' });
         }
     }
