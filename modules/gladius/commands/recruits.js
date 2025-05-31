@@ -31,24 +31,26 @@ module.exports = {
             // Check if args[1] is a valid mod name
             let isMod = false;
             for (const modder in moddersConfig) {
-                const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
+                const modConfigName = moddersConfig[modder].replace(/\\s+/g, '_').toLowerCase();
+                if (modConfigName === modNameInput.replace(/\\s+/g, '_').toLowerCase()) {
                     isMod = true;
-                    modName = moddersConfig[modder].replace(/\s+/g, '_');
+                    modName = moddersConfig[modder].replace(/\\s+/g, '_');
                     index = 2; // Move index to next argument
                     break;
                 }
             }
 
             // Sanitize modName
-            modName = path.basename(helpers.sanitizeInput(modName));            // Define file paths using helper
+            modName = path.basename(helpers.sanitizeInput(modName));
+            // Define file paths using helper
             const filePaths = helpers.getModFilePaths(modName);
 
             // Check if required files exist
             if (!fs.existsSync(filePaths.gladiatorsFilePath)) {
                 message.channel.send({ content: `That mod does not have gladiators.txt file!` });
                 return;
-            }            if (!fs.existsSync(filePaths.leaguesPath)) {
+            }
+            if (!fs.existsSync(filePaths.leaguesPath)) {
                 message.channel.send({ content: `That mod does not have leagues folder!` });
                 return;
             }
@@ -57,6 +59,39 @@ module.exports = {
                 message.channel.send({ content: `That mod does not have lookuptext_eng.txt file!` });
                 return;
             }
+
+            if (!fs.existsSync(filePaths.classdefsFilePath)) { // Added check for classdefs.tok
+                message.channel.send({ content: `That mod does not have classdefs.tok file!` });
+                return;
+            }
+
+            // Load lookup text for class names
+            const { idToText: classLookupIdToText, textToId: classLookupTextToId } = helpers.loadLookupText(filePaths.lookupFilePath);
+
+            // Read and parse classdefs.tok
+            const classdefsContent = fs.readFileSync(filePaths.classdefsFilePath, 'utf8');
+            const classdefChunks = classdefsContent.split(/\\n\\s*\\n/);
+            const classNameMap = new Map(); // Maps display name to CREATECLASS name
+
+            for (const chunk of classdefChunks) {
+                const lines = chunk.trim().split(/\\r?\\n/);
+                let createClassName = '';
+                let displayNameId = '';
+
+                for (const line of lines) {
+                    if (line.startsWith('CREATECLASS:')) {
+                        createClassName = line.split(':')[1].trim();
+                    } else if (line.startsWith('DISPLAYNAMEID:')) {
+                        displayNameId = line.split(':')[1].trim();
+                    }
+                }
+
+                if (createClassName && displayNameId && classLookupIdToText[displayNameId]) {
+                    const displayName = classLookupIdToText[displayNameId].toLowerCase();
+                    classNameMap.set(displayName, createClassName);
+                }
+            }
+
 
             // Check for statset5 option
             let useStatSetFilter = false;
@@ -74,13 +109,40 @@ module.exports = {
             }
 
             // Parse class name from remaining arguments
-            const className = argsToProcess.join(' ').trim();
-            if (!className) {
+            const userInputClassName = argsToProcess.join(' ').trim();
+            if (!userInputClassName) {
                 message.channel.send({ content: 'Please provide the class name.' });
                 return;
             }
 
-            const sanitizedClassName = helpers.sanitizeInput(className);
+            const sanitizedUserInputClassName = helpers.sanitizeInput(userInputClassName).toLowerCase();
+
+            // Find the CREATECLASS name from the user input
+            let createClassNameForSearch = '';
+            if (classNameMap.has(sanitizedUserInputClassName)) {
+                createClassNameForSearch = classNameMap.get(sanitizedUserInputClassName);
+            } else {
+                // Fallback: try to use the input directly if not found in classdefs (for mods that might not use it)
+                // Or, if the user directly typed a CREATECLASS name
+                let foundInCreateClass = false;
+                for (const chunk of classdefChunks) {
+                    if (chunk.includes(`CREATECLASS: ${sanitizedUserInputClassName}`)) {
+                        createClassNameForSearch = sanitizedUserInputClassName;
+                        foundInCreateClass = true;
+                        break;
+                    }
+                }
+                if (!foundInCreateClass) {
+                     // If still not found, try direct match without classdefs (original behavior for robustness)
+                    createClassNameForSearch = sanitizedUserInputClassName;
+                }
+            }
+
+            if (!createClassNameForSearch) {
+                message.channel.send({ content: `Class '${userInputClassName}' not found in '${modName}'.` });
+                return;
+            }
+
 
             // Function to apply class variant regex patterns
             const applyClassVariantPatterns = (classInFile) => {
@@ -112,7 +174,7 @@ module.exports = {
             let statSetData = new Map(); // Map stat set number to gladiator info
 
             for (const chunk of gladiatorChunks) {
-                const lines = chunk.trim().split(/\r?\n/);
+                const lines = chunk.trim().split(/\\r?\\n/);
                 let gladiatorData = {
                     name: '',
                     class: '',
@@ -131,9 +193,9 @@ module.exports = {
 
                 if (gladiatorData.name && gladiatorData.class && gladiatorData.statSet !== '') {
                     // Apply regex patterns to get base class
-                    const baseClass = applyClassVariantPatterns(gladiatorData.class);
+                    const baseClassInFile = applyClassVariantPatterns(gladiatorData.class);
 
-                    if (baseClass.toLowerCase() === sanitizedClassName.toLowerCase()) {
+                    if (baseClassInFile.toLowerCase() === createClassNameForSearch.toLowerCase()) {
                         matchingGladiators.push(gladiatorData);
                         
                         // Store stat set data for filtering
@@ -146,7 +208,7 @@ module.exports = {
             }
 
             if (matchingGladiators.length === 0) {
-                message.channel.send({ content: `No gladiators found for class '${className}' in '${modName}'.` });
+                message.channel.send({ content: `No gladiators found for class \'${userInputClassName}\' (mapped to \'${createClassNameForSearch}\') in \'${modName}\'.` });
                 return;
             }
 
@@ -163,7 +225,7 @@ module.exports = {
                 const statSetAverages = new Map();
                 
                 for (const chunk of statsetChunks) {
-                    const lines = chunk.trim().split(/\r?\n/);
+                    const lines = chunk.trim().split(/\\r?\\n/);
                     const statSetMatch = lines[0].match(/^Statset (\d+):$/);
                     
                     if (statSetMatch) {
@@ -203,7 +265,7 @@ module.exports = {
                     .slice(0, 1); // Take only top 1
 
                 if (relevantStatSets.length === 0) {
-                    message.channel.send({ content: `No stat set data found for class '${className}' in '${modName}'.` });
+                    message.channel.send({ content: `No stat set data found for class \'${userInputClassName}\' in \'${modName}\'.` });
                     return;
                 }
 
@@ -255,7 +317,7 @@ module.exports = {
 
             // Create embed response
             const embed = new EmbedBuilder()
-                .setTitle(`🏛️ Recruitment Locations for ${className}`)
+                .setTitle(`🏛️ Recruitment Locations for ${userInputClassName}`)
                 .setDescription(`**Mod:** ${modName}${filterDescription}`)
                 .setColor(0x00AE86)
                 .setTimestamp();
@@ -263,7 +325,7 @@ module.exports = {
             if (recruitmentData.size === 0) {
                 embed.addFields({
                     name: 'No Recruitment Data Found',
-                    value: `No recruitment information found for class '${className}' in any league files.`
+                    value: `No recruitment information found for class \'${userInputClassName}\' in any league files.`
                 });
             } else {
                 // Group by arena for better display
@@ -314,7 +376,7 @@ module.exports = {
                 
                 embed.addFields({
                     name: '📊 Summary',
-                    value: `Found **${totalGladiators}** ${className} gladiators available across **${totalArenas}** arenas.`,
+                    value: `Found **${totalGladiators}** ${userInputClassName} gladiators available across **${totalArenas}** arenas.`,
                     inline: false
                 });
             }
