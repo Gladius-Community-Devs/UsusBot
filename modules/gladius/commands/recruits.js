@@ -92,28 +92,45 @@ module.exports = {
             const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
             const classChunks = helpers.splitContentIntoChunks(classdefsContent);
 
-            let matchingCreateClasses = [];
+            let matchingCreateClasses = []; // This will store the actual class names from CREATECLASS lines
 
-            // Step 1: Parse all classdefs.tok entries and find matches by DISPLAYNAMEID
+            // New logic:
+            // Step 1: Iterate through classdefs.tok chunks.
+            // Step 2: For each chunk, get its DISPLAYNAMEID and look up the text.
+            // Step 3: If the looked-up text matches user input, parse CREATECLASS lines from that chunk.
             for (const chunk of classChunks) {
-                const classData = helpers.parseClassChunk(chunk);
-                if (!classData || !classData.className) continue;
-
-                // Check if this class matches by display name
-                let displayName = classData.className; // fallback
-                if (classData.DISPLAYNAMEID && idToText[classData.DISPLAYNAMEID]) {
-                    displayName = idToText[classData.DISPLAYNAMEID];
+                const classData = helpers.parseClassChunk(chunk); // helpers.parseClassChunk extracts DISPLAYNAMEID
+                if (!classData || !classData.DISPLAYNAMEID) {
+                    continue;
                 }
 
-                // Check if the input class name matches either the display name or class name
-                if (displayName.toLowerCase().includes(sanitizedClassName.toLowerCase()) ||
-                    classData.className.toLowerCase().includes(sanitizedClassName.toLowerCase())) {
-                    matchingCreateClasses.push(classData.className);
+                let displayNameFromLookup = '';
+                if (idToText[classData.DISPLAYNAMEID]) {
+                    displayNameFromLookup = idToText[classData.DISPLAYNAMEID];
+                }
+
+                // Check if the display name obtained from lookuptext_eng.txt matches the user's input class name
+                if (displayNameFromLookup && displayNameFromLookup.toLowerCase().includes(sanitizedClassName.toLowerCase())) {
+                    // This chunk's DISPLAYNAMEID (when looked up) matches the user's input.
+                    // Now, gather all CREATECLASS entries from this specific chunk's raw text.
+                    const linesInChunk = chunk.split(/\\r?\\n/);
+                    for (const line of linesInChunk) {
+                        const trimmedLine = line.trim();
+                        if (trimmedLine.startsWith('CREATECLASS:')) {
+                            // Assuming format: CREATECLASS: "ClassNameToList"
+                            const match = trimmedLine.match(/^CREATECLASS:\\s*\"([^\"]+)\"/);
+                            if (match && match[1]) {
+                                if (!matchingCreateClasses.includes(match[1])) { // Avoid duplicates
+                                    matchingCreateClasses.push(match[1]);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
             if (matchingCreateClasses.length === 0) {
-                message.channel.send({ content: `No class found matching '${className}' in '${modName}'.` });
+                message.channel.send({ content: `Could not find a class whose display name matches '${className}', or the matched class(es) had no CREATECLASS entries in '${modName}'.` });
                 return;
             }
 
@@ -186,7 +203,7 @@ module.exports = {
             }
 
             if (matchingGladiators.length === 0) {
-                message.channel.send({ content: `No gladiators found for class '${className}' in '${modName}'.` });
+                message.channel.send({ content: `No gladiators found for the classes derived from '${className}' in '${modName}'. The derived classes were: ${matchingCreateClasses.join(', ')}.` });
                 return;
             }
 
