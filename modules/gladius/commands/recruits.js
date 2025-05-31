@@ -89,22 +89,32 @@ module.exports = {
 
             // Read and parse classdefs.tok
             const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
-            // Corrected splitting logic based on classes.js
             const classdefRawChunks = classdefsContent.split(/\nCREATECLASS:/);
-            const classNameMap = new Map(); // Maps display name to CREATECLASS name
-            this.logger.info(`Read and parsed classdefs.tok into ${classdefRawChunks.length} raw chunks using \nCREATECLASS: splitter.`);
+            const classNameMap = new Map(); // Maps display name (lowercase) to Set<CREATECLASS name>
+            this.logger.info(`Read classdefs.tok. Split into ${classdefRawChunks.length} raw chunks using \nCREATECLASS: splitter.`);
 
             for (let i = 0; i < classdefRawChunks.length; i++) {
-                let chunk = classdefRawChunks[i].trim();
-                if (!chunk) continue;
+                let currentChunkContent = classdefRawChunks[i];
+                let chunkToParse;
 
-                // Add back the CREATECLASS: prefix for chunks after the first one,
-                // or if the first chunk itself doesn't start with it (e.g. if file has leading whitespace)
-                if (i > 0 || !chunk.startsWith('CREATECLASS:')) {
-                    chunk = 'CREATECLASS:' + chunk;
+                if (i === 0) {
+                    chunkToParse = currentChunkContent.trim();
+                    // If this first raw chunk doesn't actually start with CREATECLASS:, it's likely a header/comment and should be skipped.
+                    if (!chunkToParse.startsWith('CREATECLASS:')) {
+                        this.logger.info(`Skipping initial content as it doesn't appear to be a class definition (first 100 chars): "${chunkToParse.substring(0,100).replace(/\n/g, "\\n")}"`);
+                        continue;
+                    }
+                } else {
+                    // For subsequent chunks, they were preceded by "\nCREATECLASS:", so we need to add "CREATECLASS:" back.
+                    chunkToParse = ("CREATECLASS:" + currentChunkContent).trim();
                 }
 
-                const lines = chunk.trim().split(/\r?\n/);
+                if (!chunkToParse) {
+                    this.logger.info(`Skipping empty chunk at index ${i}.`);
+                    continue;
+                }
+
+                const lines = chunkToParse.split(/\r?\n/);
                 let createClassName = '';
                 let displayNameId = '';
 
@@ -119,22 +129,22 @@ module.exports = {
                 if (createClassName && displayNameId) {
                     const lookedUpDisplayName = classLookupIdToText[displayNameId];
                     if (lookedUpDisplayName) {
-                        const displayName = lookedUpDisplayName.toLowerCase();
-                        classNameMap.set(displayName, createClassName);
-                        // Example of a successful mapping log (can be verbose, uncomment if needed for deep debugging):
-                        // this.logger.info(`Mapped displayName '${displayName}' (from ID '${displayNameId}') to CREATECLASS '${createClassName}'`);
+                        const displayNameLower = lookedUpDisplayName.toLowerCase();
+                        if (!classNameMap.has(displayNameLower)) {
+                            classNameMap.set(displayNameLower, new Set());
+                        }
+                        classNameMap.get(displayNameLower).add(createClassName);
+                        // this.logger.info(`Mapped displayName '${displayNameLower}' (from ID '${displayNameId}') to CREATECLASS '${createClassName}'`);
                     } else {
-                        // Log when a DISPLAYNAMEID is not found in the lookup map, or its value is falsy
-                        this.logger.warn(`Did not map CREATECLASS '${createClassName}'. Reason: DISPLAYNAMEID '${displayNameId}' not found in classLookupIdToText, or its looked-up value was falsy. classLookupIdToText has '${displayNameId}': ${classLookupIdToText.hasOwnProperty(displayNameId)}. Value: '${classLookupIdToText[displayNameId]}'. Chunk (first 100 chars): '${chunk.substring(0,100).replace(/\\n/g, "\\\\n")}'`);
+                        this.logger.warn(`Did not map CREATECLASS '${createClassName}'. Reason: DISPLAYNAMEID '${displayNameId}' not found in classLookupIdToText, or its looked-up value was falsy. classLookupIdToText has '${displayNameId}': ${classLookupIdToText.hasOwnProperty(displayNameId)}. Value: '${classLookupIdToText[displayNameId]}'. Chunk (first 100 chars): '${chunkToParse.substring(0,100).replace(/\n/g, "\\n")}'`);
                     }
                 } else {
-                    // Log if CREATECLASS or DISPLAYNAMEID were not found in the chunk
-                    if (chunk.trim()) { // Avoid logging for genuinely empty chunks if they somehow occur
-                       this.logger.warn(`Skipped mapping for a chunk. Reason: Missing CREATECLASS (found: '${createClassName}') or DISPLAYNAMEID (found: '${displayNameId}'). Chunk (first 100 chars): '${chunk.substring(0,100).replace(/\\n/g, "\\\\n")}'`);
+                    if (chunkToParse.trim()) {
+                       this.logger.warn(`Skipped mapping for a chunk. Reason: Missing CREATECLASS (found: '${createClassName}') or DISPLAYNAMEID (found: '${displayNameId}'). Chunk (first 100 chars): '${chunkToParse.substring(0,100).replace(/\n/g, "\\n")}'`);
                     }
                 }
             }
-            this.logger.info(`Built classNameMap with ${classNameMap.size} entries.`);
+            this.logger.info(`Built classNameMap. Size: ${classNameMap.size}. Example entry for 'behemoth': ${JSON.stringify(Array.from(classNameMap.get('behemoth') || []))}`);
 
 
             // Check for statset5 option
@@ -166,36 +176,49 @@ module.exports = {
             const sanitizedUserInputClassName = helpers.sanitizeInput(userInputClassName).toLowerCase();
 
             // Find the CREATECLASS name from the user input
-            let createClassNameForSearch = '';
+            let createClassNamesForSearch = new Set();
+
             if (classNameMap.has(sanitizedUserInputClassName)) {
-                createClassNameForSearch = classNameMap.get(sanitizedUserInputClassName);
-                this.logger.info(`Found CREATECLASS name \'${createClassNameForSearch}\' from classNameMap for input \'${sanitizedUserInputClassName}\'.`);
-            } else {
-                this.logger.info(`Input class \'${sanitizedUserInputClassName}\' not found in classNameMap. Attempting fallback.`);
-                // Fallback: try to use the input directly if not found in classdefs (for mods that might not use it)
-                // Or, if the user directly typed a CREATECLASS name
-                let foundInCreateClass = false;
-                for (const chunk of classdefChunks) {
-                    if (chunk.includes(`CREATECLASS: ${sanitizedUserInputClassName}`)) {
-                        createClassNameForSearch = sanitizedUserInputClassName;
-                        foundInCreateClass = true;
-                        this.logger.info(`Found CREATECLASS name \'${createClassNameForSearch}\' by direct match in classdefChunks.`);
-                        break;
+                const namesFromMap = classNameMap.get(sanitizedUserInputClassName);
+                namesFromMap.forEach(name => createClassNamesForSearch.add(name));
+                this.logger.info(`Found CREATECLASS name(s) ${JSON.stringify(Array.from(namesFromMap))} from classNameMap for input '${sanitizedUserInputClassName}'.`);
+            }
+
+            // Fallback: if user input wasn't a display name, it might be a CREATECLASS name directly.
+            // Also, if it was a display name but didn't map (e.g. DISPLAYNAMEID: 0), try direct match.
+            if (createClassNamesForSearch.size === 0) {
+                this.logger.info(`Input class '${sanitizedUserInputClassName}' not found as a display name in classNameMap, or it mapped to no CREATECLASS names. Attempting to use it as a direct CREATECLASS name.`);
+                let foundAsCreateClassDirectly = false;
+                // Iterate all CREATECLASS names collected (e.g., from classNameMap values)
+                for (const classSet of classNameMap.values()) {
+                    for (const ccName of classSet) {
+                        if (ccName.toLowerCase() === sanitizedUserInputClassName.toLowerCase()) {
+                            createClassNamesForSearch.add(ccName); // Add the actual cased name
+                            foundAsCreateClassDirectly = true;
+                        }
                     }
                 }
-                if (!foundInCreateClass) {
-                     // If still not found, try direct match without classdefs (original behavior for robustness)
-                    createClassNameForSearch = sanitizedUserInputClassName;
-                    this.logger.info(`CREATECLASS name not found by direct match in classdefChunks. Using input \'${createClassNameForSearch}\' directly.`);
+                // Also check against any CREATECLASS name that might not have made it into the map (e.g. DISPLAYNAMEID 0)
+                // This requires re-iterating classdefChunks or having a list of all createClassNames.
+                // For simplicity, if the above found matches, we use them.
+                // If not, we consider the input itself as a potential CREATECLASS name.
+                if (foundAsCreateClassDirectly) {
+                     this.logger.info(`Input '${sanitizedUserInputClassName}' matched one or more known CREATECLASS names directly: ${JSON.stringify(Array.from(createClassNamesForSearch))}`);
+                } else {
+                    this.logger.info(`Input '${sanitizedUserInputClassName}' also not found as a direct CREATECLASS name among mapped classes. Adding input itself as a potential CREATECLASS name for search.`);
+                    createClassNamesForSearch.add(userInputClassName); // Add user input (original case for this direct attempt)
                 }
             }
 
-            if (!createClassNameForSearch) {
+
+            if (createClassNamesForSearch.size === 0) {
                 message.channel.send({ content: `Class '${userInputClassName}' not found in '${modName}'.` });
-                this.logger.error(`Could not determine CREATECLASS name for input \'${userInputClassName}\' in mod \'${modName}\'.`);
+                this.logger.error(`Could not determine any CREATECLASS name(s) for input '${userInputClassName}' in mod '${modName}'.`);
                 return;
             }
-            this.logger.info(`Using CREATECLASS name for search: ${createClassNameForSearch}`);
+
+            const createClassNamesToSearchLower = Array.from(createClassNamesForSearch).map(c => c.toLowerCase());
+            this.logger.info(`Final set of CREATECLASS names to search (lowercase): ${JSON.stringify(createClassNamesToSearchLower)}`);
 
 
             // Function to apply class variant regex patterns
@@ -249,8 +272,9 @@ module.exports = {
                 if (gladiatorData.name && gladiatorData.class && gladiatorData.statSet !== '') {
                     // Apply regex patterns to get base class
                     const baseClassInFile = applyClassVariantPatterns(gladiatorData.class);
+                    const baseClassInFileLower = baseClassInFile.toLowerCase();
 
-                    if (baseClassInFile.toLowerCase() === createClassNameForSearch.toLowerCase()) {
+                    if (createClassNamesToSearchLower.includes(baseClassInFileLower)) {
                         matchingGladiators.push(gladiatorData);
                         
                         // Store stat set data for filtering
@@ -261,11 +285,11 @@ module.exports = {
                     }
                 }
             }
-            this.logger.info(`Found ${matchingGladiators.length} matching gladiators for class \'${createClassNameForSearch}\'.`);
+            this.logger.info(`Found ${matchingGladiators.length} matching gladiators for class(es) ${JSON.stringify(createClassNamesToSearchLower)}.`);
 
             if (matchingGladiators.length === 0) {
-                message.channel.send({ content: `No gladiators found for class \\\'${userInputClassName}\\\' (mapped to \\\'${createClassNameForSearch}\\\') in \\\'${modName}\\\'.` });
-                this.logger.info(`No gladiators found for class \'${userInputClassName}\' (mapped to \'${createClassNameForSearch}\') in mod \'${modName}\'.`);
+                message.channel.send({ content: `No gladiators found for class \'${userInputClassName}\' (mapped to ${JSON.stringify(Array.from(createClassNamesForSearch))}) in \'${modName}\'.` });
+                this.logger.info(`No gladiators found for class '${userInputClassName}' (mapped to ${JSON.stringify(Array.from(createClassNamesForSearch))}) in mod '${modName}'.`);
                 return;
             }
 
