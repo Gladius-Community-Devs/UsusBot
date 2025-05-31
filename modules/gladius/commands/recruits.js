@@ -106,56 +106,84 @@ module.exports = {
             const classChunks = helpers.splitContentIntoChunks(classdefsContent);
             this.logger.info(`Recruits command: Loaded and split classdefs.tok into ${classChunks.length} chunks.`);
 
-            let matchingCreateClasses = []; // This will store the actual class names from CREATECLASS lines
+            let matchingCreateClasses = [];
 
-            // New logic:
-            // Step 1: Iterate through classdefs.tok chunks.
-            // Step 2: For each chunk, get its DISPLAYNAMEID and look up the text.
-            // Step 3: If the looked-up text matches user input, parse CREATECLASS lines from that chunk.
-            for (const chunk of classChunks) {
-                const classData = helpers.parseClassChunk(chunk); // helpers.parseClassChunk extracts DISPLAYNAMEID
-                if (!classData || !classData.DISPLAYNAMEID) {
-                    // this.logger.info(`Recruits command: Chunk skipped, no classData or DISPLAYNAMEID. Chunk preview: ${chunk.substring(0, 100).replace(/[\r\n]+/g, ' ')}`);
+            this.logger.info(`Recruits command: === BEGINNING CLASSDEFS CHUNK PROCESSING === User input: '${className}', Sanitized: '${sanitizedClassName}'`);
+
+            for (let i = 0; i < classChunks.length; i++) {
+                const chunk = classChunks[i];
+                this.logger.info(`Recruits command: [CHUNK ${i+1}/${classChunks.length}] Raw chunk (first 200 chars): ${chunk.substring(0, 200).replace(/[\\r\\n]+/g, ' ')}`);
+
+                const classData = helpers.parseClassChunk(chunk);
+                
+                if (!classData) {
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] helpers.parseClassChunk returned null or falsy. Skipping.`);
+                    continue;
+                }
+                
+                this.logger.info(`Recruits command: [CHUNK ${i+1}] Parsed classData.className: '${classData.className}', classData.DISPLAYNAMEID: '${classData.DISPLAYNAMEID}' (type: ${typeof classData.DISPLAYNAMEID})`);
+
+                if (!classData.DISPLAYNAMEID) {
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] No DISPLAYNAMEID found in parsed classData. Skipping.`);
+                    continue;
+                }
+
+                // IMPORTANT: Convert DISPLAYNAMEID string to number for lookup
+                const displayNameIdKey = parseInt(classData.DISPLAYNAMEID, 10);
+                if (isNaN(displayNameIdKey)) {
+                    this.logger.warn(`Recruits command: [CHUNK ${i+1}] DISPLAYNAMEID '${classData.DISPLAYNAMEID}' is not a valid number. Skipping.`);
                     continue;
                 }
 
                 let displayNameFromLookup = '';
-                if (idToText[classData.DISPLAYNAMEID]) {
-                    displayNameFromLookup = idToText[classData.DISPLAYNAMEID];
+                if (idToText.hasOwnProperty(displayNameIdKey)) {
+                    displayNameFromLookup = idToText[displayNameIdKey];
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] Lookup SUCCEEDED for ID ${displayNameIdKey}. Raw looked-up name: '${displayNameFromLookup}'`);
+                } else {
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] Lookup FAILED for ID ${displayNameIdKey} (original string: '${classData.DISPLAYNAMEID}') in idToText map.`);
                 }
                 
-                // DETAILED LOGGING POINT
-                this.logger.info(`Recruits command: Processing chunk. DISPLAYNAMEID: '${classData.DISPLAYNAMEID}', Looked-up Name: '${displayNameFromLookup}', User Input (sanitized): '${sanitizedClassName}'`);
+                this.logger.info(`Recruits command: [CHUNK ${i+1}] PRE-COMPARISON. Looked-up Name: '${displayNameFromLookup}', User Input (sanitized): '${sanitizedClassName}'`);
 
-                // Check if the display name obtained from lookuptext_eng.txt matches the user's input class name
                 if (displayNameFromLookup && displayNameFromLookup.toLowerCase().includes(sanitizedClassName.toLowerCase())) {
-                    this.logger.info(`Recruits command: Display name MATCH SUCCESS! Looked-up: '${displayNameFromLookup}' (matches input '${sanitizedClassName}'). Searching for CREATECLASS entries in this chunk.`);
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] === DISPLAY NAME MATCH SUCCESS === Looked-up (lower): '${displayNameFromLookup.toLowerCase()}', Input (lower): '${sanitizedClassName.toLowerCase()}'. Now searching for CREATECLASS entries in this chunk.`);
                     
-                    const linesInChunk = chunk.split(/\r?\n/);
-                    for (const line of linesInChunk) {
+                    const linesInChunk = chunk.split(/\\r?\\n/);
+                    let createClassFoundInChunk = false;
+                    for (let j = 0; j < linesInChunk.length; j++) {
+                        const line = linesInChunk[j];
                         const trimmedLine = line.trim();
+                        this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Checking line for CREATECLASS: '${trimmedLine}'`);
                         if (trimmedLine.startsWith('CREATECLASS:')) {
-                            const match = trimmedLine.match(/^CREATECLASS:\s*(?:\"([^\"]+)\"|(\S+))/);
+                            this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Line starts with CREATECLASS.`);
+                            const match = trimmedLine.match(/^CREATECLASS:\\s*(?:\\"([^\\"]+)\\"|(\\S+))/);
                             const createClassName = match ? (match[1] || match[2]) : null;
 
                             if (createClassName) {
-                                if (!matchingCreateClasses.includes(createClassName)) { // Avoid duplicates
+                                if (!matchingCreateClasses.includes(createClassName)) {
                                     matchingCreateClasses.push(createClassName);
-                                    this.logger.info(`Recruits command: Found CREATECLASS: '${createClassName}' for display name '${displayNameFromLookup}' (input: '${className}')`);
+                                    this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Found and ADDED CREATECLASS: '${createClassName}' (derived from display name '${displayNameFromLookup}')`);
+                                    createClassFoundInChunk = true;
+                                } else {
+                                    this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Found CREATECLASS: '${createClassName}', but it's already in the list.`);
                                 }
                             } else {
-                                this.logger.warn(`Recruits command: Line started with CREATECLASS: but regex did not match. Line: \"${trimmedLine}\"`);
+                                this.logger.warn(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Line started with CREATECLASS: but regex did not extract a name. Line: \\"${trimmedLine}\\"`);
                             }
                         }
                     }
+                    if (!createClassFoundInChunk) {
+                        this.logger.info(`Recruits command: [CHUNK ${i+1}] Display name matched, but NO CREATECLASS entries were found or extracted in this chunk.`);
+                    }
                 } else if (displayNameFromLookup) {
-                    // Log mismatch only if a lookup name was found
-                    this.logger.info(`Recruits command: Display name MISMATCH. Looked-up (lower): '${displayNameFromLookup.toLowerCase()}', Input (lower): '${sanitizedClassName.toLowerCase()}'. Includes check failed.`);
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] Display name MISMATCH. Looked-up (lower): '${displayNameFromLookup.toLowerCase()}', Input (lower): '${sanitizedClassName.toLowerCase()}'. The 'includes' check failed.`);
                 } else {
-                    // Log if DISPLAYNAMEID was present but no corresponding text in idToText
-                    this.logger.info(`Recruits command: No display name found in lookuptext_eng.txt for DISPLAYNAMEID: '${classData.DISPLAYNAMEID}'.`);
+                    // This case is covered by the "Lookup FAILED" log earlier if displayNameFromLookup is empty due to failed lookup
+                    // If displayNameFromLookup is empty for other reasons (e.g. empty string in file), this might be relevant
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] No valid display name from lookup ('${displayNameFromLookup}') to compare with user input '${sanitizedClassName}'.`);
                 }
             }
+            this.logger.info(`Recruits command: === FINISHED CLASSDEFS CHUNK PROCESSING === Found ${matchingCreateClasses.length} CREATECLASS entries: ${matchingCreateClasses.join(', ')}`);
 
             if (matchingCreateClasses.length === 0) {
                 this.logger.info(`Recruits command: No CREATECLASS entries found for display name matching '${className}' in mod '${modName}'.`);
