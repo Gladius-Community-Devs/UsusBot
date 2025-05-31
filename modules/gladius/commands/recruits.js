@@ -19,7 +19,7 @@ module.exports = {
 
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
-        let classNameInputIndex = 0; // Index for class name in args, assuming no prefix for command
+        let classNameInputIndex = 1; // Index for class name in args, assuming no prefix for command
 
         // Determine if a mod name is provided
         if (args.length > 1) {
