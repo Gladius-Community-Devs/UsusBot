@@ -62,6 +62,7 @@ module.exports = {
 
             if (!fs.existsSync(filePaths.classdefsFilePath)) { // Added check for classdefs.tok
                 message.channel.send({ content: `That mod does not have classdefs.tok file!` });
+                this.logger.error(`Classdefs file not found for mod: ${modName} (${filePaths.classdefsFilePath})`);
                 return;
             }
 
