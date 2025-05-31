@@ -60,9 +60,9 @@ module.exports = {
                 return;
             }
 
-            if (!fs.existsSync(filePaths.classdefsFilePath)) { // Added check for classdefs.tok
+            if (!fs.existsSync(filePaths.classdefsPath)) { // Added check for classdefs.tok
                 message.channel.send({ content: `That mod does not have classdefs.tok file!` });
-                this.logger.error(`Classdefs file not found for mod: ${modName} (${filePaths.classdefsFilePath})`);
+                this.logger.error(`Classdefs file not found for mod: ${modName} (${filePaths.classdefsPath})`);
                 return;
             }
 
@@ -70,7 +70,7 @@ module.exports = {
             const { idToText: classLookupIdToText, textToId: classLookupTextToId } = helpers.loadLookupText(filePaths.lookupFilePath);
 
             // Read and parse classdefs.tok
-            const classdefsContent = fs.readFileSync(filePaths.classdefsFilePath, 'utf8');
+            const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
             const classdefChunks = classdefsContent.split(/\\n\\s*\\n/);
             const classNameMap = new Map(); // Maps display name to CREATECLASS name
 
