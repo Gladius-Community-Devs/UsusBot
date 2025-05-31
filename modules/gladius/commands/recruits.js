@@ -129,12 +129,12 @@ module.exports = {
                     continue;
                 }
 
-                // IMPORTANT: Convert DISPLAYNAMEID string to number for lookup
                 const displayNameIdKey = parseInt(classData.DISPLAYNAMEID, 10);
                 if (isNaN(displayNameIdKey)) {
                     this.logger.warn(`Recruits command: [CHUNK ${i+1}] DISPLAYNAMEID '${classData.DISPLAYNAMEID}' is not a valid number. Skipping.`);
                     continue;
                 }
+                this.logger.info(`Recruits command: [CHUNK ${i+1}] Attempting lookup with ID_AS_INT: ${displayNameIdKey}`);
 
                 let displayNameFromLookup = '';
                 if (idToText.hasOwnProperty(displayNameIdKey)) {
@@ -147,10 +147,10 @@ module.exports = {
                 this.logger.info(`Recruits command: [CHUNK ${i+1}] PRE-COMPARISON. Looked-up Name: '${displayNameFromLookup}', User Input (sanitized): '${sanitizedClassName}'`);
 
                 if (displayNameFromLookup && displayNameFromLookup.toLowerCase().includes(sanitizedClassName.toLowerCase())) {
-                    this.logger.info(`Recruits command: [CHUNK ${i+1}] === DISPLAY NAME MATCH SUCCESS === Looked-up (lower): '${displayNameFromLookup.toLowerCase()}', Input (lower): '${sanitizedClassName.toLowerCase()}'. Now searching for CREATECLASS entries in this chunk.`);
+                    this.logger.info(`Recruits command: [CHUNK ${i+1}] === DISPLAY NAME MATCH SUCCESS === Looked-up: '${displayNameFromLookup}' (matches input '${sanitizedClassName}'). Now searching for CREATECLASS entries in this chunk.`);
                     
-                    const linesInChunk = chunk.split(/\\r?\\n/);
-                    let createClassFoundInChunk = false;
+                    const linesInChunk = chunk.split(/\r?\n/);
+                    let createClassesFoundInThisMatchedChunk = [];
                     for (let j = 0; j < linesInChunk.length; j++) {
                         const line = linesInChunk[j];
                         const trimmedLine = line.trim();
@@ -163,8 +163,8 @@ module.exports = {
                             if (createClassName) {
                                 if (!matchingCreateClasses.includes(createClassName)) {
                                     matchingCreateClasses.push(createClassName);
+                                    createClassesFoundInThisMatchedChunk.push(createClassName); // Also track for this specific chunk log
                                     this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Found and ADDED CREATECLASS: '${createClassName}' (derived from display name '${displayNameFromLookup}')`);
-                                    createClassFoundInChunk = true;
                                 } else {
                                     this.logger.info(`Recruits command: [CHUNK ${i+1}][LINE ${j+1}] Found CREATECLASS: '${createClassName}', but it's already in the list.`);
                                 }
@@ -173,7 +173,9 @@ module.exports = {
                             }
                         }
                     }
-                    if (!createClassFoundInChunk) {
+                    if (createClassesFoundInThisMatchedChunk.length > 0) {
+                        this.logger.info(`Recruits command: [CHUNK ${i+1}] For matched display name '${displayNameFromLookup}', the following CREATECLASS entries were extracted from this chunk: ${createClassesFoundInThisMatchedChunk.join(', ')}`);
+                    } else {
                         this.logger.info(`Recruits command: [CHUNK ${i+1}] Display name matched, but NO CREATECLASS entries were found or extracted in this chunk.`);
                     }
                 } else if (displayNameFromLookup) {
@@ -184,7 +186,7 @@ module.exports = {
                     this.logger.info(`Recruits command: [CHUNK ${i+1}] No valid display name from lookup ('${displayNameFromLookup}') to compare with user input '${sanitizedClassName}'.`);
                 }
             }
-            this.logger.info(`Recruits command: === FINISHED CLASSDEFS CHUNK PROCESSING === Found ${matchingCreateClasses.length} CREATECLASS entries: ${matchingCreateClasses.join(', ')}`);
+            this.logger.info(`Recruits command: === FINISHED CLASSDEFS CHUNK PROCESSING === Total unique CREATECLASS entries gathered: ${matchingCreateClasses.length} -> [${matchingCreateClasses.join(', ')}]`);
 
             if (matchingCreateClasses.length === 0) {
                 this.logger.info(`Recruits command: No CREATECLASS entries found for display name matching '${className}' in mod '${modName}'.`);
@@ -216,8 +218,8 @@ module.exports = {
 
             // Step 2: Read gladiators.txt and find all units matching the CREATECLASS entries
             const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
-            const gladiatorChunks = gladiatorsContent.split(/\\n\\s*\\n/);
-            this.logger.info(`Recruits command: Loaded and split gladiators.txt into ${gladiatorChunks.length} chunks. Found ${matchingCreateClasses.length} CREATECLASS entries to match against: ${matchingCreateClasses.join(', ')}`);
+            const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
+            this.logger.info(`Recruits command: Loaded and split gladiators.txt into ${gladiatorChunks.length} chunks. Will match against CREATECLASS list: [${matchingCreateClasses.join(', ')}]`);
 
             let matchingGladiators = [];
             let statSetData = new Map(); // Map stat set number to gladiator info
@@ -229,37 +231,47 @@ module.exports = {
                     class: '',
                     statSet: ''
                 };
+                let currentGladNameForLog = 'UNKNOWN_GLAD'; // For logging before name is parsed
                 
                 for (const line of lines) {
                     if (line.startsWith('Name:')) {
                         gladiatorData.name = line.split(':')[1].trim();
+                        currentGladNameForLog = gladiatorData.name;
                     } else if (line.startsWith('Class:')) {
                         gladiatorData.class = line.split(':')[1].trim();
                     } else if (line.startsWith('Stat set:')) {
                         gladiatorData.statSet = line.split(':')[1].trim();
                     }
                 }
+                this.logger.info(`Recruits command: [GLAD_CHUNK] Processing Gladiator: '${currentGladNameForLog}', Class from file: '${gladiatorData.class}'`);
 
                 if (gladiatorData.name && gladiatorData.class && gladiatorData.statSet !== '') {
-                    // Apply regex patterns to get base class
                     const baseClass = applyClassVariantPatterns(gladiatorData.class);
+                    this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] Original Class: '${gladiatorData.class}', Base Class (after patterns): '${baseClass}'`);
 
-                    // Check if this gladiator's base class matches any of our CREATECLASS entries
-                    const matchesCreateClass = matchingCreateClasses.some(createClass => 
-                        baseClass.toLowerCase() === createClass.toLowerCase()
-                    );
-
-                    if (matchesCreateClass) {
-                        matchingGladiators.push(gladiatorData);
-                        
-                        // Store stat set data for filtering
-                        if (!statSetData.has(gladiatorData.statSet)) {
-                            statSetData.set(gladiatorData.statSet, []);
+                    let gladiatorMatchedAClass = false;
+                    for (const createClass of matchingCreateClasses) {
+                        this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] Comparing Base Class '${baseClass.toLowerCase()}' with CREATECLASS '${createClass.toLowerCase()}'`);
+                        if (baseClass.toLowerCase() === createClass.toLowerCase()) {
+                            this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] === GLADIATOR MATCH SUCCESS === Base Class '${baseClass}' matches CREATECLASS '${createClass}'. Adding to list.`);
+                            matchingGladiators.push(gladiatorData);
+                            gladiatorMatchedAClass = true;
+                            
+                            if (!statSetData.has(gladiatorData.statSet)) {
+                                statSetData.set(gladiatorData.statSet, []);
+                            }
+                            statSetData.get(gladiatorData.statSet).push(gladiatorData);
+                            break; // Found a match for this gladiator, no need to check other createClasses
                         }
-                        statSetData.get(gladiatorData.statSet).push(gladiatorData);
                     }
+                    if (!gladiatorMatchedAClass) {
+                        this.logger.info(`Recruits command: [GLAD_CHUNK '${gladiatorData.name}'] No match found for Base Class '${baseClass}' against any in [${matchingCreateClasses.join(', ')}]`);
+                    }
+                } else {
+                    this.logger.info(`Recruits command: [GLAD_CHUNK '${currentGladNameForLog}'] Skipped due to missing name, class, or statSet data.`);
                 }
             }
+            this.logger.info(`Recruits command: === FINISHED GLADIATOR PROCESSING === Found ${matchingGladiators.length} total matching gladiators.`);
 
             if (matchingGladiators.length === 0) {
                 this.logger.info(`Recruits command: No gladiators found for derived classes: ${matchingCreateClasses.join(', ')} in mod '${modName}'.`);
