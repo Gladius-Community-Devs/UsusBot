@@ -127,16 +127,21 @@ module.exports = {
                 if (displayNameFromLookup && displayNameFromLookup.toLowerCase().includes(sanitizedClassName.toLowerCase())) {
                     // This chunk's DISPLAYNAMEID (when looked up) matches the user's input.
                     // Now, gather all CREATECLASS entries from this specific chunk's raw text.
-                    const linesInChunk = chunk.split(/\\r?\\n/);
+                    const linesInChunk = chunk.split(/\r?\n/); // Corrected line splitting
                     for (const line of linesInChunk) {
                         const trimmedLine = line.trim();
                         if (trimmedLine.startsWith('CREATECLASS:')) {
-                            // Assuming format: CREATECLASS: "ClassNameToList"
-                            const match = trimmedLine.match(/^CREATECLASS:\\s*\"([^\"]+)\"/);
-                            if (match && match[1]) {
-                                if (!matchingCreateClasses.includes(match[1])) { // Avoid duplicates
-                                    matchingCreateClasses.push(match[1]);
+                            // Regex to match: CREATECLASS: "ClassName" OR CREATECLASS: ClassName
+                            const match = trimmedLine.match(/^CREATECLASS:\s*(?:\"([^\"]+)\"|(\S+))/);
+                            const createClassName = match ? (match[1] || match[2]) : null;
+
+                            if (createClassName) {
+                                if (!matchingCreateClasses.includes(createClassName)) { // Avoid duplicates
+                                    matchingCreateClasses.push(createClassName);
+                                    this.logger.info(`Recruits command: Found CREATECLASS: '${createClassName}' for display name '${displayNameFromLookup}' (input: '${className}')`);
                                 }
+                            } else {
+                                this.logger.warn(`Recruits command: Line started with CREATECLASS: but regex did not match. Line: \"${trimmedLine}\"`);
                             }
                         }
                     }
