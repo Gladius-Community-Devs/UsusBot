@@ -12,8 +12,9 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async execute(message, args, extra) {
-        // Initial check for any arguments
-        if (args.length < 1) {
+        // args array does not include the command name itself.
+        // args[0] is the first argument provided to the command.
+        if (args.length === 0) { // No arguments provided after the command
             message.channel.send({ content: 'Please provide the class name. Syntax: `recruits [mod (optional)] <class name> [statset5 (optional)]`' });
             return;
         }
@@ -22,35 +23,34 @@ module.exports = {
         let modName = 'Vanilla';
         let argsForClassNameAndStatset = [];
 
-        // Determine if a mod name is provided as the FIRST argument
         const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
         const potentialModNameInput = helpers.sanitizeInput(args[0]);
-        let isArg0Mod = false;
+        let isFirstArgMod = false;
 
-        for (const modder in moddersConfig) {
-            const modConfigName = moddersConfig[modder].replace(/\\\\s+/g, '_').toLowerCase();
-            if (modConfigName === potentialModNameInput.replace(/\\\\s+/g, '_').toLowerCase()) {
-                isArg0Mod = true;
+        for (const modderFileKey in moddersConfig) { // moddersConfig is an object { "ModderName": "Mod_File_Name" }
+            const modFileName = moddersConfig[modderFileKey].replace(/\\s+/g, '_').toLowerCase();
+            if (modFileName === potentialModNameInput.replace(/\\s+/g, '_').toLowerCase()) {
+                isFirstArgMod = true;
+                modName = moddersConfig[modderFileKey].replace(/\\s+/g, '_');
                 break;
             }
         }
 
-        if (isArg0Mod) {
+        if (isFirstArgMod) {
             if (args.length > 1) { // Mod name (args[0]) + at least one part of class name (args[1+])
-                modName = moddersConfig[Object.keys(moddersConfig).find(k => moddersConfig[k].replace(/\\\\s+/g, '_').toLowerCase() === potentialModNameInput.replace(/\\\\s+/g, '_').toLowerCase())].replace(/\\\\s+/g, '_');
                 argsForClassNameAndStatset = args.slice(1);
-            } else { // Only one arg, and it\'s a mod name. Class name is missing.
+            } else { // Only one arg (args[0]), and it's a mod name. Class name is missing.
                 message.channel.send({ content: `Mod \'${args[0]}\' specified, but no class name provided. Syntax: \`recruits ${args[0]} <class name> [statset5 (optional)]\`` });
                 return;
             }
-        } else { // args[0] is not a mod name (or no args[0] if caught by initial check - though args.length < 1 handles empty)
-            // All args are for class name and potentially statset5
-            argsForClassNameAndStatset = args.slice(0);
+        } else { // args[0] is not a mod name, so all args are for class name and potentially statset5
+            argsForClassNameAndStatset = [...args]; // Use all args
         }
 
         if (argsForClassNameAndStatset.length === 0) {
-            // This case should ideally be caught earlier if a mod was specified without a class name.
-            // If no mod was specified, and this is empty, it means original args was empty or only contained a non-mod that was consumed.
+            // This condition implies that if isFirstArgMod was true, args.length was 1 (mod name only), which is handled above.
+            // If isFirstArgMod was false, this means the original args array was empty, also handled at the start.
+            // However, as a safeguard if logic changes:
             message.channel.send({ content: 'Please provide the class name. Syntax: `recruits [mod (optional)] <class name> [statset5 (optional)]`' });
             return;
         }
