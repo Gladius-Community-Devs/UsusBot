@@ -74,7 +74,7 @@ module.exports = {
         //------------------------------------------------------------------
         // 1.  Resolve which mod folder the user is targeting
         //------------------------------------------------------------------
-        const moddersConfigPath = path.join(__dirname, './modders.json');
+        const moddersConfigPath = path.join(__dirname, '../modders.json');
         const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
 
         let modName = 'Vanilla';      // default
