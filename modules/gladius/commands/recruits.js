@@ -12,9 +12,10 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async execute(message, args, extra) {
-        // args array does not include the command name itself.
-        // args[0] is the first argument provided to the command.
-        if (args.length === 0) { // No arguments provided after the command
+        // As per user feedback, args[0] is the command name. We need to work with args.slice(1).
+        const commandArgs = args.slice(1); // These are the actual arguments for the command logic
+
+        if (commandArgs.length === 0) { // No arguments provided after the command name
             message.channel.send({ content: 'Please provide the class name. Syntax: `recruits [mod (optional)] <class name> [statset5 (optional)]`' });
             return;
         }
@@ -24,33 +25,36 @@ module.exports = {
         let argsForClassNameAndStatset = [];
 
         const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-        const potentialModNameInput = helpers.sanitizeInput(args[0]);
-        let isFirstArgMod = false;
+        // Check the first actual argument (commandArgs[0]) for the mod name
+        const potentialModNameInput = helpers.sanitizeInput(commandArgs[0]); 
+        let isFirstActualArgMod = false;
 
-        for (const modderFileKey in moddersConfig) { // moddersConfig is an object { "ModderName": "Mod_File_Name" }
+        for (const modderFileKey in moddersConfig) { 
             const modFileName = moddersConfig[modderFileKey].replace(/\\s+/g, '_').toLowerCase();
             if (modFileName === potentialModNameInput.replace(/\\s+/g, '_').toLowerCase()) {
-                isFirstArgMod = true;
+                isFirstActualArgMod = true;
                 modName = moddersConfig[modderFileKey].replace(/\\s+/g, '_');
                 break;
             }
         }
 
-        if (isFirstArgMod) {
-            if (args.length > 1) { // Mod name (args[0]) + at least one part of class name (args[1+])
-                argsForClassNameAndStatset = args.slice(1);
-            } else { // Only one arg (args[0]), and it's a mod name. Class name is missing.
-                message.channel.send({ content: `Mod \'${args[0]}\' specified, but no class name provided. Syntax: \`recruits ${args[0]} <class name> [statset5 (optional)]\`` });
+        if (isFirstActualArgMod) {
+            // First actual arg was a mod. Check if there are more args for the class name.
+            if (commandArgs.length > 1) { // Mod name (commandArgs[0]) + class name (commandArgs[1+])
+                argsForClassNameAndStatset = commandArgs.slice(1);
+            } else { // Only one actual arg (commandArgs[0]), and it's a mod name. Class name is missing.
+                message.channel.send({ content: `Mod '${commandArgs[0]}' specified, but no class name provided. Syntax: \`recruits ${commandArgs[0]} <class name> [statset5 (optional)]\`` });
                 return;
             }
-        } else { // args[0] is not a mod name, so all args are for class name and potentially statset5
-            argsForClassNameAndStatset = [...args]; // Use all args
+        } else {
+            // First actual arg was not a mod name, so all actual args are for class name and potentially statset5
+            argsForClassNameAndStatset = [...commandArgs]; // Use all actual command arguments
         }
 
         if (argsForClassNameAndStatset.length === 0) {
-            // This condition implies that if isFirstArgMod was true, args.length was 1 (mod name only), which is handled above.
-            // If isFirstArgMod was false, this means the original args array was empty, also handled at the start.
-            // However, as a safeguard if logic changes:
+            // This case should be hit if isFirstActualArgMod was true but commandArgs.length was 1 (handled above),
+            // or if isFirstActualArgMod was false and commandArgs was empty (also handled at the start).
+            // This is a safeguard.
             message.channel.send({ content: 'Please provide the class name. Syntax: `recruits [mod (optional)] <class name> [statset5 (optional)]`' });
             return;
         }
