@@ -48,13 +48,20 @@ module.exports = {
             if (!fs.existsSync(filePaths.gladiatorsFilePath)) {
                 message.channel.send({ content: `That mod does not have gladiators.txt file!` });
                 return;
-            }            if (!fs.existsSync(filePaths.leaguesPath)) {
+            }
+
+            if (!fs.existsSync(filePaths.leaguesPath)) {
                 message.channel.send({ content: `That mod does not have leagues folder!` });
                 return;
             }
 
             if (!fs.existsSync(filePaths.lookupFilePath)) {
                 message.channel.send({ content: `That mod does not have lookuptext_eng.txt file!` });
+                return;
+            }
+
+            if (!fs.existsSync(filePaths.classdefsPath)) {
+                message.channel.send({ content: `That mod does not have classdefs.tok file!` });
                 return;
             }
 
@@ -71,16 +78,44 @@ module.exports = {
                     message.channel.send({ content: `That mod does not have statsets.txt file!` });
                     return;
                 }
-            }
-
-            // Parse class name from remaining arguments
+            }            // Parse class name from remaining arguments
             const className = argsToProcess.join(' ').trim();
             if (!className) {
                 message.channel.send({ content: 'Please provide the class name.' });
                 return;
+            }            const sanitizedClassName = helpers.sanitizeInput(className);
+
+            // Load lookup text for class display name resolution
+            const { idToText, nameToIds } = helpers.loadLookupText(filePaths.lookupFilePath);
+
+            // Read and parse classdefs.tok to find matching classes
+            const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
+            const classChunks = helpers.splitContentIntoChunks(classdefsContent);
+
+            let matchingCreateClasses = [];
+
+            // Step 1: Parse all classdefs.tok entries and find matches by DISPLAYNAMEID
+            for (const chunk of classChunks) {
+                const classData = helpers.parseClassChunk(chunk);
+                if (!classData || !classData.className) continue;
+
+                // Check if this class matches by display name
+                let displayName = classData.className; // fallback
+                if (classData.DISPLAYNAMEID && idToText[classData.DISPLAYNAMEID]) {
+                    displayName = idToText[classData.DISPLAYNAMEID];
+                }
+
+                // Check if the input class name matches either the display name or class name
+                if (displayName.toLowerCase().includes(sanitizedClassName.toLowerCase()) ||
+                    classData.className.toLowerCase().includes(sanitizedClassName.toLowerCase())) {
+                    matchingCreateClasses.push(classData.className);
+                }
             }
 
-            const sanitizedClassName = helpers.sanitizeInput(className);
+            if (matchingCreateClasses.length === 0) {
+                message.channel.send({ content: `No class found matching '${className}' in '${modName}'.` });
+                return;
+            }
 
             // Function to apply class variant regex patterns
             const applyClassVariantPatterns = (classInFile) => {
@@ -104,7 +139,7 @@ module.exports = {
                 return baseClass;
             };
 
-            // Read gladiators.txt and find all units with the matching class
+            // Step 2: Read gladiators.txt and find all units matching the CREATECLASS entries
             const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
             const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
 
@@ -133,7 +168,12 @@ module.exports = {
                     // Apply regex patterns to get base class
                     const baseClass = applyClassVariantPatterns(gladiatorData.class);
 
-                    if (baseClass.toLowerCase() === sanitizedClassName.toLowerCase()) {
+                    // Check if this gladiator's base class matches any of our CREATECLASS entries
+                    const matchesCreateClass = matchingCreateClasses.some(createClass => 
+                        baseClass.toLowerCase() === createClass.toLowerCase()
+                    );
+
+                    if (matchesCreateClass) {
                         matchingGladiators.push(gladiatorData);
                         
                         // Store stat set data for filtering
@@ -251,12 +291,10 @@ module.exports = {
                         recruitmentData.get(gladiator.name).arenas.push(arenaName);
                     }
                 }
-            }
-
-            // Create embed response
+            }            // Create embed response
             const embed = new EmbedBuilder()
                 .setTitle(`🏛️ Recruitment Locations for ${className}`)
-                .setDescription(`**Mod:** ${modName}${filterDescription}`)
+                .setDescription(`**Mod:** ${modName}\n**Matching Classes:** ${matchingCreateClasses.join(', ')}${filterDescription}`)
                 .setColor(0x00AE86)
                 .setTimestamp();
 
