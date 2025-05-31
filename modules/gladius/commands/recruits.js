@@ -3,6 +3,23 @@ const path = require('path');
 const { EmbedBuilder } = require('discord.js');
 const helpers = require('../functions');
 
+/**
+ * Command: recruits
+ * Usage  : recruits [mod (optional)] [class name] [statset5 (optional)]
+ *
+ * New lookup flow (2025‑05‑31):
+ * 1. User enters a front‑end class name (e.g. "Amazon").
+ * 2. We load lookuptext_eng.txt → map text‑to‑ID with helpers.loadLookupText().
+ * 3. We find every DISPLAYNAMEID whose text matches that class name (case‑insensitive).
+ * 4. We parse every chunk in classdefs.tok with helpers.parseClassChunk() and collect every
+ *    CREATECLASS whose DISPLAYNAMEID belongs to that ID list (this automatically brings in all
+ *    gender / regional / undead variants because the author keeps them under the same
+ *    DISPLAYNAMEID).
+ * 5. Finally, we scan gladiators.txt and grab every recruit whose Class equals one of the
+ *    collected CREATECLASS strings.
+ * 6. Optional "statset5" flag behaviour is unchanged – we still load statsets.txt, compute
+ *    level‑30 averages, and keep only gladiators that use the single best stat set.
+ */
 module.exports = {
     name: 'recruits',
     description: 'Shows where to recruit gladiators of a specified class, optionally filtered by the best stat set.',
@@ -17,313 +34,242 @@ module.exports = {
             return;
         }
 
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
+        const moddersConfigPath = path.join(__dirname, './modders.json');
         let modName = 'Vanilla';
-        let index = 1; // Start after the command name
+        let index = 1; // pointer to the current arg we are processing
 
         try {
-            // Load modders.json
+            /* ------------------------------------------------------------------
+             *                      1. Detect optional mod argument
+             * ----------------------------------------------------------------*/
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+            const modNameInput = helpers.sanitizeInput(args[1]);
 
-            // Sanitize modNameInput
-            let modNameInput = helpers.sanitizeInput(args[1]);
-
-            // Check if args[1] is a valid mod name
-            let isMod = false;
             for (const modder in moddersConfig) {
-                const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
-                    isMod = true;
-                    modName = moddersConfig[modder].replace(/\s+/g, '_');
-                    index = 2; // Move index to next argument
+                const configured = moddersConfig[modder].replace(/\s+/g, '_');
+                if (configured.toLowerCase() === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
+                    modName = configured;
+                    index = 2; // class name starts after the mod argument
                     break;
                 }
             }
+            modName = path.basename(helpers.sanitizeInput(modName));
 
-            // Sanitize modName
-            modName = path.basename(helpers.sanitizeInput(modName));            // Define file paths using helper
+            /* ------------------------------------------------------------------
+             *                      2. Resolve all file paths
+             * ----------------------------------------------------------------*/
             const filePaths = helpers.getModFilePaths(modName);
-
-            // Check if required files exist
-            if (!fs.existsSync(filePaths.gladiatorsFilePath)) {
-                message.channel.send({ content: `That mod does not have gladiators.txt file!` });
-                return;
-            }            if (!fs.existsSync(filePaths.leaguesPath)) {
-                message.channel.send({ content: `That mod does not have leagues folder!` });
-                return;
+            const requiredFiles = [
+                'lookupFilePath',
+                'classdefsPath',
+                'gladiatorsFilePath',
+                'leaguesPath'
+            ];
+            for (const key of requiredFiles) {
+                if (!fs.existsSync(filePaths[key])) {
+                    message.channel.send({ content: `That mod does not have ${path.basename(filePaths[key])} file!` });
+                    return;
+                }
             }
 
-            if (!fs.existsSync(filePaths.lookupFilePath)) {
-                message.channel.send({ content: `That mod does not have lookuptext_eng.txt file!` });
-                return;
-            }
-
-            // Check for statset5 option
+            /* ------------------------------------------------------------------
+             *                      3. Handle optional statset5 flag
+             * ----------------------------------------------------------------*/
             let useStatSetFilter = false;
             let argsToProcess = args.slice(index);
-            
             if (argsToProcess[argsToProcess.length - 1] === 'statset5') {
                 useStatSetFilter = true;
-                argsToProcess = argsToProcess.slice(0, -1); // Remove 'statset5' from the end
-                
-                // Check if statsets file exists when using statset filter
+                argsToProcess.pop();
                 if (!fs.existsSync(filePaths.statsetsFilePath)) {
                     message.channel.send({ content: `That mod does not have statsets.txt file!` });
                     return;
                 }
             }
 
-            // Parse class name from remaining arguments
-            const className = argsToProcess.join(' ').trim();
-            if (!className) {
+            /* ------------------------------------------------------------------
+             *                      4. Parse user‑supplied class name
+             * ----------------------------------------------------------------*/
+            const classNameInput = argsToProcess.join(' ').trim();
+            if (!classNameInput) {
                 message.channel.send({ content: 'Please provide the class name.' });
                 return;
             }
+            const sanitizedClassName = helpers.sanitizeInput(classNameInput);
 
-            const sanitizedClassName = helpers.sanitizeInput(className);
+            /* ------------------------------------------------------------------
+             *              5. lookuptext → DISPLAYNAMEID(s) for that name
+             * ----------------------------------------------------------------*/
+            const { idToText, nameToIds } = helpers.loadLookupText(filePaths.lookupFilePath);
+            const matchingIds = nameToIds[sanitizedClassName.toLowerCase()] || [];
 
-            // Function to apply class variant regex patterns
-            const applyClassVariantPatterns = (classInFile) => {
-                let baseClass = classInFile;
-                
-                // Gender variant pattern: remove trailing F
-                if (baseClass.match(/^(.+)F$/)) {
-                    baseClass = baseClass.replace(/^(.+)F$/, '$1');
-                }
-                
-                // Regional variant pattern: remove Imp|Nor|Ste|Exp|A|B with optional F
-                if (baseClass.match(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/)) {
-                    baseClass = baseClass.replace(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/, '$1');
-                }
-                
-                // Undead variant pattern: keep UndeadMelee prefix, remove suffixes
-                if (baseClass.match(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/)) {
-                    baseClass = baseClass.replace(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/, '$1');
-                }
-                
-                return baseClass;
-            };
+            if (matchingIds.length === 0) {
+                message.channel.send({ content: `No DISPLAYNAMEID found for '${classNameInput}'.` });
+                return;
+            }
 
-            // Read gladiators.txt and find all units with the matching class
+            /* ------------------------------------------------------------------
+             *              6. Parse classdefs.tok → CREATECLASS list
+             * ----------------------------------------------------------------*/
+            const classDefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
+            const classChunks = helpers.splitContentIntoChunks(classDefsContent);
+
+            const createClassSet = new Set();
+            for (const chunk of classChunks) {
+                const classData = helpers.parseClassChunk(chunk);
+                if (!classData || !classData.DISPLAYNAMEID) continue;
+                const id = parseInt(classData.DISPLAYNAMEID, 10);
+                if (matchingIds.includes(id)) {
+                    createClassSet.add(classData.className);
+                }
+            }
+
+            if (createClassSet.size === 0) {
+                message.channel.send({ content: `No classes found in classdefs.tok for '${classNameInput}'.` });
+                return;
+            }
+
+            /* ------------------------------------------------------------------
+             *              7. Scan gladiators.txt for matching recruits
+             * ----------------------------------------------------------------*/
             const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
             const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
 
-            let matchingGladiators = [];
-            let statSetData = new Map(); // Map stat set number to gladiator info
+            const matchingGladiators = [];
+            const statSetData = new Map();
 
             for (const chunk of gladiatorChunks) {
                 const lines = chunk.trim().split(/\r?\n/);
-                let gladiatorData = {
-                    name: '',
-                    class: '',
-                    statSet: ''
-                };
-                
+                const glad = { name: '', class: '', statSet: '' };
                 for (const line of lines) {
-                    if (line.startsWith('Name:')) {
-                        gladiatorData.name = line.split(':')[1].trim();
-                    } else if (line.startsWith('Class:')) {
-                        gladiatorData.class = line.split(':')[1].trim();
-                    } else if (line.startsWith('Stat set:')) {
-                        gladiatorData.statSet = line.split(':')[1].trim();
-                    }
+                    if (line.startsWith('Name:')) glad.name = line.split(':')[1].trim();
+                    else if (line.startsWith('Class:')) glad.class = line.split(':')[1].trim();
+                    else if (line.startsWith('Stat set:')) glad.statSet = line.split(':')[1].trim();
                 }
-
-                if (gladiatorData.name && gladiatorData.class && gladiatorData.statSet !== '') {
-                    // Apply regex patterns to get base class
-                    const baseClass = applyClassVariantPatterns(gladiatorData.class);
-
-                    if (baseClass.toLowerCase() === sanitizedClassName.toLowerCase()) {
-                        matchingGladiators.push(gladiatorData);
-                        
-                        // Store stat set data for filtering
-                        if (!statSetData.has(gladiatorData.statSet)) {
-                            statSetData.set(gladiatorData.statSet, []);
-                        }
-                        statSetData.get(gladiatorData.statSet).push(gladiatorData);
-                    }
+                if (!glad.name || !glad.class || glad.statSet === '') continue;
+                if (createClassSet.has(glad.class)) {
+                    matchingGladiators.push(glad);
+                    if (!statSetData.has(glad.statSet)) statSetData.set(glad.statSet, []);
+                    statSetData.get(glad.statSet).push(glad);
                 }
             }
 
             if (matchingGladiators.length === 0) {
-                message.channel.send({ content: `No gladiators found for class '${className}' in '${modName}'.` });
+                message.channel.send({ content: `No gladiators found for class '${classNameInput}' in '${modName}'.` });
                 return;
             }
 
-            // Filter by top 5 stat sets if requested
+            /* ------------------------------------------------------------------
+             *              8. Optional stat set filter (unchanged logic)
+             * ----------------------------------------------------------------*/
             let targetGladiators = matchingGladiators;
             let filterDescription = '';
-
             if (useStatSetFilter) {
-                // Read and parse statsets.txt
                 const statsetsContent = fs.readFileSync(filePaths.statsetsFilePath, 'utf8');
                 const statsetChunks = statsetsContent.split(/\n\s*\n/);
-                
-                // Calculate average stats at level 30 for each stat set
-                const statSetAverages = new Map();
-                
+
+                const averages = new Map();
                 for (const chunk of statsetChunks) {
                     const lines = chunk.trim().split(/\r?\n/);
-                    const statSetMatch = lines[0].match(/^Statset (\d+):$/);
-                    
-                    if (statSetMatch) {
-                        const statSetNumber = statSetMatch[1];
-                        
-                        // Find level 30 stats
-                        for (const line of lines) {
-                            if (line.trim().startsWith('30:')) {
-                                const stats = line.trim().split(':')[1].trim().split(' ').map(s => parseInt(s.trim()));
-                                if (stats.length === 5) { // CON PWR ACC DEF INI
-                                    const average = stats.reduce((sum, stat) => sum + stat, 0) / stats.length;
-                                    statSetAverages.set(statSetNumber, {
-                                        average: average,
-                                        stats: {
-                                            con: stats[0],
-                                            pwr: stats[1],
-                                            acc: stats[2],
-                                            def: stats[3],
-                                            ini: stats[4]
-                                        }
-                                    });
-                                }
-                                break;
+                    const header = lines[0].match(/^Statset (\d+):$/);
+                    if (!header) continue;
+                    const number = header[1];
+                    for (const line of lines) {
+                        if (line.trim().startsWith('30:')) {
+                            const parts = line.split(':')[1].trim().split(' ').map(n => parseInt(n.trim(), 10));
+                            if (parts.length === 5) {
+                                const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
+                                averages.set(number, { avg, stats: { con: parts[0], pwr: parts[1], acc: parts[2], def: parts[3], ini: parts[4] } });
                             }
+                            break;
                         }
                     }
-                }                // Find stat sets used by our matching gladiators and sort by average
-                const relevantStatSets = Array.from(statSetData.keys())
-                    .filter(statSet => statSetAverages.has(statSet))
-                    .map(statSet => ({
-                        statSet: statSet,
-                        average: statSetAverages.get(statSet).average,
-                        stats: statSetAverages.get(statSet).stats,
-                        gladiators: statSetData.get(statSet)
-                    }))
-                    .sort((a, b) => b.average - a.average) // Sort by highest average first
-                    .slice(0, 1); // Take only top 1
+                }
 
-                if (relevantStatSets.length === 0) {
-                    message.channel.send({ content: `No stat set data found for class '${className}' in '${modName}'.` });
+                const ranked = Array.from(statSetData.keys())
+                    .filter(ss => averages.has(ss))
+                    .map(ss => ({
+                        ss,
+                        avg: averages.get(ss).avg,
+                        stats: averages.get(ss).stats,
+                        gladiators: statSetData.get(ss)
+                    }))
+                    .sort((a, b) => b.avg - a.avg)
+                    .slice(0, 1);
+
+                if (ranked.length === 0) {
+                    message.channel.send({ content: `No stat set data found for class '${classNameInput}' in '${modName}'.` });
                     return;
                 }
 
-                // Get gladiators from top stat set only
-                targetGladiators = relevantStatSets.flatMap(statSetInfo => statSetInfo.gladiators);
-                
-                const topStatSet = relevantStatSets[0];
-                const stats = topStatSet.stats;
-                filterDescription = `\n*Showing only gladiators with the top stat set by level 30 average stats*\n`;
-                filterDescription += `**Top Stat Set:** ${topStatSet.statSet} (Avg: ${topStatSet.average.toFixed(1)}) - CON:${stats.con} PWR:${stats.pwr} ACC:${stats.acc} DEF:${stats.def} INI:${stats.ini}\n\n`;
-            }            // Load lookup text for arena names
-            let lookupTextMap = {};
-            if (fs.existsSync(filePaths.lookupFilePath)) {
-                const { idToText } = helpers.loadLookupText(filePaths.lookupFilePath);
-                lookupTextMap = idToText;
+                targetGladiators = ranked[0].gladiators;
+                const s = ranked[0];
+                filterDescription = `\n*Showing only gladiators with the top stat set by level 30 average stats*\n` +
+                    `**Top Stat Set:** ${s.ss} (Avg: ${s.avg.toFixed(1)}) - CON:${s.stats.con} PWR:${s.stats.pwr} ACC:${s.stats.acc} DEF:${s.stats.def} INI:${s.stats.ini}\n\n`;
             }
 
-            // Read all league files and find where these gladiators can be recruited
-            const leagueFiles = fs.readdirSync(filePaths.leaguesPath).filter(file => file.endsWith('.tok'));
-            const recruitmentData = new Map(); // Map gladiator name to arenas
+            /* ------------------------------------------------------------------
+             *              9. Map gladiators → arenas (league files)
+             * ----------------------------------------------------------------*/
+            const leagueFiles = fs.readdirSync(filePaths.leaguesPath).filter(f => f.endsWith('.tok'));
+            const recruitmentData = new Map();
 
             for (const file of leagueFiles) {
-                const filePath = path.join(filePaths.leaguesPath, file);
-                const leagueContent = fs.readFileSync(filePath, 'utf8');
-                
-                // Extract arena name from OFFICENAME line
-                let arenaName = file.replace('_league.tok', '').replace('.tok', ''); // fallback
-                const officeNameMatch = leagueContent.match(/OFFICENAME\s+"[^"]*",\s*(\d+)/);
-                if (officeNameMatch) {
-                    const lookupId = parseInt(officeNameMatch[1]);
-                    if (lookupTextMap[lookupId]) {
-                        arenaName = lookupTextMap[lookupId];
-                    }
+                const leaguePath = path.join(filePaths.leaguesPath, file);
+                const leagueContent = fs.readFileSync(leaguePath, 'utf8');
+
+                let arenaName = file.replace('_league.tok', '').replace('.tok', '');
+                const officeMatch = leagueContent.match(/OFFICENAME\s+"[^"]*",\s*(\d+)/);
+                if (officeMatch && idToText[parseInt(officeMatch[1], 10)]) {
+                    arenaName = idToText[parseInt(officeMatch[1], 10)];
                 }
-                
-                // Check each target gladiator in this league file
+
                 for (const gladiator of targetGladiators) {
                     if (leagueContent.includes(gladiator.name)) {
                         if (!recruitmentData.has(gladiator.name)) {
-                            recruitmentData.set(gladiator.name, {
-                                gladiator: gladiator,
-                                arenas: []
-                            });
+                            recruitmentData.set(gladiator.name, { gladiator, arenas: [] });
                         }
                         recruitmentData.get(gladiator.name).arenas.push(arenaName);
                     }
                 }
             }
 
-            // Create embed response
+            /* ------------------------------------------------------------------
+             *              10. Build Discord embed and send
+             * ----------------------------------------------------------------*/
             const embed = new EmbedBuilder()
-                .setTitle(`🏛️ Recruitment Locations for ${className}`)
+                .setTitle(`🏛️ Recruitment Locations for ${classNameInput}`)
                 .setDescription(`**Mod:** ${modName}${filterDescription}`)
                 .setColor(0x00AE86)
                 .setTimestamp();
 
             if (recruitmentData.size === 0) {
-                embed.addFields({
-                    name: 'No Recruitment Data Found',
-                    value: `No recruitment information found for class '${className}' in any league files.`
-                });
+                embed.addFields({ name: 'No Recruitment Data Found', value: `No recruitment information found for class '${classNameInput}' in any league files.` });
             } else {
-                // Group by arena for better display
+                // group by arena for nicer display
                 const arenaGroups = new Map();
-                
-                for (const [gladiatorName, data] of recruitmentData) {
+                for (const [name, data] of recruitmentData) {
                     for (const arena of data.arenas) {
-                        if (!arenaGroups.has(arena)) {
-                            arenaGroups.set(arena, []);
-                        }
-                        arenaGroups.get(arena).push({
-                            name: gladiatorName,
-                            statSet: data.gladiator.statSet,
-                            variant: data.gladiator.class
-                        });
+                        if (!arenaGroups.has(arena)) arenaGroups.set(arena, []);
+                        arenaGroups.get(arena).push({ name, statSet: data.gladiator.statSet, variant: data.gladiator.class });
                     }
                 }
-
-                // Sort arenas alphabetically and add fields
                 const sortedArenas = Array.from(arenaGroups.keys()).sort();
-                
                 for (const arena of sortedArenas) {
-                    const gladiators = arenaGroups.get(arena);
-                    let gladiatorList = '';
-                    
-                    gladiators.forEach(glad => {
-                        if (useStatSetFilter) {
-                            gladiatorList += `• **${glad.name}** (${glad.variant}) - Stat Set ${glad.statSet}\n`;
-                        } else {
-                            gladiatorList += `• **${glad.name}** (${glad.variant})\n`;
-                        }
+                    const glads = arenaGroups.get(arena);
+                    let list = '';
+                    glads.forEach(g => {
+                        list += useStatSetFilter ? `• **${g.name}** (${g.variant}) - Stat Set ${g.statSet}\n` : `• **${g.name}** (${g.variant})\n`;
                     });
-                    
-                    // Limit field value length for Discord
-                    if (gladiatorList.length > 1024) {
-                        gladiatorList = gladiatorList.substring(0, 1021) + '...';
-                    }
-                      embed.addFields({
-                        name: `🏟️ ${arena}`,
-                        value: gladiatorList || 'No gladiators found',
-                        inline: true
-                    });
+                    if (list.length > 1024) list = list.slice(0, 1021) + '.';
+                    embed.addFields({ name: `🏟️ ${arena}`, value: list, inline: true });
                 }
-
-                // Add summary field
-                const totalGladiators = Array.from(recruitmentData.keys()).length;
-                const totalArenas = arenaGroups.size;
-                
-                embed.addFields({
-                    name: '📊 Summary',
-                    value: `Found **${totalGladiators}** ${className} gladiators available across **${totalArenas}** arenas.`,
-                    inline: false
-                });
+                embed.addFields({ name: '📊 Summary', value: `Found **${recruitmentData.size}** ${classNameInput} gladiators across **${arenaGroups.size}** arenas.`, inline: false });
             }
 
             await message.channel.send({ embeds: [embed] });
-
-        } catch (error) {
-            console.error('Error finding recruits:', error);
-            message.channel.send({ content: 'An error occurred while finding recruitment information.' });
+        } catch (err) {
+            console.error('Error executing recruits command:', err);
+            message.channel.send({ content: 'An unexpected error occurred while retrieving recruitment information.' });
         }
     }
 };
