@@ -12,38 +12,52 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async execute(message, args, extra) {
-        if (args.length < 1) { // Command name is args[0] if not using a prefix
+        // Initial check for any arguments
+        if (args.length < 1) {
             message.channel.send({ content: 'Please provide the class name. Syntax: `recruits [mod (optional)] <class name> [statset5 (optional)]`' });
             return;
         }
 
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
-        let classNameInputIndex = 1; // Index for class name in args, assuming no prefix for command
+        let argsForClassNameAndStatset = [];
 
-        // Determine if a mod name is provided
-        if (args.length > 1) {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-            const potentialModName = helpers.sanitizeInput(args[0]); // User might type "recruits ModName ClassName"
-            let isMod = false;
-            for (const modder in moddersConfig) {
-                const modConfigName = moddersConfig[modder].replace(/\\s+/g, '_').toLowerCase();
-                if (modConfigName === potentialModName.replace(/\\s+/g, '_').toLowerCase()) {
-                    isMod = true;
-                    modName = moddersConfig[modder].replace(/\\s+/g, '_');
-                    classNameInputIndex = 1; // Class name is the next argument
-                    break;
-                }
+        // Determine if a mod name is provided as the FIRST argument
+        const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+        const potentialModNameInput = helpers.sanitizeInput(args[0]);
+        let isArg0Mod = false;
+
+        for (const modder in moddersConfig) {
+            const modConfigName = moddersConfig[modder].replace(/\\\\s+/g, '_').toLowerCase();
+            if (modConfigName === potentialModNameInput.replace(/\\\\s+/g, '_').toLowerCase()) {
+                isArg0Mod = true;
+                break;
             }
         }
+
+        if (isArg0Mod) {
+            if (args.length > 1) { // Mod name (args[0]) + at least one part of class name (args[1+])
+                modName = moddersConfig[Object.keys(moddersConfig).find(k => moddersConfig[k].replace(/\\\\s+/g, '_').toLowerCase() === potentialModNameInput.replace(/\\\\s+/g, '_').toLowerCase())].replace(/\\\\s+/g, '_');
+                argsForClassNameAndStatset = args.slice(1);
+            } else { // Only one arg, and it\'s a mod name. Class name is missing.
+                message.channel.send({ content: `Mod \'${args[0]}\' specified, but no class name provided. Syntax: \`recruits ${args[0]} <class name> [statset5 (optional)]\`` });
+                return;
+            }
+        } else { // args[0] is not a mod name (or no args[0] if caught by initial check - though args.length < 1 handles empty)
+            // All args are for class name and potentially statset5
+            argsForClassNameAndStatset = args.slice(0);
+        }
+
+        if (argsForClassNameAndStatset.length === 0) {
+            // This case should ideally be caught earlier if a mod was specified without a class name.
+            // If no mod was specified, and this is empty, it means original args was empty or only contained a non-mod that was consumed.
+            message.channel.send({ content: 'Please provide the class name. Syntax: `recruits [mod (optional)] <class name> [statset5 (optional)]`' });
+            return;
+        }
         
-        // If only one arg is given, it must be the class name (or mod name if it's the only arg and it's a mod)
-        // This logic needs to be careful if a single arg could be a class name or a mod name
-        // For simplicity, let's assume if a mod is specified, it's the first arg after command.
+        const filePaths = helpers.getModFilePaths(modName); // Define filePaths after modName is finalized
 
-        const filePaths = helpers.getModFilePaths(modName);
-
-        // Validate required files
+        // Validate required files (ensure filePaths is defined before this block)
         const requiredFilesCheck = {
             lookupFilePath: filePaths.lookupFilePath,
             classdefsPath: filePaths.classdefsPath,
@@ -59,18 +73,19 @@ module.exports = {
 
         // Check for statset5 option
         let useStatSetFilter = false;
-        let remainingArgs = args.slice(classNameInputIndex);
+        let finalClassNameArgs = [...argsForClassNameAndStatset]; // Use the correctly sliced args
         
-        if (remainingArgs.length > 1 && remainingArgs[remainingArgs.length - 1].toLowerCase() === 'statset5') {
+        if (finalClassNameArgs.length > 0 && finalClassNameArgs[finalClassNameArgs.length - 1].toLowerCase() === 'statset5') {
             useStatSetFilter = true;
-            remainingArgs = remainingArgs.slice(0, -1); // Remove 'statset5'
+            finalClassNameArgs.pop(); // Remove 'statset5' from the end
+            
             if (!fs.existsSync(filePaths.statsetsFilePath)) {
                 message.channel.send({ content: `Statsets file (statsets.txt) not found for mod '${modName}', cannot use 'statset5' filter.` });
                 return;
             }
         }
 
-        const classNameInput = remainingArgs.join(' ').trim();
+        const classNameInput = finalClassNameArgs.join(' ').trim();
         if (!classNameInput) {
             message.channel.send({ content: 'Please provide the class name. Syntax: `recruits [mod (optional)] <class name> [statset5 (optional)]`' });
             return;
