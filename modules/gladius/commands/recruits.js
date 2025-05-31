@@ -89,12 +89,22 @@ module.exports = {
 
             // Read and parse classdefs.tok
             const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
-            const classdefChunks = classdefsContent.split(/\\n\\s*\\n/);
+            // Corrected splitting logic based on classes.js
+            const classdefRawChunks = classdefsContent.split(/\nCREATECLASS:/);
             const classNameMap = new Map(); // Maps display name to CREATECLASS name
-            this.logger.info(`Read and parsed classdefs.tok into ${classdefChunks.length} chunks.`);
+            this.logger.info(`Read and parsed classdefs.tok into ${classdefRawChunks.length} raw chunks using \nCREATECLASS: splitter.`);
 
-            for (const chunk of classdefChunks) {
-                const lines = chunk.trim().split(/\\r?\\n/);
+            for (let i = 0; i < classdefRawChunks.length; i++) {
+                let chunk = classdefRawChunks[i].trim();
+                if (!chunk) continue;
+
+                // Add back the CREATECLASS: prefix for chunks after the first one,
+                // or if the first chunk itself doesn't start with it (e.g. if file has leading whitespace)
+                if (i > 0 || !chunk.startsWith('CREATECLASS:')) {
+                    chunk = 'CREATECLASS:' + chunk;
+                }
+
+                const lines = chunk.trim().split(/\r?\n/);
                 let createClassName = '';
                 let displayNameId = '';
 
