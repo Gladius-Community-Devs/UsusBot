@@ -81,12 +81,17 @@ module.exports = {
             // Load lookup text for class names
             const { idToText: classLookupIdToText, textToId: classLookupTextToId } = helpers.loadLookupText(filePaths.lookupFilePath);
             this.logger.info('Loaded lookup text for class names.');
+            if (Object.keys(classLookupIdToText).length === 0) {
+                this.logger.warn('classLookupIdToText (for class names) is EMPTY after loading. This will prevent classNameMap population.');
+            } else {
+                this.logger.info(`classLookupIdToText loaded with ${Object.keys(classLookupIdToText).length} entries. Example (first key): '${Object.keys(classLookupIdToText)[0]}' -> '${classLookupIdToText[Object.keys(classLookupIdToText)[0]]}'`);
+            }
 
             // Read and parse classdefs.tok
             const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
-            const classdefChunks = classdefsContent.split(/\\\\n\\\\s*\\\\n/);
+            const classdefChunks = classdefsContent.split(/\\n\\s*\\n/);
             const classNameMap = new Map(); // Maps display name to CREATECLASS name
-            this.logger.info('Read and parsed classdefs.tok.');
+            this.logger.info(`Read and parsed classdefs.tok into ${classdefChunks.length} chunks.`);
 
             for (const chunk of classdefChunks) {
                 const lines = chunk.trim().split(/\\r?\\n/);
@@ -101,9 +106,22 @@ module.exports = {
                     }
                 }
 
-                if (createClassName && displayNameId && classLookupIdToText[displayNameId]) {
-                    const displayName = classLookupIdToText[displayNameId].toLowerCase();
-                    classNameMap.set(displayName, createClassName);
+                if (createClassName && displayNameId) {
+                    const lookedUpDisplayName = classLookupIdToText[displayNameId];
+                    if (lookedUpDisplayName) {
+                        const displayName = lookedUpDisplayName.toLowerCase();
+                        classNameMap.set(displayName, createClassName);
+                        // Example of a successful mapping log (can be verbose, uncomment if needed for deep debugging):
+                        // this.logger.info(`Mapped displayName '${displayName}' (from ID '${displayNameId}') to CREATECLASS '${createClassName}'`);
+                    } else {
+                        // Log when a DISPLAYNAMEID is not found in the lookup map, or its value is falsy
+                        this.logger.warn(`Did not map CREATECLASS '${createClassName}'. Reason: DISPLAYNAMEID '${displayNameId}' not found in classLookupIdToText, or its looked-up value was falsy. classLookupIdToText has '${displayNameId}': ${classLookupIdToText.hasOwnProperty(displayNameId)}. Value: '${classLookupIdToText[displayNameId]}'. Chunk (first 100 chars): '${chunk.substring(0,100).replace(/\\n/g, "\\\\n")}'`);
+                    }
+                } else {
+                    // Log if CREATECLASS or DISPLAYNAMEID were not found in the chunk
+                    if (chunk.trim()) { // Avoid logging for genuinely empty chunks if they somehow occur
+                       this.logger.warn(`Skipped mapping for a chunk. Reason: Missing CREATECLASS (found: '${createClassName}') or DISPLAYNAMEID (found: '${displayNameId}'). Chunk (first 100 chars): '${chunk.substring(0,100).replace(/\\n/g, "\\\\n")}'`);
+                    }
                 }
             }
             this.logger.info(`Built classNameMap with ${classNameMap.size} entries.`);
