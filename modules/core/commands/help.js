@@ -22,7 +22,8 @@ module.exports = {
             if (current_command.module === 'Core' || current_command.module === 'Admin') {
                 continue;
             }
-            if (current_command.name.startsWith('h-')) {
+            // Check if current_command.name is a string before calling startsWith
+            if (typeof current_command.name !== 'string' || current_command.name.startsWith('h-')) {
                 continue;
             }
 
