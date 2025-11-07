@@ -83,6 +83,56 @@ module.exports = {
             proc.on('close', code => {
                 if (code === 0 && fs.existsSync(outputIsoPath)) {
                     message.channel.send({ content: `Patch applied successfully. Output ISO: ${sanitizedModDisplayName}_modded.iso` });
+
+                    // Begin unpack step (Linux-compatible; requires python3 and scripts in uploads/tools)
+                    const toolsDir = path.join(uploadsRoot, 'tools');
+                    const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
+                    const becTool = path.join(toolsDir, 'bec-tool-all.py');
+                    const fileList = path.join(toolsDir, 'GladiusISO_FileList.txt');
+
+                    if (!fs.existsSync(toolsDir) || !fs.existsSync(isoTool) || !fs.existsSync(becTool) || !fs.existsSync(fileList)) {
+                        message.channel.send({ content: 'Tools directory or required scripts/file list missing. Skipping unpack.' });
+                        return;
+                    }
+
+                    const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
+                    const becUnpackDir = path.join(modFolder, 'bec_unpacked');
+                    // Clean / create dirs
+                    if (fs.existsSync(isoUnpackDir)) fs.rmSync(isoUnpackDir, { recursive: true, force: true });
+                    if (fs.existsSync(becUnpackDir)) fs.rmSync(becUnpackDir, { recursive: true, force: true });
+                    fs.mkdirSync(isoUnpackDir, { recursive: true });
+                    fs.mkdirSync(becUnpackDir, { recursive: true });
+
+                    const runScript = (scriptPath, scriptArgs) => {
+                        return new Promise((resolve, reject) => {
+                            const p = spawn('python3', [scriptPath, ...scriptArgs]);
+                            let errBuf = '';
+                            p.stderr.on('data', d => errBuf += d.toString());
+                            p.on('error', e => reject(e));
+                            p.on('close', c => {
+                                if (c === 0) resolve(); else reject(new Error(errBuf || ('exit code ' + c)));
+                            });
+                        });
+                    };
+
+                    message.channel.send({ content: 'Unpacking patched ISO...' });
+                    runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDir, fileList])
+                        .then(() => {
+                            const becFile = path.join(isoUnpackDir, 'gladius.bec');
+                            if (!fs.existsSync(becFile)) {
+                                message.channel.send({ content: 'gladius.bec not found after ISO unpack. Cannot proceed to BEC unpack.' });
+                                return;
+                            }
+                            message.channel.send({ content: 'ISO unpack complete. Unpacking gladius.bec...' });
+                            return runScript(becTool, ['-unpack', becFile, becUnpackDir]);
+                        })
+                        .then(() => {
+                            message.channel.send({ content: 'BEC unpack complete. Mod update process finished.' });
+                        })
+                        .catch(err => {
+                            this.logger && this.logger.error('Unpack error:', err);
+                            message.channel.send({ content: 'An error occurred during unpack: ' + err.message });
+                        });
                 } else {
                     this.logger && this.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
                     message.channel.send({ content: 'Patch application failed. Check that the patch matches vanilla.iso.' });
