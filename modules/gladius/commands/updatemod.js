@@ -88,12 +88,15 @@ module.exports = {
                     const toolsDir = path.join(uploadsRoot, 'tools');
                     const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
                     const becTool = path.join(toolsDir, 'bec-tool-all.py');
-                    const fileList = path.join(toolsDir, 'GladiusISO_FileList.txt');
+                    const fileList = path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`);
                     message.channel.send({ content: 'tools: ' + toolsDir });
-                    if (!fs.existsSync(toolsDir) || !fs.existsSync(isoTool) || !fs.existsSync(becTool) || !fs.existsSync(fileList)) {
-                        message.channel.send({ content: 'Tools directory or required scripts/file list missing. Skipping unpack.' });
+                    if (!fs.existsSync(toolsDir) || !fs.existsSync(isoTool) || !fs.existsSync(becTool)) {
+                        message.channel.send({ content: 'Tools or required scripts missing. Skipping unpack.' });
                         return;
                     }
+
+                    // Dynamically create (or overwrite) file list placeholder (content can be filled later if needed)
+                    try { fs.writeFileSync(fileList, '', 'utf8'); } catch(e) { /* ignore */ }
 
                     const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
                     const becUnpackDir = path.join(modFolder, 'bec_unpacked');
