@@ -98,8 +98,8 @@ module.exports = {
                     // Dynamically create (or overwrite) file list placeholder (content can be filled later if needed)
                     try { fs.writeFileSync(fileList, '', 'utf8'); } catch(e) { /* ignore */ }
 
-                    const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
-                    const becUnpackDir = path.join(modFolder, 'bec_unpacked');
+                    const isoUnpackDir = modFolder
+                    const becUnpackDir = modFolder
                     // Clean / create dirs
                     if (fs.existsSync(isoUnpackDir)) fs.rmSync(isoUnpackDir, { recursive: true, force: true });
                     if (fs.existsSync(becUnpackDir)) fs.rmSync(becUnpackDir, { recursive: true, force: true });
