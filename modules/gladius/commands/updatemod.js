@@ -84,15 +84,6 @@ module.exports = {
                 if (code === 0 && fs.existsSync(outputIsoPath)) {
                     message.channel.send({ content: `Patch applied successfully. Output ISO: ${sanitizedModDisplayName}_modded.iso` });
 
-                    const ensureIsoExists = () => {
-                        if (!fs.existsSync(outputIsoPath)) {
-                            message.channel.send({ content: 'Patched ISO unexpectedly missing before unpack: ' + outputIsoPath });
-                            return false;
-                        }
-                        try { const stats = fs.statSync(outputIsoPath); message.channel.send({ content: `Patched ISO size: ${stats.size} bytes` }); } catch (_) {}
-                        return true;
-                    };
-
                     // Begin unpack step (Linux-compatible; requires python3 and scripts in uploads/tools)
                     const toolsDir = path.join(uploadsRoot, 'tools');
                     const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
@@ -103,52 +94,74 @@ module.exports = {
                         return;
                     }
 
-                    // Dynamically create (or overwrite) file list placeholder (content can be filled later if needed)
-                    try { fs.writeFileSync(fileList, '', 'utf8'); } catch(e) { /* ignore */ }
-
                     // Use separate subdirectories so we do NOT delete the mod folder (which contains the freshly created ISO)
-                    const isoUnpackDir = path.join(modFolder, 'iso_unpacked\\');
-                    const becUnpackDir = path.join(modFolder, 'bec_unpacked\\');
+                    const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
+                    const becUnpackDir = path.join(modFolder, 'bec_unpacked');
                     // Clean / create sub dirs only
                     if (fs.existsSync(isoUnpackDir)) fs.rmSync(isoUnpackDir, { recursive: true, force: true });
                     if (fs.existsSync(becUnpackDir)) fs.rmSync(becUnpackDir, { recursive: true, force: true });
                     fs.mkdirSync(isoUnpackDir, { recursive: true });
                     fs.mkdirSync(becUnpackDir, { recursive: true });
 
-                    const runScript = (scriptPath, scriptArgs) => {
-                        return new Promise((resolve, reject) => {
-                            const p = spawn('python3', [scriptPath, ...scriptArgs]);
-                            let errBuf = '';
-                            p.stderr.on('data', d => errBuf += d.toString());
-                            p.on('error', e => reject(e));
-                            p.on('close', c => {
-                                if (c === 0) resolve(); else reject(new Error(errBuf || ('exit code ' + c)));
-                            });
-                        });
-                    };
+                    const runScript = (scriptPath, scriptArgs, opts={}) => new Promise((resolve, reject) => {
+                        const p = spawn('python3', [scriptPath, ...scriptArgs], { cwd: toolsDir, ...opts });
+                        let errBuf = '';
+                        p.stderr.on('data', d => errBuf += d.toString());
+                        p.on('error', e => reject(e));
+                        p.on('close', c => c === 0 ? resolve() : reject(new Error(errBuf || ('exit code ' + c))));
+                    });
 
-                    // Delay to allow FS to settle
-                    setTimeout(() => {
-                        if (!ensureIsoExists()) return;
-                        message.channel.send({ content: 'Unpacking patched ISO...' });
-                        runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDir, fileList])
-                            .then(() => {
-                                const becFile = path.join(isoUnpackDir, 'gladius.bec');
-                                if (!fs.existsSync(becFile)) {
-                                    message.channel.send({ content: 'gladius.bec not found after ISO unpack. Cannot proceed to BEC unpack.' });
-                                    return;
+                    const waitForFile = (p, timeoutMs=5000, intervalMs=200) => new Promise((resolve, reject) => {
+                        const deadline = Date.now() + timeoutMs;
+                        const poll = () => {
+                            if (fs.existsSync(p)) return resolve();
+                            if (Date.now() > deadline) return reject(new Error('Timed out waiting for file: ' + p));
+                            setTimeout(poll, intervalMs);
+                        };
+                        poll();
+                    });
+
+                    waitForFile(outputIsoPath)
+                        .then(() => {
+                            message.channel.send({ content: 'Unpacking patched ISO...' });
+                            return runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDir, fileList]);
+                        })
+                        .then(() => {
+                            const becFile = path.join(isoUnpackDir, 'gladius.bec');
+                            if (!fs.existsSync(becFile)) {
+                                message.channel.send({ content: 'gladius.bec not found after ISO unpack. Cannot proceed to BEC unpack.' });
+                                return Promise.reject(new Error('Missing gladius.bec'));
+                            }
+                            message.channel.send({ content: 'ISO unpack complete. Unpacking gladius.bec...' });
+                            return runScript(becTool, ['-unpack', becFile, becUnpackDir]);
+                        })
+                        .then(() => {
+                            // Move bec_unpacked/data to modFolder/data and delete everything else
+                            const unpackedDataDir = path.join(becUnpackDir, 'data');
+                            if (!fs.existsSync(unpackedDataDir)) {
+                                message.channel.send({ content: 'BEC unpack finished but data folder not found.' });
+                                return;
+                            }
+                            const finalDataDir = path.join(modFolder, 'data');
+                            if (fs.existsSync(finalDataDir)) fs.rmSync(finalDataDir, { recursive: true, force: true });
+                            try {
+                                fs.renameSync(unpackedDataDir, finalDataDir);
+                            } catch (e) {
+                                try { fs.cpSync(unpackedDataDir, finalDataDir, { recursive: true }); fs.rmSync(unpackedDataDir, { recursive: true, force: true }); } catch (copyErr) { this.logger && this.logger.error('Data move error:', copyErr); }
+                            }
+                            try {
+                                for (const entry of fs.readdirSync(modFolder)) {
+                                    if (entry !== 'data') fs.rmSync(path.join(modFolder, entry), { recursive: true, force: true });
                                 }
-                                message.channel.send({ content: 'ISO unpack complete. Unpacking gladius.bec...' });
-                                return runScript(becTool, ['-unpack', becFile, becUnpackDir]);
-                            })
-                            .then(() => {
-                                message.channel.send({ content: 'BEC unpack complete. Mod update process finished.' });
-                            })
-                            .catch(err => {
-                                this.logger && this.logger.error('Unpack error:', err);
-                                message.channel.send({ content: 'An error occurred during unpack: ' + err.message });
-                            });
-                    }, 750);
+                            } catch (cleanErr) {
+                                this.logger && this.logger.error('Cleanup error:', cleanErr);
+                            }
+                            message.channel.send({ content: 'BEC unpack complete. Data isolated. Mod update process finished.' });
+                        })
+                        .catch(err => {
+                            this.logger && this.logger.error('Unpack error:', err);
+                            message.channel.send({ content: 'An error occurred during unpack: ' + err.message });
+                        });
                 } else {
                     this.logger && this.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
                     message.channel.send({ content: 'Patch application failed. Check that the patch matches vanilla.iso.' });
