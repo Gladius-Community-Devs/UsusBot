@@ -89,7 +89,7 @@ module.exports = {
                     const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
                     const becTool = path.join(toolsDir, 'bec-tool-all.py');
                     const fileList = path.join(toolsDir, 'GladiusISO_FileList.txt');
-
+                    message.channel.send({ content: 'tools: ' + toolsDir });
                     if (!fs.existsSync(toolsDir) || !fs.existsSync(isoTool) || !fs.existsSync(becTool) || !fs.existsSync(fileList)) {
                         message.channel.send({ content: 'Tools directory or required scripts/file list missing. Skipping unpack.' });
                         return;
