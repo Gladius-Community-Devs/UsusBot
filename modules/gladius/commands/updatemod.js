@@ -89,7 +89,6 @@ module.exports = {
                     const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
                     const becTool = path.join(toolsDir, 'bec-tool-all.py');
                     const fileList = path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`);
-                    message.channel.send({ content: 'tools: ' + toolsDir });
                     if (!fs.existsSync(toolsDir) || !fs.existsSync(isoTool) || !fs.existsSync(becTool)) {
                         message.channel.send({ content: 'Tools or required scripts missing. Skipping unpack.' });
                         return;
