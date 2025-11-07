@@ -12,6 +12,11 @@ module.exports = {
         const axios = require('axios');
         const { spawn } = require('child_process');
 
+        // Python launcher detection (Windows uses py -3, others use python3)
+        const isWin = process.platform === 'win32';
+        const pythonCmd = isWin ? 'py' : 'python3';
+        const pythonBaseArgs = isWin ? ['-3'] : [];
+
         // 1. Check role
         if (!message.member.roles.cache.some(role => role.name === 'Modder')) {
             message.channel.send({ content: 'You do not have permission to use this command. (Modder role required)' });
@@ -52,6 +57,10 @@ module.exports = {
             const modFolder = path.join(uploadsRoot, sanitizedModDisplayName);
             if (!fs.existsSync(modFolder)) fs.mkdirSync(modFolder, { recursive: true });
 
+            // Create a single status message to edit as we progress
+            const statusMsg = await message.channel.send({ content: 'Starting backend update...' });
+            const setStatus = async (text) => { try { await statusMsg.edit({ content: text }); } catch (_) {} };
+
             // File destinations
             const patchFilePath = path.join(modFolder, 'patch.xdelta');
             const workingVanillaPath = path.join(modFolder, 'vanilla.iso');
@@ -62,7 +71,7 @@ module.exports = {
             if (fs.existsSync(workingVanillaPath)) fs.unlinkSync(workingVanillaPath);
             if (fs.existsSync(outputIsoPath)) fs.unlinkSync(outputIsoPath);
 
-            message.channel.send({ content: 'Downloading patch and preparing to apply...' });
+            await setStatus('Downloading patch and preparing to apply...');
 
             // Download patch attachment
             const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
@@ -78,19 +87,17 @@ module.exports = {
             let stderr = '';
             proc.stderr.on('data', d => { stderr += d.toString(); });
             proc.on('error', err => {
-                message.channel.send({ content: 'Failed to start xdelta3. Is it installed on the server?'});
+                setStatus('Failed to start xdelta3. Is it installed on the server?');
             });
             proc.on('close', code => {
                 if (code === 0 && fs.existsSync(outputIsoPath)) {
-                    message.channel.send({ content: `Patch applied successfully. Output ISO: ${sanitizedModDisplayName}_modded.iso` });
-
-                    // Begin unpack step (Linux-compatible; requires python3 and scripts in uploads/tools)
+                    // Begin unpack step (requires Python and scripts in uploads/tools)
                     const toolsDir = path.join(uploadsRoot, 'tools');
                     const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
                     const becTool = path.join(toolsDir, 'bec-tool-all.py');
                     const fileList = path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`);
                     if (!fs.existsSync(toolsDir) || !fs.existsSync(isoTool) || !fs.existsSync(becTool)) {
-                        message.channel.send({ content: 'Tools or required scripts missing. Skipping unpack.' });
+                        setStatus('Tools or required scripts missing. Skipping unpack.');
                         return;
                     }
 
@@ -107,7 +114,7 @@ module.exports = {
                     fs.mkdirSync(becUnpackDir, { recursive: true });
 
                     const runScript = (scriptPath, scriptArgs, opts={}) => new Promise((resolve, reject) => {
-                        const p = spawn('python3', [scriptPath, ...scriptArgs], { cwd: toolsDir, ...opts });
+                        const p = spawn(pythonCmd, [...pythonBaseArgs, scriptPath, ...scriptArgs], { cwd: toolsDir, ...opts });
                         let errBuf = '';
                         p.stderr.on('data', d => errBuf += d.toString());
                         p.on('error', e => reject(e));
@@ -126,23 +133,23 @@ module.exports = {
 
                     waitForFile(outputIsoPath)
                         .then(() => {
-                            message.channel.send({ content: 'Unpacking patched ISO...' });
-                            return runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDirArg, fileList]);
+                            return setStatus('Unpacking patched ISO...');
                         })
+                        .then(() => runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDirArg, fileList]))
                         .then(() => {
                             const becFile = path.join(isoUnpackDir, 'gladius.bec');
                             if (!fs.existsSync(becFile)) {
-                                message.channel.send({ content: 'gladius.bec not found after ISO unpack. Cannot proceed to BEC unpack.' });
+                                setStatus('gladius.bec not found after ISO unpack. Cannot proceed to BEC unpack.');
                                 return Promise.reject(new Error('Missing gladius.bec'));
                             }
-                            message.channel.send({ content: 'ISO unpack complete. Unpacking gladius.bec...' });
-                            return runScript(becTool, ['-unpack', becFile, becUnpackDirArg]);
+                            return setStatus('ISO unpack complete. Unpacking gladius.bec...')
+                                .then(() => runScript(becTool, ['-unpack', becFile, becUnpackDirArg]));
                         })
                         .then(() => {
                             // Move bec_unpacked/data to modFolder/data and delete everything else
                             const unpackedDataDir = path.join(becUnpackDir, 'data');
                             if (!fs.existsSync(unpackedDataDir)) {
-                                message.channel.send({ content: 'BEC unpack finished but data folder not found.' });
+                                setStatus('BEC unpack finished but data folder not found.');
                                 return;
                             }
                             const finalDataDir = path.join(modFolder, 'data');
@@ -159,15 +166,15 @@ module.exports = {
                             } catch (cleanErr) {
                                 this.logger && this.logger.error('Cleanup error:', cleanErr);
                             }
-                            message.channel.send({ content: 'BEC unpack complete. Data isolated. Mod update process finished.' });
+                            setStatus('Backend updated!');
                         })
                         .catch(err => {
                             this.logger && this.logger.error('Unpack error:', err);
-                            message.channel.send({ content: 'An error occurred during unpack: ' + err.message });
+                            setStatus('An error occurred during unpack: ' + err.message);
                         });
                 } else {
                     this.logger && this.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
-                    message.channel.send({ content: 'Patch application failed. Check that the patch matches vanilla.iso.' });
+                    setStatus('Patch application failed. Check that the patch matches vanilla.iso.');
                 }
             });
         } catch (err) {
