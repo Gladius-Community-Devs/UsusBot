@@ -97,6 +97,9 @@ module.exports = {
                     // Use separate subdirectories so we do NOT delete the mod folder (which contains the freshly created ISO)
                     const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
                     const becUnpackDir = path.join(modFolder, 'bec_unpacked');
+                    // Ensure trailing separators for tools that may naively concat child paths
+                    const isoUnpackDirArg = isoUnpackDir.endsWith(path.sep) ? isoUnpackDir : isoUnpackDir + path.sep;
+                    const becUnpackDirArg = becUnpackDir.endsWith(path.sep) ? becUnpackDir : becUnpackDir + path.sep;
                     // Clean / create sub dirs only
                     if (fs.existsSync(isoUnpackDir)) fs.rmSync(isoUnpackDir, { recursive: true, force: true });
                     if (fs.existsSync(becUnpackDir)) fs.rmSync(becUnpackDir, { recursive: true, force: true });
@@ -124,7 +127,7 @@ module.exports = {
                     waitForFile(outputIsoPath)
                         .then(() => {
                             message.channel.send({ content: 'Unpacking patched ISO...' });
-                            return runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDir, fileList]);
+                            return runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDirArg, fileList]);
                         })
                         .then(() => {
                             const becFile = path.join(isoUnpackDir, 'gladius.bec');
@@ -133,7 +136,7 @@ module.exports = {
                                 return Promise.reject(new Error('Missing gladius.bec'));
                             }
                             message.channel.send({ content: 'ISO unpack complete. Unpacking gladius.bec...' });
-                            return runScript(becTool, ['-unpack', becFile, becUnpackDir]);
+                            return runScript(becTool, ['-unpack', becFile, becUnpackDirArg]);
                         })
                         .then(() => {
                             // Move bec_unpacked/data to modFolder/data and delete everything else
