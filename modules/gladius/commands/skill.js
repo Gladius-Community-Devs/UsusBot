@@ -391,7 +391,7 @@ module.exports = {
                         const learnableButton = new ActionRowBuilder()
                             .addComponents(
                                 new ButtonBuilder()
-                                    .setCustomId(`learnable-skills|${modName}|${className}`)  // This was likely "class-skills"
+                                    .setCustomId(`learnable-skills|${modName}|${className}`)
                                     .setLabel(`View All ${className} Skills`)
                                     .setStyle(ButtonStyle.Success)
                             );
@@ -406,8 +406,6 @@ module.exports = {
                 }
             }
 
-            // Send the message with the select menus
-            // await message.channel.send({ content: 'Please select a class:', components: rows });
         } catch (error) {
             this.logger.error('Error finding the skill:', error);
             message.channel.send({ content: 'An error occurred while finding the skill.' });

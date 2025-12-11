@@ -20,6 +20,7 @@ module.exports = {
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
         let index = 1; // Start after the command name
+        let className = '';
 
         try {
             // Load modders.json
@@ -46,15 +47,15 @@ module.exports = {
 
             // Check if required files exist
             if (!fs.existsSync(filePaths.gladiatorsFilePath)) {
-                message.channel.send({ content: `That mod does not have gladiators.txt file!` });
+                message.channel.send({ content: `**Mod:** ${modName}\nError: That mod does not have gladiators.txt file!` });
                 return;
             }            if (!fs.existsSync(filePaths.leaguesPath)) {
-                message.channel.send({ content: `That mod does not have leagues folder!` });
+                message.channel.send({ content: `**Mod:** ${modName}\nError: That mod does not have leagues folder!` });
                 return;
             }
 
             if (!fs.existsSync(filePaths.lookupFilePath)) {
-                message.channel.send({ content: `That mod does not have lookuptext_eng.txt file!` });
+                message.channel.send({ content: `**Mod:** ${modName}\nError: That mod does not have lookuptext_eng.txt file!` });
                 return;
             }
 
@@ -68,13 +69,13 @@ module.exports = {
                 
                 // Check if statsets file exists when using statset filter
                 if (!fs.existsSync(filePaths.statsetsFilePath)) {
-                    message.channel.send({ content: `That mod does not have statsets.txt file!` });
+                    message.channel.send({ content: `**Mod:** ${modName}\nError: That mod does not have statsets.txt file!` });
                     return;
                 }
             }
 
             // Parse class name from remaining arguments
-            const className = argsToProcess.join(' ').trim();
+            className = argsToProcess.join(' ').trim();
             if (!className) {
                 message.channel.send({ content: 'Please provide the class name.' });
                 return;
@@ -146,7 +147,7 @@ module.exports = {
             }
 
             if (matchingGladiators.length === 0) {
-                message.channel.send({ content: `No gladiators found for class '${className}' in '${modName}'.` });
+                message.channel.send({ content: `**Mod:** ${modName}\n**Class:** ${className}\nError: No gladiators found for class '${className}' in '${modName}'.` });
                 return;
             }
 
@@ -203,7 +204,7 @@ module.exports = {
                     .slice(0, 1); // Take only top 1
 
                 if (relevantStatSets.length === 0) {
-                    message.channel.send({ content: `No stat set data found for class '${className}' in '${modName}'.` });
+                    message.channel.send({ content: `**Mod:** ${modName}\n**Class:** ${className}\nError: No stat set data found for class '${className}' in '${modName}'.` });
                     return;
                 }
 
@@ -323,7 +324,7 @@ module.exports = {
 
         } catch (error) {
             console.error('Error finding recruits:', error);
-            message.channel.send({ content: 'An error occurred while finding recruitment information.' });
+            message.channel.send({ content: `**Mod:** ${modName}\n**Class:** ${className || 'Unknown'}\nAn error occurred while finding recruitment information: ${error.message}` });
         }
     }
 };
