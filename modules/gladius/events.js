@@ -1191,6 +1191,50 @@ async function onInteractionCreate(interaction) {
             await interaction.reply({ content: 'An error occurred while processing the request.', ephemeral: true });
         }
     }
+
+    // For recruits class selection
+    else if (customId.startsWith('recruits-class-select|')) {
+        const parts = customId.split('|');
+        if (parts.length < 3) {
+            await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
+            return;
+        }
+
+        const encodedModName = parts[1];
+        const modName = decodeURIComponent(encodedModName);
+        const selectedClassEncoded = interaction.values[0];
+        const selectedClass = decodeURIComponent(selectedClassEncoded);
+
+        // Sanitize inputs
+        const modNameSanitized = path.basename(helpers.sanitizeInput(modName));
+        const classNameSanitized = helpers.sanitizeInput(selectedClass);
+
+        try {
+            const recruitsCommand = require('./commands/recruits');
+            const result = recruitsCommand.generateRecruitsEmbed(modNameSanitized, classNameSanitized, false, false);
+
+            if (result.error) {
+                await interaction.reply({ 
+                    content: `❌ **${result.error.title}**\n` +
+                             `**Mod:** ${modNameSanitized}\n` +
+                             `**Class:** ${classNameSanitized}\n` +
+                             (result.error.lines.length ? '\n' + result.error.lines.map(l => `• ${l}`).join('\n') : ''),
+                    ephemeral: true 
+                });
+                return;
+            }
+
+            // Defer update
+            await interaction.deferUpdate();
+
+            // Edit the original message
+            await interaction.editReply({ embeds: [result.embed], components: interaction.message.components });
+
+        } catch (error) {
+            logger.error('Error processing recruits interaction:', error);
+            await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
+        }
+    }
 }
 
 function register_handlers(event_registry) {
