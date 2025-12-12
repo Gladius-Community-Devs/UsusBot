@@ -356,7 +356,6 @@ module.exports = {
                         (unknownHere.length ? `, unknown=${unknownHere.length}` : '')
                     );
 
-                    // keep debug readable
                     if (matchedHere.length) {
                         debugLines.push(`  matched: ${capList(matchedHere, 6).join(', ')}`);
                     }
@@ -387,7 +386,18 @@ module.exports = {
                 }
             }
 
+            // NEW: compute accurate counts for summary
+            const recruitedUniqueNames = new Set();
+            for (const glads of arenaGroups.values()) {
+                for (const g of glads) recruitedUniqueNames.add(g.name);
+            }
+            const recruitedUniqueCount = recruitedUniqueNames.size;
+            const arenasWithRecruitsCount = arenaGroups.size;
+
             if (debugMode) {
+                debugLines.push(`Class-matched gladiators in gladiators.txt: ${matchingGladiators.length}`);
+                debugLines.push(`Unique recruits found (after filters): ${recruitedUniqueCount}`);
+
                 if (skippedNoRecruit.length) {
                     debugLines.push(`Skipped (no RECRUIT lines): ${capList(skippedNoRecruit, 6).join(', ')}`);
                 }
@@ -461,12 +471,10 @@ module.exports = {
                     });
                 }
 
-                // summary count matches your original behavior:
-                // - matchingGladiators: total units found in gladiators.txt for that class
-                // - arenaGroups.size: arenas where at least 1 target recruit was found
+                // UPDATED: summary uses actual recruitable unique count
                 embed.addFields({
                     name: '📊 Summary',
-                    value: `Found **${matchingGladiators.length}** ${className} gladiators across **${arenaGroups.size}** arenas.`,
+                    value: `Found **${recruitedUniqueCount}** recruitable ${className} gladiators across **${arenasWithRecruitsCount}** arenas.`,
                     inline: false
                 });
             }
