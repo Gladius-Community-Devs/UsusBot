@@ -7,10 +7,9 @@ module.exports = {
     needs_api: false,
     has_state: false,
     execute(message, args, extra) {
-        const cheats = 
-`Gladius (2003) – Universal Cheat Codes
-
-NOTE FOR PLAYSTATION 2 USERS:
+        const cheats =
+"```" +
+`NOTE FOR PLAYSTATION 2 USERS:
 These cheats are listed using GameCube/Xbox button names.
 Remap buttons on PS2 as follows:
 A = X
@@ -61,7 +60,8 @@ Turn All Random Encounters OFF (World Map):
 Right, Left, Up, Down, Left x4, Y x3
 
 Turn All Random Encounters ON (World Map):
-Right, Left, Up, Down, Left x4, A x3`;
+Right, Left, Up, Down, Left x4, A x3` +
+"```";
 
         message.channel.send({ content: cheats });
     }
