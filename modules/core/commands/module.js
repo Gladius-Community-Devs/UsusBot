@@ -1,94 +1,75 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'module',
-    description: 'Enable or disable a module, or check whether the module is enabled.',
-    syntax: 'module <enable|disable|status> <module>',
-    num_args: 2,
-    args_to_lower: true,
     needs_api: true,
     has_state: false,
-    async execute(message, args, extra) {
-        if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
-            message.channel.send({ content: "You do not have permission to use this command." });
+    data: new SlashCommandBuilder()
+        .setName('module')
+        .setDescription('Enable or disable a module, or check whether the module is enabled.')
+        .addStringOption(option => 
+            option.setName('action')
+                .setDescription('The action to perform')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'enable', value: 'enable' },
+                    { name: 'disable', value: 'disable' },
+                    { name: 'status', value: 'status' }
+                ))
+        .addStringOption(option => 
+            option.setName('module_name')
+                .setDescription('The name of the module')
+                .setRequired(true)),
+    async execute(interaction, extra) {
+        if (!interaction.member.roles.cache.some(role => role.name === 'Admin')) {
+            await interaction.reply({ content: "You do not have permission to use this command.", ephemeral: true });
             return;
         }
         var api = extra.api;
+        
+        const action = interaction.options.getString('action');
+        const moduleName = interaction.options.getString('module_name');
 
-        if(args[1] == "enable") {
-            var respModule = await api.get('module', {
-                name: args[2]
-            });
+        var respModule = await api.get('module', {
+            name: moduleName
+        });
 
-            if(respModule.modules.length <= 0) {
-                message.channel.send({ content: "Sorry, I couldn't find that module!"});
-                return;
-            }
+        if (!respModule || !respModule.modules || respModule.modules.length <= 0) {
+            await interaction.reply({ content: "Sorry, I couldn't find that module!", ephemeral: true });
+            return;
+        }
 
-            var target_module_id = respModule.modules[0].module_id;
+        var target_module_id = respModule.modules[0].module_id;
 
-            var respEnabled = await api.get('enabled_module', {
-                server_id: message.channel.guild.id,
-                module_id: target_module_id
-            });
+        var respEnabled = await api.get('enabled_module', {
+            server_id: interaction.guild.id,
+            module_id: target_module_id
+        });
 
-            if(respEnabled.enabled_modules.length == 0) {
-                var respCreate = await api.post('enabled_module', {
+        if (action == "enable") {
+            if (!respEnabled.enabled_modules || respEnabled.enabled_modules.length == 0) {
+                await api.post('enabled_module', {
                     module_id: parseInt(target_module_id),
-                    server_id: message.channel.guild.id
+                    server_id: interaction.guild.id
                 });
-                message.channel.send({ content: "Successfully enabled module on this server!"});
+                await interaction.reply({ content: "Successfully enabled module on this server!" });
             } else {
-                message.channel.send({ content: "That module is already enabled on this server!"});
+                await interaction.reply({ content: "That module is already enabled on this server!" });
             }
-        } else if(args[1] == "disable") {
-            var respModule = await api.get('module', {
-                name: args[2]
-            });
-
-            if(respModule.modules.length <= 0) {
-                message.channel.send({ content: "Sorry, I couldn't find that module!"});
-                return;
-            }
-
-            var target_module_id = respModule.modules[0].module_id;
-
-            var respEnabled = await api.get('enabled_module', {
-                server_id: message.channel.guild.id,
-                module_id: target_module_id
-            });
-
-            if(respEnabled.enabled_modules.length == 0) {
-                message.channel.send({ content: "That module is already disabled on this server!"});
+        } else if (action == "disable") {
+            if (!respEnabled.enabled_modules || respEnabled.enabled_modules.length == 0) {
+                await interaction.reply({ content: "That module is already disabled on this server!" });
             } else {
-                console.log("Deleting link: " + respEnabled.enabled_modules[0].link_id);
-                var respDelete = await api.delete('enabled_module', {
+                await api.delete('enabled_module', {
                     link_id: parseInt(respEnabled.enabled_modules[0].link_id)
                 });
-                message.channel.send({ content: "Successfully disabled module on this server!"});
+                await interaction.reply({ content: "Successfully disabled module on this server!" });
             }
-        } else if(args[1] == "status") {
-            var respModule = await api.get('module', {
-                name: args[2]
-            });
-
-            if(respModule.modules.length <= 0) {
-                message.channel.send({ content: "Sorry, I couldn't find that module!"});
-                return;
-            }
-
-            var target_module_id = respModule.modules[0].module_id;
-
-            var respEnabled = await api.get('enabled_module', {
-                server_id: message.channel.guild.id,
-                module_id: target_module_id
-            });
-
-            if(respEnabled.enabled_modules.length == 0) {
-                message.channel.send({ content: "Module Status: Disabled"});
+        } else if (action == "status") {
+            if (!respEnabled.enabled_modules || respEnabled.enabled_modules.length == 0) {
+                await interaction.reply({ content: "Module Status: Disabled" });
             } else {
-                message.channel.send({ content: "Module Status: Enabled"});
+                await interaction.reply({ content: "Module Status: Enabled" });
             }
-        } else {
-            message.channel.send({ content: "Unrecognized argument! Syntax: " + this.syntax.toString()});
         }
     }
 };

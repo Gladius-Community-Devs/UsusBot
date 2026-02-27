@@ -12,5 +12,9 @@
     "modules_folder": "modules",
     "log_folder": "logs",
     "max_message_length": 2000,
-    "max_embed_desc_length": 1024
+    "max_embed_desc_length": 1024,
+    "slash_command_guilds": [
+        "880888471487672341",
+        "717135591279689819"
+    ]
 }

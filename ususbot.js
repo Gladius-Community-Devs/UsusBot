@@ -6,7 +6,6 @@
 
 var fs = require('fs');
 var axios = require('axios');
-var request = require('request');
 var shell = require('shelljs');
 require('dotenv/config')
 
@@ -39,6 +38,17 @@ async function botInit () {
     logger.info("Logs older than 3 days have been cleaned");
     logger.info("I am ready!");
 
+    // Register Slash Commands
+    if (config.slash_command_guilds) {
+        try {
+            var token = fs.readFileSync(config.token_file).toString().replace(/\s+/g, '');
+            await modules.register_slash_commands(token, client.user.id, config.slash_command_guilds);
+            logger.info("Slash commands registered successfully.");
+        } catch (error) {
+            logger.error("Failed to register slash commands: " + error);
+        }
+    }
+
     var channel = await client.channels.fetch(config.default_channel);
     
     if(fs.existsSync("updated.txt")) {
@@ -64,7 +74,11 @@ function authClient() {
     client.login(token);
 }
 
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+    await modules.handle_interaction(interaction);
+});
+
 client.on('messageCreate', (message) => {
-    logger.info("Got message!");
-    modules.handle_command(message);
+   modules.handle_command(message);
 });

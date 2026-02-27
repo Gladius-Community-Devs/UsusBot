@@ -1,24 +1,32 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'modules',
-    description: 'Provides information about the modules UsusBot has loaded. Optional second argument to filter modules. Default is \'all\'',
-    syntax: 'modules [enabled|disabled|all]',
-    num_args: 0,
-    args_to_lower: false,
     needs_api: true,
     has_state: false,
-    async execute(message, args, extra) {
-        if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
-            message.channel.send({ content: "You do not have permission to use this command." });
+    data: new SlashCommandBuilder()
+        .setName('modules')
+        .setDescription('Provides information about the modules UsusBot has loaded.')
+        .addStringOption(option => 
+            option.setName('filter')
+                .setDescription('Filter modules by status')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'enabled', value: 'enabled' },
+                    { name: 'disabled', value: 'disabled' },
+                    { name: 'all', value: 'all' }
+                )),
+    async execute(interaction, extra) {
+        if (!interaction.member.roles.cache.some(role => role.name === 'Admin')) {
+            await interaction.reply({ content: "You do not have permission to use this command.", ephemeral: true });
             return;
         }
+
+        await interaction.deferReply();
         var api = extra.api;
         var mod_handler = extra.module_handler;
 
         var output = '```';
-        var module_type = "all";
-        if(args.length > 1) {
-            module_type = args[1];
-        }
+        const module_type = interaction.options.getString('filter') || 'all';
 
         if(module_type == "enabled" || module_type == "all") {
             var num_mods = 0;
@@ -26,20 +34,22 @@ module.exports = {
 
             var respEnabled = await api.get('enabled_module', {
                 _limit: 100,
-                server_id: message.channel.guild.id
+                server_id: interaction.guild.id
             });
 
-            for(var current_module of respEnabled.enabled_modules) {
-                var respModule = await api.get('module', {
-                    module_id: parseInt(current_module.module_id)
-                });
+            if (respEnabled && respEnabled.enabled_modules) {
+                for(var current_module of respEnabled.enabled_modules) {
+                    var respModule = await api.get('module', {
+                        module_id: parseInt(current_module.module_id)
+                    });
 
-                if(!mod_handler.modules.has(respModule.modules[0].name)) {
-                    continue;
+                    if(!respModule || !respModule.modules || respModule.modules.length == 0 || !mod_handler.modules.has(respModule.modules[0].name)) {
+                        continue;
+                    }
+
+                    output += "  - " + respModule.modules[0].name + " (" + mod_handler.modules.get(respModule.modules[0].name).config.display_name + ")\n";
+                    num_mods++;
                 }
-
-                output += "  - " + respModule.modules[0].name + " (" + mod_handler.modules.get(respModule.modules[0].name).config.display_name + ")\n";
-                num_mods++;
             }
 
             if(num_mods == 0) {
@@ -57,22 +67,24 @@ module.exports = {
 
             var respEnabled = await api.get('enabled_module', {
                 _limit: 100,
-                server_id: message.channel.guild.id
+                server_id: interaction.guild.id
             });
+            const enabledModulesMap = new Set();
+            if (respEnabled && respEnabled.enabled_modules) {
+                for(const em of respEnabled.enabled_modules) {
+                     var respModule = await api.get('module', {
+                        module_id: parseInt(em.module_id)
+                    });
+                    if (respModule && respModule.modules && respModule.modules.length > 0) {
+                        enabledModulesMap.add(respModule.modules[0].name);
+                    }
+                }
+            }
 
             for(var current_module_name of Array.from(mod_handler.modules.keys())) {
                 var current_module = mod_handler.modules.get(current_module_name);
-                var module_enabled = false;
-                for(var enabled_mod of respEnabled.enabled_modules) {
-                    var respModule = await api.get('module', {
-                        module_id: parseInt(enabled_mod.module_id)
-                    });
-
-                    if(respModule.modules[0].name == current_module.config.name) {
-                        module_enabled = true;
-                    }
-                }
-                if(!module_enabled) {
+                
+                if(!enabledModulesMap.has(current_module.config.name)) {
                     output += "  - " + current_module.config.name + " (" + current_module.config.display_name + ")\n";
                     num_mods++;
                 }
@@ -86,10 +98,12 @@ module.exports = {
 
             num_mods = 0;
             output += "Globally Disabled Modules:\n";
-            for(var current_module_name of Array.from(mod_handler.disabled_modules.keys())) {
-                var current_module = mod_handler.disabled_modules.get(current_module_name);
-                output += "  - " + current_module.config.name + " (" + current_module.config.display_name + ")\n";
-                num_mods++;
+            if (mod_handler.disabled_modules) {
+                for(var current_module_name of Array.from(mod_handler.disabled_modules.keys())) {
+                    var current_module = mod_handler.disabled_modules.get(current_module_name);
+                    output += "  - " + current_module.config.name + " (" + current_module.config.display_name + ")\n";
+                    num_mods++;
+                }
             }
 
             if(num_mods == 0) {
@@ -98,6 +112,6 @@ module.exports = {
         }
 
         output += "```";
-        message.channel.send(output);
+        await interaction.editReply({ content: output });
     }
 };

@@ -17,9 +17,9 @@ class APIClient {
 	 * access token. Once the APIClient has a token, it will fire an 'ApiReady' event on document.
 	 */
 	constructor() {
-        this.api_url = "https://budaslounge.com/usus_api/";
+		this.api_url = "https://budaslounge.com/usus_api/";
 		this.access_url = "UsusBot Server";
-		this.token = fs.readFileSync(__dirname + "/../../../usus_api_token.txt", "utf8");
+		this.token = fs.readFileSync(__dirname + "/../../../usus_api_token.txt", "utf8").trim();
 	}
 
 	/**
@@ -38,9 +38,9 @@ class APIClient {
 	 * @param error The error that was thrown
 	 */
 	error_handler(error) {
-		if(error.hasOwnProperty("response") && error.response.hasOwnProperty("status") && error.response.status == 401) {
-            console.log("Unauthorized Error!");
-            console.error(error.response);
+		if (error.hasOwnProperty("response") && error.response.hasOwnProperty("status") && error.response.status == 401) {
+			console.log("Unauthorized Error!");
+			console.error(error.response);
 		} else {
 			console.error(error);
 		}
@@ -76,7 +76,7 @@ class APIClient {
 			params._api_url = this.access_url;
 			var resp = await axios.get(this.buildUrl(resource), { params });
 			return resp.data;
-		} catch(error) {
+		} catch (error) {
 			this.error_handler(error);
 		}
 	}
@@ -100,7 +100,7 @@ class APIClient {
 			data._api_url = this.access_url;
 			var resp = await axios.post(this.buildUrl(resource), data);
 			return resp.data;
-		} catch(error) {
+		} catch (error) {
 			this.error_handler(error);
 		}
 	}
@@ -111,7 +111,7 @@ class APIClient {
 			data._api_url = this.access_url;
 			var resp = await axios.put(this.buildUrl(resource), data);
 			return resp.data;
-		} catch(error) {
+		} catch (error) {
 			this.error_handler(error);
 		}
 	}
@@ -122,7 +122,7 @@ class APIClient {
 			data._api_url = this.access_url;
 			var resp = await axios.delete(this.buildUrl(resource), { data });
 			return resp.data;
-		} catch(error) {
+		} catch (error) {
 			this.error_handler(error);
 		}
 	}

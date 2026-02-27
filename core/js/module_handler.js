@@ -1,6 +1,8 @@
 var fs = require('fs');
 var APIClient = require('./APIClient.js');
-var Discord = require('discord.js');
+const Discord = require('discord.js');
+const { REST, Routes, SlashCommandBuilder, Collection } = require('discord.js');
+const InteractionAdapter = require('./interaction_adapter.js');
 
 /**
  * @external Discord
@@ -103,19 +105,167 @@ class ModuleHandler {
 
         this.logger.info("Discovering Modules in: " + modules_folder + " ...");
         var module_folders = fs.readdirSync(modules_folder, { withFileTypes: true });
-        for(var folder of module_folders) { //Iterate all folders in modules directory
-            if(folder.isDirectory() && fs.existsSync(modules_folder + "/" + folder.name + "/bot_module.json")) {
+        for (var folder of module_folders) { //Iterate all folders in modules directory
+            if (folder.isDirectory() && fs.existsSync(modules_folder + "/" + folder.name + "/bot_module.json")) {
                 var module_config = JSON.parse(fs.readFileSync(modules_folder + "/" + folder.name + "/bot_module.json")); //Load module config if found
                 var the_module = {
                     config: module_config,
                     location: modules_folder + "/" + folder.name + "/"
                 };
 
-                if(the_module.config.enabled) {
+                if (the_module.config.enabled) {
                     this.modules.set(the_module.config.name, the_module); //Add module to this ModuleHandler
                 } else {
                     this.disabled_modules.set(the_module.config.name, the_module);
                 }
+            }
+        }
+    }
+
+    /**
+     * Registers slash commands with Discord for the specified guilds.
+     * @param {string} token - The bot token.
+     * @param {string} clientId - The bot's client ID.
+     * @param {string[]} guildIds - Array of guild IDs to register commands in.
+     */
+    async register_slash_commands(token, clientId, guildIds) {
+        const commands = [];
+        this.logger.info("Gathering slash commands for registration...");
+
+        for (const [moduleName, module] of this.modules) {
+            for (const [commandName, command] of module.commands) {
+                if (command.data) {
+                    commands.push(command.data.toJSON());
+                } else {
+                    // Skip intentionally-hidden commands (h- prefix) from slash registration.
+                    // These commands typically require message attachments and must remain prefix-only.
+                    if (command.name && command.name.startsWith('h-')) {
+                        this.logger.info(`Skipping slash registration for hidden command: ${command.name}`);
+                        continue;
+                    }
+
+                    // Auto-generate basic slash command for legacy commands.
+                    const description = (command.description || 'No description provided.').substring(0, 100);
+                    const argDesc = (command.syntax || 'Arguments for the command').substring(0, 100);
+                    const legacyBuilder = new SlashCommandBuilder()
+                        .setName(command.name)
+                        .setDescription(description);
+                    
+                    const isRequired = (command.num_args && command.num_args > 0);
+                    legacyBuilder.addStringOption(option => 
+                        option.setName('args')
+                            .setDescription(argDesc)
+                            .setRequired(isRequired));
+
+                    commands.push(legacyBuilder.toJSON());
+                }
+            }
+        }
+
+        const rest = new REST({ version: '10' }).setToken(token);
+
+        for (const guildId of guildIds) {
+            try {
+                this.logger.info(`Started refreshing ${commands.length} application (/) commands for guild ${guildId}.`);
+
+                const data = await rest.put(
+                    Routes.applicationGuildCommands(clientId, guildId),
+                    { body: commands },
+                );
+
+                this.logger.info(`Successfully reloaded ${data.length} application (/) commands for guild ${guildId}.`);
+            } catch (error) {
+                this.logger.error(`Failed to reload application (/) commands for guild ${guildId}: ${error}`);
+            }
+        }
+    }
+
+    /**
+     * Handles incoming interactions (slash commands).
+     * @param {external:Discord.Interaction} interaction - The interaction to handle.
+     */
+    async handle_interaction(interaction) {
+        if (!interaction.isChatInputCommand()) return;
+
+        const commandName = interaction.commandName;
+        let command;
+        let moduleConfig;
+
+        // Find the command and its module
+        for (const [name, mod] of this.modules) {
+            if (mod.commands.has(commandName)) {
+                command = mod.commands.get(commandName);
+                moduleConfig = mod.config;
+                break;
+            }
+        }
+
+        if (!command) {
+            this.logger.error(`No command matching ${commandName} was found.`);
+            return;
+        }
+
+        try {
+            if (!moduleConfig.enabled) {
+                 await interaction.reply({ content: 'This module is disabled.', ephemeral: true });
+                 return;
+            }
+
+            var extra = {};
+            if (moduleConfig.is_core) {
+                extra.module_handler = this;
+            }
+
+            if (command.has_state) {
+                 var stateKey = moduleConfig.name + ":" + (command.data ? command.data.name : command.name);
+                 var state = await this.state_manager.get_state(interaction.user.id, stateKey);
+                 extra.state = state;
+            }
+            if (command.needs_api) {
+                 extra.api = new APIClient();
+            }
+
+            // If command.data is present, it's a native slash command
+            // However, we must distinguish between "migrated" commands and commands that are still legacy but we auto-generated data for.
+            // But wait, the loop above (Lines 163-176) generates .data via `legacyBuilder` but does NOT modify `command.data` on the command object itself in memory if I understand correctly.
+            // `register_slash_commands` builds a `commands` array. It does not attach `.data` to the command object in `this.modules`.
+            // So `command.data` will be undefined for legacy commands.
+            
+            if (command.data) {
+                await command.execute(interaction, extra);
+            } else {
+                // Legacy: Use Adapter
+                const adapter = new InteractionAdapter(interaction, this.logger);
+                
+                let legacyArgs = [commandName];
+                const argsOption = interaction.options.getString('args');
+                if (argsOption) {
+                    // Split by space, similar to original message.content.split(" ")
+                    const splitArgs = argsOption.split(/\s+/);
+                    legacyArgs = legacyArgs.concat(splitArgs);
+                } else if (interaction.options.data.length > 0) {
+                     // Fallback: If we have options but not 'args', maybe try to map them?
+                     // But our legacy builder only adds 'args'.
+                }
+
+                if (command.args_to_lower) {
+                    legacyArgs = legacyArgs.map(arg => arg.toLowerCase());
+                }
+
+                await command.execute(adapter, legacyArgs, extra);
+            }
+
+            if (command.has_state && extra.state) {
+                 this.state_manager.save_state(extra.state);
+            }
+
+        } catch (error) {
+            this.logger.error(`Error executing ${commandName} via interaction`);
+            this.logger.error(error);
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
+            } else {
+                await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
             }
         }
     }
@@ -131,7 +281,7 @@ class ModuleHandler {
      */
     discover_commands() {
 
-        for(var current_module_name of Array.from(this.modules.keys())) {
+        for (var current_module_name of Array.from(this.modules.keys())) {
             var current_module = this.modules.get(current_module_name);
             current_module.commands = new Discord.Collection();
 
@@ -143,23 +293,31 @@ class ModuleHandler {
             for (var file of command_files) {
                 var command = require(commands_dir + file);
                 command.logger = this.logger;
-                current_module.commands.set(command.name, command);
+                
+                // Support both legacy "name" and new "data.name"
+                const commandName = command.data ? command.data.name : command.name;
+                
+                if (commandName) {
+                    current_module.commands.set(commandName, command);
+                } else {
+                    this.logger.warn(`Command in file ${file} has no name property. Skipping.`);
+                }
             }
         }
 
-        if(this.modules.size > 0) {
+        if (this.modules.size > 0) {
             this.logger.info("Discovered " + this.modules.size + " active module(s) and " + this.disabled_modules.size + " inactive module(s):");
-            for(var current_module_name of Array.from(this.modules.keys())) {
+            for (var current_module_name of Array.from(this.modules.keys())) {
                 this.logger.info("  + " + this.modules.get(current_module_name).config.display_name + " (" + this.modules.get(current_module_name).commands.size + " commands)");
             }
 
-            for(var current_module_name of Array.from(this.disabled_modules.keys())) {
+            for (var current_module_name of Array.from(this.disabled_modules.keys())) {
                 this.logger.info("  - " + this.disabled_modules.get(current_module_name).config.display_name);
             }
         } else {
             this.logger.warn("No active modules found! Please enable at least one module for this bot to have any purpose!");
             this.logger.info("Discovered " + this.disabled_modules.size + " inactive modules:");
-            for(var current_module_name of Array.from(this.disabled_modules.keys())) {
+            for (var current_module_name of Array.from(this.disabled_modules.keys())) {
                 this.logger.info("  - " + this.disabled_modules.get(current_module_name).config.display_name);
             }
         }
@@ -188,7 +346,7 @@ class ModuleHandler {
     async handle_command(message) {
         this.logger.info("Got command: " + message.content);
         var api = new APIClient();
-        if(message.author.bot) return; //Ignore messages from bots
+        if (message.author.bot) return; //Ignore messages from bots
 
         var command_args = message.content.split(" ");
 
@@ -196,16 +354,16 @@ class ModuleHandler {
         var current_command;
 
         //This block is for when the user runs the command in the form '//module:command'
-        if(command_args[0].startsWith("//") && command_args[0].includes(":")) {
+        if (command_args[0].startsWith("//") && command_args[0].includes(":")) {
             var spec_module = command_args[0].substring(2, command_args[0].indexOf(":"));
             var spec_command = command_args[0].substring(command_args[0].indexOf(":") + 1);
-            if(this.modules.has(spec_module)) { //Specified module exists
+            if (this.modules.has(spec_module)) { //Specified module exists
                 current_module = this.modules.get(spec_module);
                 var respModule = await api.get('module', {
                     name: current_module.config.name
                 });
 
-                if(respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
+                if (!respModule || !respModule.modules || respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
                     message.channel.send("Sorry, the database does not contain a record of the module: " + spec_module);
                     return;
                 }
@@ -215,13 +373,23 @@ class ModuleHandler {
                     module_id: parseInt(respModule.modules[0].module_id)
                 });
 
-                if(respEnabled.enabled_modules.length == 0) { //The module is not enabled for the server this message came from
+                if (!respEnabled || !respEnabled.enabled_modules || respEnabled.enabled_modules.length == 0) { //The module is not enabled for the server this message came from
                     message.channel.send("That module is disabled on this server!");
                     return;
                 }
 
-                if(current_module.commands.has(spec_command)) { //Command exists in this module
+                if (current_module.commands.has(spec_command)) { //Command exists in this module
                     current_command = current_module.commands.get(spec_command);
+                    // Check if command is migrated to slash-only (no execute method with message signature if we standardize)
+                    // But assume for now execute handles it if we adapt.
+                    // Actually, if we migrated the command to only accept interaction, this will crash.
+                    // We need a way to detect if legacy execution is supported.
+                    
+                    if (current_command.data && !current_command.syntax) {
+                        message.channel.send("This command has been migrated to Slash Commands. Please use `/" + current_command.data.name + "` instead.");
+                        return;
+                    }
+
                 } else { //Command specified does not exist in the specified module
                     message.channel.send("The module '" + spec_module + "' has no command '" + spec_command + "'.");
                     return;
@@ -234,20 +402,20 @@ class ModuleHandler {
             var found_command = false;
             var matched_prefix = false;
             //this.logger.info("Checking for command: " + command_args[0]);
-            for(var current_module_name of Array.from(this.modules.keys())) { //Iterate all modules
+            for (var current_module_name of Array.from(this.modules.keys())) { //Iterate all modules
                 current_module = this.modules.get(current_module_name);
 
-                if(message.content.startsWith(current_module.config.command_prefix)) { //This module's command prefix matches the one used
+                if (message.content.startsWith(current_module.config.command_prefix)) { //This module's command prefix matches the one used
                     //this.logger.info("Found module with matching prefix: " + current_module.config.command_prefix);
                     matched_prefix = true;
                     var command_name = command_args[0].substring(current_module.config.command_prefix.length);
 
-                    if(current_module.commands.has(command_name)) { //The current module has a command with the specified name
+                    if (current_module.commands.has(command_name)) { //The current module has a command with the specified name
                         var respModule = await api.get('module', {
                             name: current_module.config.name
                         });
                         //this.logger.info("Checking if module is enabled on server..." + respModule);
-                        if(respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
+                        if (!respModule || !respModule.modules || respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
                             continue;
                         }
 
@@ -256,51 +424,58 @@ class ModuleHandler {
                             module_id: parseInt(respModule.modules[0].module_id)
                         });
 
-                        if(respEnabled.enabled_modules.length == 0) { //Module is not enabled on this server
+                        if (!respEnabled || !respEnabled.enabled_modules || respEnabled.enabled_modules.length == 0) { //Module is not enabled on this server
                             continue;
                         }
 
                         found_command = true;
                         command_args[0] = command_name;
                         current_command = current_module.commands.get(command_args[0]);
+                        
+                        // Check for migration
+                        if (current_command.data && !current_command.syntax) {
+                             message.channel.send("This command has been migrated to Slash Commands. Please use `/" + current_command.data.name + "` instead.");
+                             return;
+                        }
+                        
                         break;
                     }
                 }
             }
 
-            if(matched_prefix && !found_command) {
+            if (matched_prefix && !found_command) {
                 message.channel.send("Sorry, I couldn't find that command! Try" + "```" + ";help" + "```" + "for a list of all commands!");
                 return;
-            } else if(!matched_prefix) {
+            } else if (!matched_prefix) {
                 return;
             }
         }
 
-        if(command_args.length - 1 >= current_command.num_args) { //Command contains at least the required number of arguments
-            if(current_command.args_to_lower) { //If set in command, make all arguments lowercase
-                for(var i=0; i < command_args.length; i++) {
+        if (command_args.length - 1 >= current_command.num_args) { //Command contains at least the required number of arguments
+            if (current_command.args_to_lower) { //If set in command, make all arguments lowercase
+                for (var i = 0; i < command_args.length; i++) {
                     command_args[i] = command_args[i].toLowerCase();
                 }
             }
-            
+
             var extra = {}; //This will contain all of the extra variables that a command may need, based on its configuration
 
-            if(current_module.config.is_core) { //If this module is a core module, it gains access to this ModuleHandler
+            if (current_module.config.is_core) { //If this module is a core module, it gains access to this ModuleHandler
                 extra.module_handler = this;
             }
 
-            if(current_command.has_state) { //If command uses state system, must grab the state
+            if (current_command.has_state) { //If command uses state system, must grab the state
                 var state = await this.state_manager.get_state(message.author.id, current_module.config.name + ":" + current_command.name);
                 extra.state = state;
             }
 
-            if(current_command.needs_api) { //If command needs to access the API, we pass it here
+            if (current_command.needs_api) { //If command needs to access the API, we pass it here
                 extra.api = api;
             }
 
             await current_command.execute(message, command_args, extra); //NOTE: ALL command execute functions MUST be async!
 
-            if(current_command.has_state) { //If this command used the state system, we must save any changes to the state
+            if (current_command.has_state) { //If this command used the state system, we must save any changes to the state
                 this.state_manager.save_state(extra.state);
             }
         } else { //Not enough arguments provided

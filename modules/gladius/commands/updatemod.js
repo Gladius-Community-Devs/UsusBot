@@ -1,16 +1,29 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('updatemod')
+        .setDescription('(MODDER ONLY) Apply an xdelta patch to vanilla.iso and unpack your mod files')
+        .addAttachmentOption(option =>
+            option.setName('patch')
+                .setDescription('The .xdelta or .xdelta3 patch file to apply')
+                .setRequired(true)),
     name: 'updatemod',
-    description: '(MODDER ONLY) Applies an uploaded xdelta patch to vanilla.iso for this modder and produces a patched ISO in their folder',
-    syntax: 'updatemod',
-    num_args: 0,
-    args_to_lower: false,
-    needs_api: false,
     has_state: false,
-    async execute(message, args) {
+    needs_api: false,
+    async execute(interaction, extra) {
         const fs = require('fs');
         const path = require('path');
         const axios = require('axios');
         const { spawn } = require('child_process');
+
+        // Defer immediately — processing can take a long time
+        await interaction.deferReply();
+
+        // Helper: update the deferred reply with a status message
+        const setStatus = async (text) => {
+            try { await interaction.editReply({ content: text }); } catch (_) {}
+        };
 
         // Python launcher detection (Windows uses py -3, others use python3)
         const isWin = process.platform === 'win32';
@@ -18,31 +31,26 @@ module.exports = {
         const pythonBaseArgs = isWin ? ['-3'] : [];
 
         // 1. Check role
-        if (!message.member.roles.cache.some(role => role.name === 'Modder')) {
-            message.channel.send({ content: 'You do not have permission to use this command. (Modder role required)' });
+        if (!interaction.member.roles.cache.some(role => role.name === 'Modder')) {
+            await setStatus('You do not have permission to use this command. (Modder role required)');
             return;
         }
 
-        // 3. Check attachment present
-        if (message.attachments.size === 0) {
-            message.channel.send({ content: 'Please attach an .xdelta patch file.' });
-            return;
-        }
-
-        const attachment = message.attachments.first();
+        // 2. Validate attachment
+        const attachment = interaction.options.getAttachment('patch');
         if (!attachment.name.toLowerCase().endsWith('.xdelta') && !attachment.name.toLowerCase().endsWith('.xdelta3')) {
-            message.channel.send({ content: 'Attached file must end with .xdelta or .xdelta3.' });
+            await setStatus('Attached file must end with .xdelta or .xdelta3.');
             return;
         }
 
         try {
-            // 2. Determine mod name for user from modders.json
+            // 3. Determine mod name for user from modders.json
             const configPath = path.join(__dirname, '../modders.json');
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            const modderId = message.author.id;
+            const modderId = interaction.user.id;
             const modDisplayName = config[modderId];
             if (!modDisplayName) {
-                message.channel.send({ content: 'You are not listed in modders.json. Ask an admin to register your mod.' });
+                await setStatus('You are not listed in modders.json. Ask an admin to register your mod.');
                 return;
             }
             const sanitizedModDisplayName = modDisplayName.replace(/\s+/g, '_');
@@ -51,15 +59,11 @@ module.exports = {
             const uploadsRoot = path.join(__dirname, '../../../uploads');
             const vanillaIsoPath = path.join(uploadsRoot, 'vanilla.iso');
             if (!fs.existsSync(vanillaIsoPath)) {
-                message.channel.send({ content: 'vanilla.iso not found in uploads folder. Notify an admin.' });
+                await setStatus('vanilla.iso not found in uploads folder. Notify an admin.');
                 return;
             }
             const modFolder = path.join(uploadsRoot, sanitizedModDisplayName);
             if (!fs.existsSync(modFolder)) fs.mkdirSync(modFolder, { recursive: true });
-
-            // Create a single status message to edit as we progress
-            const statusMsg = await message.channel.send({ content: 'Starting backend update...' });
-            const setStatus = async (text) => { try { await statusMsg.edit({ content: text }); } catch (_) {} };
 
             // File destinations
             const patchFilePath = path.join(modFolder, 'patch.xdelta');
@@ -86,7 +90,7 @@ module.exports = {
             const proc = spawn(xdeltaExe, argsList, { windowsHide: true });
             let stderr = '';
             proc.stderr.on('data', d => { stderr += d.toString(); });
-            proc.on('error', err => {
+            proc.on('error', () => {
                 setStatus('Failed to start xdelta3. Is it installed on the server?');
             });
             proc.on('close', code => {
@@ -101,13 +105,10 @@ module.exports = {
                         return;
                     }
 
-                    // Use separate subdirectories so we do NOT delete the mod folder (which contains the freshly created ISO)
                     const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
                     const becUnpackDir = path.join(modFolder, 'bec_unpacked');
-                    // Ensure trailing separators for tools that may naively concat child paths
                     const isoUnpackDirArg = isoUnpackDir.endsWith(path.sep) ? isoUnpackDir : isoUnpackDir + path.sep;
                     const becUnpackDirArg = becUnpackDir.endsWith(path.sep) ? becUnpackDir : becUnpackDir + path.sep;
-                    // Clean / create sub dirs only
                     if (fs.existsSync(isoUnpackDir)) fs.rmSync(isoUnpackDir, { recursive: true, force: true });
                     if (fs.existsSync(becUnpackDir)) fs.rmSync(becUnpackDir, { recursive: true, force: true });
                     fs.mkdirSync(isoUnpackDir, { recursive: true });
@@ -132,9 +133,7 @@ module.exports = {
                     });
 
                     waitForFile(outputIsoPath)
-                        .then(() => {
-                            return setStatus('Unpacking patched ISO...');
-                        })
+                        .then(() => setStatus('Unpacking patched ISO...'))
                         .then(() => runScript(isoTool, ['-unpack', outputIsoPath, isoUnpackDirArg, fileList]))
                         .then(() => {
                             const becFile = path.join(isoUnpackDir, 'gladius.bec');
@@ -146,7 +145,6 @@ module.exports = {
                                 .then(() => runScript(becTool, ['-unpack', becFile, becUnpackDirArg]));
                         })
                         .then(() => {
-                            // Move bec_unpacked/data to modFolder/data and delete everything else
                             const unpackedDataDir = path.join(becUnpackDir, 'data');
                             if (!fs.existsSync(unpackedDataDir)) {
                                 setStatus('BEC unpack finished but data folder not found.');
@@ -157,29 +155,34 @@ module.exports = {
                             try {
                                 fs.renameSync(unpackedDataDir, finalDataDir);
                             } catch (e) {
-                                try { fs.cpSync(unpackedDataDir, finalDataDir, { recursive: true }); fs.rmSync(unpackedDataDir, { recursive: true, force: true }); } catch (copyErr) { this.logger && this.logger.error('Data move error:', copyErr); }
+                                try {
+                                    fs.cpSync(unpackedDataDir, finalDataDir, { recursive: true });
+                                    fs.rmSync(unpackedDataDir, { recursive: true, force: true });
+                                } catch (copyErr) {
+                                    extra && extra.logger && extra.logger.error('Data move error:', copyErr);
+                                }
                             }
                             try {
                                 for (const entry of fs.readdirSync(modFolder)) {
                                     if (entry !== 'data') fs.rmSync(path.join(modFolder, entry), { recursive: true, force: true });
                                 }
                             } catch (cleanErr) {
-                                this.logger && this.logger.error('Cleanup error:', cleanErr);
+                                extra && extra.logger && extra.logger.error('Cleanup error:', cleanErr);
                             }
                             setStatus('Backend updated!');
                         })
                         .catch(err => {
-                            this.logger && this.logger.error('Unpack error:', err);
+                            extra && extra.logger && extra.logger.error('Unpack error:', err);
                             setStatus('An error occurred during unpack: ' + err.message);
                         });
                 } else {
-                    this.logger && this.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
+                    extra && extra.logger && extra.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
                     setStatus('Patch application failed. Check that the patch matches vanilla.iso.');
                 }
             });
         } catch (err) {
-            this.logger && this.logger.error('Error updating mod:', err);
-            message.channel.send({ content: 'An error occurred while processing the patch.' });
+            extra && extra.logger && extra.logger.error('Error updating mod:', err);
+            await setStatus('An error occurred while processing the patch.');
         }
     }
 };

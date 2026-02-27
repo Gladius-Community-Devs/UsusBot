@@ -1,20 +1,21 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'crashreport',
-    description: 'Returns the last error in the logs',
-    syntax: 'crashreport',
-    num_args: 0,
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
-    async execute(message, args, extra) {
+    data: new SlashCommandBuilder()
+        .setName('crashreport')
+        .setDescription('Returns the last error in the logs'),
+    async execute(interaction, extra) {
         const fs = require('fs');
         const path = require('path');
 
-        if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
-            message.channel.send({ content: "You do not have permission to use this command." });
+        if (!interaction.member.roles.cache.some(role => role.name === 'Admin')) {
+            await interaction.reply({ content: "You do not have permission to use this command.", ephemeral: true });
             return;
         }
         try {
+            await interaction.deferReply();
             const logsDir = path.join(__dirname, '../../../logs');
             const files = fs.readdirSync(logsDir)
                 .filter(file => file.endsWith('.log'))
@@ -22,7 +23,7 @@ module.exports = {
                 .sort((a, b) => b.time - a.time);
 
             if (files.length < 2) {
-                message.channel.send({ content: 'Not enough log files to tail the second most recent one.' });
+                await interaction.editReply({ content: 'Not enough log files to tail the second most recent one.' });
                 return;
             }
 
@@ -33,18 +34,16 @@ module.exports = {
             const output = filteredLines.join('\n');
 
             if (output.length === 0) {
-                message.channel.send({ content: 'No relevant lines found in the log file.' });
+                await interaction.editReply({ content: 'No relevant lines found in the log file.' });
             } else if (output.length > 2000) {
-                message.channel.send({ content: 'The log output is too long to send in a single message. Please check the file directly.' });
+                await interaction.editReply({ content: 'The log output is too long to send in a single message. Please check the file directly.', files: [secondLatestLogFile] });
             } else {
-                message.channel.send({ content: `\`\`\`${output}\`\`\`` });
+                await interaction.editReply({ content: `\`\`\`${output}\`\`\``, files: [secondLatestLogFile] });
             }
-
-            // Attach the log file
-            await message.channel.send({ files: [secondLatestLogFile] });
         } catch (error) {
             this.logger.error('Error reading log file:', error);
-            message.channel.send({ content: 'An error occurred while trying to read the log file.' });
+            if(interaction.deferred) await interaction.editReply({ content: 'An error occurred while trying to read the log file.' });
+            else await interaction.reply({ content: 'An error occurred while trying to read the log file.', ephemeral: true });
         }
     }
 };

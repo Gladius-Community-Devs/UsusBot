@@ -1,12 +1,12 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'hello',
-    description: 'Say hi to Usus! Used to test if the bot is working.',
-    syntax: 'hello',
-    num_args: 0,
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
-    execute(message, args, extra) {
-      message.channel.send({ content: "Hello there! Ready to participate in the games?"});
+    data: new SlashCommandBuilder()
+        .setName('hello')
+        .setDescription('Say hi to Usus! Used to test if the bot is working.'),
+    async execute(interaction, extra) {
+        await interaction.reply("Hello there! Ready to participate in the games?");
     }
 };
