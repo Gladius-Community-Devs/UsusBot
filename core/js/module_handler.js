@@ -184,6 +184,27 @@ class ModuleHandler {
      * Handles incoming interactions (slash commands).
      * @param {external:Discord.Interaction} interaction - The interaction to handle.
      */
+    async handle_autocomplete(interaction) {
+        const commandName = interaction.commandName;
+        let command;
+        for (const [, mod] of this.modules) {
+            if (mod.commands && mod.commands.has(commandName)) {
+                command = mod.commands.get(commandName);
+                break;
+            }
+        }
+        if (!command || !command.autocomplete) {
+            try { await interaction.respond([]); } catch {}
+            return;
+        }
+        try {
+            await command.autocomplete(interaction);
+        } catch (error) {
+            this.logger.error(`Autocomplete error for ${commandName}: ${error}`);
+            try { await interaction.respond([]); } catch {}
+        }
+    }
+
     async handle_interaction(interaction) {
         if (!interaction.isChatInputCommand()) return;
 

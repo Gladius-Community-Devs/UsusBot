@@ -13,10 +13,25 @@ module.exports = {
         .addStringOption(opt =>
             opt.setName('mod_name')
                 .setDescription('Mod name to search in (optional, defaults to Vanilla)')
-                .setRequired(false)),
+                .setAutocomplete(true)),
     name: 'itemskill',
     needs_api: false,
     has_state: false,
+    async autocomplete(interaction) {
+        const fs = require('fs');
+        const path = require('path');
+        const focused = interaction.options.getFocused().toLowerCase();
+        const moddersConfigPath = path.join(__dirname, '../modders.json');
+        const choices = ['Vanilla'];
+        try {
+            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+            for (const modder in moddersConfig) {
+                choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
+            }
+        } catch {}
+        const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+        await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+    },
     async execute(interaction, extra) {
         await interaction.deferReply();
 

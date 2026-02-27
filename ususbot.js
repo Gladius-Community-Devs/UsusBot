@@ -75,6 +75,10 @@ function authClient() {
 }
 
 client.on('interactionCreate', async interaction => {
+    if (interaction.isAutocomplete()) {
+        await modules.handle_autocomplete(interaction);
+        return;
+    }
     if (!interaction.isChatInputCommand()) return;
     await modules.handle_interaction(interaction);
 });
