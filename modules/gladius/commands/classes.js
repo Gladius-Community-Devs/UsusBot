@@ -8,29 +8,47 @@ module.exports = {
         .setDescription('Shows information about gladiator classes')
         .addStringOption(opt =>
             opt.setName('mod_name')
-                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
+                .setDescription('Mod to search in (Vanilla = base game)')
+                .setRequired(true)
                 .setAutocomplete(true))
         .addStringOption(opt =>
             opt.setName('class_name')
                 .setDescription('Class name to filter by (optional, shows all if omitted)')
-                .setRequired(false)),
+                .setAutocomplete(true)),
     name: 'classes',
     needs_api: false,
     has_state: false,
     async autocomplete(interaction) {
         const fs = require('fs');
         const path = require('path');
-        const focused = interaction.options.getFocused().toLowerCase();
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
-        const choices = ['Vanilla'];
-        try {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-            for (const modder in moddersConfig) {
-                choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-            }
-        } catch {}
-        const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-        await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        const focusedOption = interaction.options.getFocused(true);
+        const focused = focusedOption.value.toLowerCase();
+        if (focusedOption.name === 'mod_name') {
+            const moddersConfigPath = path.join(__dirname, '../modders.json');
+            const choices = ['Vanilla'];
+            try {
+                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+                for (const modder in moddersConfig) {
+                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
+                }
+            } catch {}
+            const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        } else if (focusedOption.name === 'class_name') {
+            const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
+            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
+            const classdefsPath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'classdefs.tok');
+            const classes = [];
+            try {
+                const content = fs.readFileSync(classdefsPath, 'utf8');
+                for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
+                    const name = match[1].trim();
+                    if (!name.startsWith('//')) classes.push(name);
+                }
+            } catch {}
+            const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        }
     },
     async execute(interaction, extra) {
         const sanitizeInput = (input) => {

@@ -7,13 +7,14 @@ module.exports = {
         .setName('itemskill')
         .setDescription('Finds skills granted by items, or items that grant a specific skill')
         .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod to search in (Vanilla = base game)')
+                .setRequired(true)
+                .setAutocomplete(true))
+        .addStringOption(opt =>
             opt.setName('search')
                 .setDescription('Item or skill name to search for (omit to browse all)')
-                .setRequired(false))
-        .addStringOption(opt =>
-            opt.setName('mod_name')
-                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
-                .setAutocomplete(true)),
+                .setRequired(false)),
     name: 'itemskill',
     needs_api: false,
     has_state: false,

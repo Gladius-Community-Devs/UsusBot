@@ -7,16 +7,18 @@ module.exports = {
         .setName('skill')
         .setDescription('Finds and displays information for a specified skill')
         .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod to search in (Vanilla = base game)')
+                .setRequired(true)
+                .setAutocomplete(true))
+        .addStringOption(opt =>
             opt.setName('skill_name')
                 .setDescription('The skill name to look up')
-                .setRequired(true))
+                .setRequired(true)
+                .setAutocomplete(true))
         .addStringOption(opt =>
             opt.setName('class_name')
                 .setDescription('Filter to a specific class (optional)')
-                .setRequired(false))
-        .addStringOption(opt =>
-            opt.setName('mod_name')
-                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
                 .setAutocomplete(true)),
     name: 'skill',
     needs_api: false,
@@ -24,17 +26,64 @@ module.exports = {
     async autocomplete(interaction) {
         const fs = require('fs');
         const path = require('path');
-        const focused = interaction.options.getFocused().toLowerCase();
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
-        const choices = ['Vanilla'];
-        try {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-            for (const modder in moddersConfig) {
-                choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-            }
-        } catch {}
-        const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-        await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        const focusedOption = interaction.options.getFocused(true);
+        const focused = focusedOption.value.toLowerCase();
+        if (focusedOption.name === 'mod_name') {
+            const moddersConfigPath = path.join(__dirname, '../modders.json');
+            const choices = ['Vanilla'];
+            try {
+                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+                for (const modder in moddersConfig) {
+                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
+                }
+            } catch {}
+            const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        } else if (focusedOption.name === 'class_name') {
+            const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
+            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
+            const classdefsPath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'classdefs.tok');
+            const classes = [];
+            try {
+                const content = fs.readFileSync(classdefsPath, 'utf8');
+                for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
+                    const name = match[1].trim();
+                    if (!name.startsWith('//')) classes.push(name);
+                }
+            } catch {}
+            const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        } else if (focusedOption.name === 'skill_name') {
+            const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
+            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
+            const uploadsBase = path.join(__dirname, '../../../uploads', modName, 'data', 'config');
+            const skillsPath = path.join(uploadsBase, 'skills.tok');
+            const lookupPath = path.join(uploadsBase, 'lookuptext_eng.txt');
+            const skillNames = [];
+            try {
+                const skillsContent = fs.readFileSync(skillsPath, 'utf8');
+                const lookupContent = fs.readFileSync(lookupPath, 'utf8');
+                // Build id -> display name map
+                const idToName = {};
+                for (const line of lookupContent.split(/\r?\n/)) {
+                    if (!line.includes('^')) continue;
+                    const parts = line.split('^');
+                    idToName[parts[0].trim()] = parts[parts.length - 1].trim();
+                }
+                // Collect unique display names from skills.tok
+                const seen = new Set();
+                for (const match of skillsContent.matchAll(/^SKILLDISPLAYNAMEID:\s*(\d+)/gm)) {
+                    const displayName = idToName[match[1].trim()];
+                    if (displayName && !seen.has(displayName.toLowerCase())) {
+                        seen.add(displayName.toLowerCase());
+                        skillNames.push(displayName);
+                    }
+                }
+                skillNames.sort();
+            } catch {}
+            const filtered = skillNames.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c.toLowerCase() })));
+        }
     },
     async execute(interaction, extra) {
         await interaction.deferReply();

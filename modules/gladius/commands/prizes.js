@@ -7,13 +7,14 @@ module.exports = {
         .setName('prizes')
         .setDescription('Shows prize information for a specified encounter or league')
         .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod to search in (Vanilla = base game)')
+                .setRequired(true)
+                .setAutocomplete(true))
+        .addStringOption(opt =>
             opt.setName('encounter_name')
                 .setDescription('The encounter or league name to look up')
-                .setRequired(true))
-        .addStringOption(opt =>
-            opt.setName('mod_name')
-                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
-                .setAutocomplete(true)),
+                .setRequired(true)),
     name: 'prizes',
     needs_api: false,
     has_state: false,
