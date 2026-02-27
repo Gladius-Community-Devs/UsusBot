@@ -1,3 +1,5 @@
+const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require('discord.js');
+
 // CODE CHANGE: parseSkillChunk is now defined at the top level so it can be reused.
 const parseSkillChunk = (chunk) => {
     const lines = chunk.trim().split(/\r?\n/);
@@ -406,17 +408,27 @@ const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
     return description;
 };
 
-const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
-
 module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('explain')
+        .setDescription('Gives a natural language description of a skill')
+        .addStringOption(opt =>
+            opt.setName('skill_name')
+                .setDescription('The skill name to explain')
+                .setRequired(true))
+        .addStringOption(opt =>
+            opt.setName('class_name')
+                .setDescription('Filter to a specific class (optional)')
+                .setRequired(false))
+        .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
+                .setRequired(false)),
     name: 'explain',
-    description: 'Gives a natural language description of a skill.',
-    syntax: 'explain [mod (o)] [class (o)] [skill name]',
-    num_args: 1,
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
-    async execute(message, args, extra) {
+    async execute(interaction, extra) {
+        await interaction.deferReply();
         const fs = require('fs');
         const path = require('path');
 
@@ -425,26 +437,20 @@ module.exports = {
             return input.replace(/[^\w\s'’-]/g, '').trim();
         };
 
-        if (args.length <= 1) {
-            message.channel.send({ content: 'Please provide the skill name.' });
-            return;
-        }
-
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
-        let index = 1; // Start after the command name
 
         try {
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-            let modNameInput = sanitizeInput(args[1]);
-            let isMod = false;
-            for (const modder in moddersConfig) {
-                const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
-                    isMod = true;
-                    modName = moddersConfig[modder].replace(/\s+/g, '_');
-                    index = 2;
-                    break;
+            const modNameInput = interaction.options.getString('mod_name');
+            if (modNameInput) {
+                const sanitizedModInput = sanitizeInput(modNameInput);
+                for (const modder in moddersConfig) {
+                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
+                    if (modConfigName === sanitizedModInput.replace(/\s+/g, '_').toLowerCase()) {
+                        modName = moddersConfig[modder].replace(/\s+/g, '_');
+                        break;
+                    }
                 }
             }
             modName = path.basename(sanitizeInput(modName));
@@ -455,11 +461,11 @@ module.exports = {
             const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
 
             if (!fs.existsSync(lookupFilePath)) {
-                message.channel.send({ content: `That mod does not have files yet!` });
+                await interaction.editReply({ content: `That mod does not have files yet!` });
                 return;
             }
             if (!fs.existsSync(skillsFilePath)) {
-                message.channel.send({ content: `That mod is missing its skills.tok file!` });
+                await interaction.editReply({ content: `That mod is missing its skills.tok file!` });
                 return;
             }
 
@@ -480,73 +486,56 @@ module.exports = {
             const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
             const skillsChunks = skillsContent.split(/\n\s*\n/);
 
-            let className = '';
-            let skillName = '';
-            let foundMatchingSkills = false;
-            let matchingSkills = [];
+            const skillName = sanitizeInput(interaction.options.getString('skill_name'));
+            const className = sanitizeInput(interaction.options.getString('class_name') || '');
 
-            for (let splitIndex = index; splitIndex <= args.length; splitIndex++) {
-                let potentialClassName = args.slice(index, splitIndex).join(' ').trim();
-                let potentialSkillName = args.slice(splitIndex, args.length).join(' ').trim();
-                if (!potentialSkillName) continue;
-
-                potentialClassName = sanitizeInput(potentialClassName);
-                potentialSkillName = sanitizeInput(potentialSkillName);
-                skillName = potentialSkillName;
-                const entryIds = skillNameToEntryIds[potentialSkillName.toLowerCase()] || [];
-                if (entryIds.length === 0) continue;
-
-                matchingSkills = [];
-                for (const chunk of skillsChunks) {
-                    if (chunk.includes('SKILLCREATE:')) {
-                        const skillData = parseSkillChunk(chunk);
-                        const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
-                        if (skillDisplayNameId && entryIds.includes(parseInt(skillDisplayNameId))) {
-                            let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
-                            if (!Array.isArray(skillClasses)) {
-                                skillClasses = [skillClasses];
-                            }
-                            if (potentialClassName) {
-                                if (skillClasses.some(cls => cls.toLowerCase() === potentialClassName.toLowerCase())) {
-                                    matchingSkills.push({ entryId: parseInt(skillDisplayNameId), chunk: chunk.trim(), classNames: skillClasses, skillData: skillData });
-                                }
-                            } else {
-                                matchingSkills.push({ entryId: parseInt(skillDisplayNameId), chunk: chunk.trim(), classNames: skillClasses, skillData: skillData });
-                            }
-                        }
-                    }
-                }
-
-                if (matchingSkills.length > 0) {
-                    className = potentialClassName;
-                    foundMatchingSkills = true;
-                    const targetSKILLDISPLAYNAMEID = matchingSkills[0].entryId;
-                    const targetSKILLUSECLASS = matchingSkills[0].classNames[0];
-                    let allMatchingSkills = [];
-                    for (const chunk of skillsChunks) {
-                        if (chunk.includes('SKILLCREATE:')) {
-                            const skillData = parseSkillChunk(chunk);
-                            const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
-                            if (skillDisplayNameId && parseInt(skillDisplayNameId) === targetSKILLDISPLAYNAMEID) {
-                                let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
-                                if (!Array.isArray(skillClasses)) {
-                                    skillClasses = [skillClasses];
-                                }
-                                if (skillClasses.some(cls => cls.toLowerCase() === targetSKILLUSECLASS.toLowerCase())) {
-                                    allMatchingSkills.push({ entryId: targetSKILLDISPLAYNAMEID, chunk: chunk.trim(), classNames: skillClasses, skillData: skillData });
-                                }
-                            }
-                        }
-                    }
-                    matchingSkills = allMatchingSkills;
-                    break;
-                }
-            }
-
-            if (!foundMatchingSkills) {
-                message.channel.send({ content: `No skill named '${args.slice(index).join(' ')}' found in '${modName}'.` });
+            const entryIds = skillNameToEntryIds[skillName.toLowerCase()] || [];
+            if (entryIds.length === 0) {
+                await interaction.editReply({ content: `No skill named '${skillName}' found in '${modName}'.` });
                 return;
             }
+
+            let matchingSkills = [];
+            for (const chunk of skillsChunks) {
+                if (chunk.includes('SKILLCREATE:')) {
+                    const skillData = parseSkillChunk(chunk);
+                    const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
+                    if (skillDisplayNameId && entryIds.includes(parseInt(skillDisplayNameId))) {
+                        let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
+                        if (!Array.isArray(skillClasses)) skillClasses = [skillClasses];
+                        if (className) {
+                            if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                                matchingSkills.push({ entryId: parseInt(skillDisplayNameId), chunk: chunk.trim(), classNames: skillClasses, skillData });
+                            }
+                        } else {
+                            matchingSkills.push({ entryId: parseInt(skillDisplayNameId), chunk: chunk.trim(), classNames: skillClasses, skillData });
+                        }
+                    }
+                }
+            }
+
+            if (matchingSkills.length === 0) {
+                await interaction.editReply({ content: `No skill named '${skillName}'${className ? ` for class '${className}'` : ''} found in '${modName}'.` });
+                return;
+            }
+
+            const targetSKILLDISPLAYNAMEID = matchingSkills[0].entryId;
+            const targetSKILLUSECLASS = matchingSkills[0].classNames[0];
+            let allMatchingSkills = [];
+            for (const chunk of skillsChunks) {
+                if (chunk.includes('SKILLCREATE:')) {
+                    const skillData = parseSkillChunk(chunk);
+                    const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
+                    if (skillDisplayNameId && parseInt(skillDisplayNameId) === targetSKILLDISPLAYNAMEID) {
+                        let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
+                        if (!Array.isArray(skillClasses)) skillClasses = [skillClasses];
+                        if (skillClasses.some(cls => cls.toLowerCase() === targetSKILLUSECLASS.toLowerCase())) {
+                            allMatchingSkills.push({ entryId: targetSKILLDISPLAYNAMEID, chunk: chunk.trim(), classNames: skillClasses, skillData });
+                        }
+                    }
+                }
+            }
+            matchingSkills = allMatchingSkills;
 
             let allClassesWithSkillName = new Set();
             for (const chunk of skillsChunks) {
@@ -574,7 +563,7 @@ module.exports = {
             let messages = [];
             // Updated header with specific skill command
             let currentClass = matchingSkills[0].classNames[0];
-            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **;skill ${modName !== 'Vanilla' ? modName + ' ' : ''}${currentClass} ${skillName}**\n\n\nSkill details for '${skillName}' in '${modName}' for class '${currentClass}':\n\n`;
+            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **/skill${modName !== 'Vanilla' ? ' mod_name:' + modName : ''} skill_name:${skillName}${currentClass ? ' class_name:' + currentClass : ''}**\n\n\nSkill details for '${skillName}' in '${modName}' for class '${currentClass}':\n\n`;
             let currentMessage = header;
             const lookupTextMap = {};
             for (const line of lookupLines) {
@@ -627,17 +616,24 @@ module.exports = {
                 rows.push(row);
             }
 
-            // Send messages with dropdown menus on the last message
-            for (const [index, msg] of messages.entries()) {
-                if (index === messages.length - 1) {
-                    await message.channel.send({ content: msg, components: rows });
+            // Send messages (editReply for first, followUp for rest)
+            for (const [msgIdx, msg] of messages.entries()) {
+                const isFirst = msgIdx === 0;
+                const isLast = msgIdx === messages.length - 1;
+                const sendFn = isFirst
+                    ? interaction.editReply.bind(interaction)
+                    : interaction.followUp.bind(interaction);
+
+                if (isLast) {
+                    await sendFn({ content: msg, components: rows });
                 } else {
-                    await message.channel.send({ content: msg });
+                    await sendFn({ content: msg });
                 }
             }
         } catch (error) {
             console.error('Error finding the skill:', error);
-            message.channel.send({ content: 'An error occurred while finding the skill.' });
+            if (interaction.deferred) await interaction.editReply({ content: 'An error occurred while finding the skill.' });
+            else await interaction.reply({ content: 'An error occurred while finding the skill.', ephemeral: true });
         }
     },
     generateSkillDescription // Exporting for potential reuse.

@@ -1,50 +1,51 @@
 const fs = require('fs');
 const path = require('path');
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('classes')
+        .setDescription('Shows information about gladiator classes')
+        .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
+                .setRequired(false))
+        .addStringOption(opt =>
+            opt.setName('class_name')
+                .setDescription('Class name to filter by (optional, shows all if omitted)')
+                .setRequired(false)),
     name: 'classes',
-    description: 'Shows information about classes.',
-    syntax: 'classes [mod (optional)] [class name (optional)]',
-    num_args: 0,
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
-    async execute(message, args = [], extra) {  // Add default empty array for args
+    async execute(interaction, extra) {
         const sanitizeInput = (input) => {
-            if (!input || typeof input !== 'string') return '';  // Add input validation
+            if (!input || typeof input !== 'string') return '';
             return input.replace(/[^\w\s''-]/g, '').trim();
         };
 
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
-        let index = 1;
         let searchTerm = '';
 
         try {
             // Load modders.json and handle mod name
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
 
-            if (args && args.length > 1) {  // Check if args exists and has elements
-                let modNameInput = sanitizeInput(args[1]);
-                if (modNameInput) {  // Only process if we have valid input
-                    for (const modder in moddersConfig) {
-                        const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                        if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
-                            modName = moddersConfig[modder].replace(/\s+/g, '_');
-                            index = 2;
-                            break;
-                        }
+            const modNameInput = interaction.options.getString('mod_name');
+            if (modNameInput) {
+                const sanitizedInput = sanitizeInput(modNameInput);
+                for (const modder in moddersConfig) {
+                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
+                    if (modConfigName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
+                        modName = moddersConfig[modder].replace(/\s+/g, '_');
+                        break;
                     }
                 }
             }
 
-            // Get search term if provided, with validation
-            if (args && args.length > index) {
-                searchTerm = args.slice(index)
-                    .filter(arg => arg && typeof arg === 'string')  // Filter out invalid args
-                    .join(' ')
-                    .toLowerCase();
+            const classNameInput = interaction.options.getString('class_name');
+            if (classNameInput) {
+                searchTerm = sanitizeInput(classNameInput).toLowerCase();
             }
 
             // Sanitize modName and define paths
@@ -56,7 +57,7 @@ module.exports = {
 
             // Check if files exist
             if (!fs.existsSync(classdefsPath) || !fs.existsSync(lookupFilePath)) {
-                message.channel.send({ content: `Required files are missing for mod '${modName}'.` });
+                await interaction.reply({ content: `Required files are missing for mod '${modName}'.` });
                 return;
             }
 
@@ -84,10 +85,10 @@ module.exports = {
                         }
                     }
                 } catch (parseError) {
-                    this.logger.error('Error parsing lookup text:', parseError);
+                    console.error('Error parsing lookup text:', parseError);
                 }
             } else {
-                this.logger.error('Invalid lookup content format');
+                console.error('Invalid lookup content format');
             }
 
             // Parse class definitions - update the splitting logic
@@ -136,7 +137,7 @@ module.exports = {
                 classes;
 
             if (filteredClasses.length === 0) {
-                message.channel.send({ content: `No classes found${searchTerm ? ` matching '${searchTerm}'` : ''} in '${modName}'.` });
+                await interaction.reply({ content: `No classes found${searchTerm ? ` matching '${searchTerm}'` : ''} in '${modName}'.` });
                 return;
             }
 
@@ -164,11 +165,11 @@ module.exports = {
                 );
 
             // Send the message
-            message.channel.send({ embeds: [embed], components: [row] });
+            await interaction.reply({ embeds: [embed], components: [row] });
 
         } catch (error) {
-            this.logger.error('Error in classes command:', error);
-            message.channel.send({ content: 'An error occurred while fetching class information.' });
+            console.error('Error in classes command:', error);
+            await interaction.reply({ content: 'An error occurred while fetching class information.' });
         }
     }
 };

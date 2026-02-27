@@ -1,65 +1,52 @@
 const fs = require('fs');
 const path = require('path');
-const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 
 module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('itemskill')
+        .setDescription('Finds skills granted by items, or items that grant a specific skill')
+        .addStringOption(opt =>
+            opt.setName('search')
+                .setDescription('Item or skill name to search for (omit to browse all)')
+                .setRequired(false))
+        .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
+                .setRequired(false)),
     name: 'itemskill',
-    description: 'Finds skills granted by items or items granting a specific skill.',
-    syntax: 'itemskill [mod (optional)] [item or skill name]',
-    num_args: 0, // Changed back to 0 to allow empty command for browsing
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
-    async execute(message, args, extra) {
-        // Sanitize input to allow apostrophes and hyphens
+    async execute(interaction, extra) {
+        await interaction.deferReply();
+
         const sanitizeInput = (input) => {
             return input.replace(/[^\w\s''-]/g, '').trim();
         };
 
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
-        let index = 1; // Start after the command name
         let searchTerm = '';
         let browseModeActive = false;
 
         try {
-            // Load modders.json
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
 
-            // Check if a mod name was provided
-            if (args.length > 1) {
-                // Sanitize modNameInput
-                let modNameInput = sanitizeInput(args[1]);
-
-                // Check if args[1] is a valid mod name
-                let isMod = false;
+            const modNameInput = interaction.options.getString('mod_name');
+            if (modNameInput) {
+                const sanitizedInput = sanitizeInput(modNameInput);
                 for (const modder in moddersConfig) {
                     const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                    if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
+                    if (modConfigName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
                         modName = moddersConfig[modder].replace(/\s+/g, '_');
-                        index = 2; // Move index to next argument
-                        isMod = true;
                         break;
                     }
                 }
-                
-                // If args[1] wasn't a valid mod name, use it as the search term
-                if (!isMod && args.length === 2) {
-                    searchTerm = args[1].toLowerCase();
-                }
             }
 
-            // Check if a search term was provided after the mod name
-            if (args.length > index) {
-                searchTerm = args.slice(index).join(' ').toLowerCase();
-            }
+            searchTerm = (interaction.options.getString('search') || '').toLowerCase();
+            browseModeActive = !searchTerm;
 
-            // If no search term was found, activate browse mode
-            if (!searchTerm) {
-                browseModeActive = true;
-            }
-
-            // Sanitize modName
             modName = path.basename(sanitizeInput(modName));
 
             // Define file paths securely
@@ -71,12 +58,12 @@ module.exports = {
 
             // Check if files exist
             if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {
-                message.channel.send({ content: `That mod does not have the required files!` });
+                await interaction.editReply({ content: `That mod does not have the required files!` });
                 return;
             }
 
             if (!fs.existsSync(itemsFilePath)) {
-                message.channel.send({ content: `That mod is missing its items.tok file!` });
+                await interaction.editReply({ content: `That mod is missing its items.tok file!` });
                 return;
             }
 
@@ -191,7 +178,7 @@ module.exports = {
                 itemSkills.sort((a, b) => a.displayName.localeCompare(b.displayName));
                 
                 if (itemSkills.length === 0) {
-                    message.channel.send({ content: `No item skills found in '${modName}'.` });
+                    await interaction.editReply({ content: `No item skills found in '${modName}'.` });
                     return;
                 }
                 
@@ -224,7 +211,7 @@ module.exports = {
                     );
                 
                 // Send the message with embed and buttons
-                message.channel.send({ embeds: [embed], components: [row] });
+                await interaction.editReply({ embeds: [embed], components: [row] });
                 return;
             } else {
                 // Find items matching the search term
@@ -274,7 +261,7 @@ module.exports = {
                 });
 
                 if (itemSkills.length === 0) {
-                    message.channel.send({ content: `No item skills found matching '${searchTerm}' in '${modName}'.` });
+                    await interaction.editReply({ content: `No item skills found matching '${searchTerm}' in '${modName}'.` });
                     return;
                 }
 
@@ -287,7 +274,6 @@ module.exports = {
                     const skill = itemSkills[0];
                     const embed = createSkillEmbed(skill, 0, 1, modName);
                     
-                    // Create shop button for the single result but include the skill name in the customId
                     const row = new ActionRowBuilder()
                         .addComponents(
                             new ButtonBuilder()
@@ -297,14 +283,12 @@ module.exports = {
                                 .setDisabled(skill.items.length === 0)
                         );
                     
-                    // Send the message with embed and shop button
-                    message.channel.send({ 
+                    await interaction.editReply({ 
                         content: `Item skill in '${modName}' matching '${searchTerm}':`, 
                         embeds: [embed], 
                         components: [row] 
                     });
                 } else {
-                    // For multiple results, create an embed for each skill (up to 10 embeds)
                     const embeds = [];
                     const maxEmbedsToShow = Math.min(itemSkills.length, 10);
                     
@@ -313,15 +297,13 @@ module.exports = {
                         embeds.push(createSkillEmbed(skill, i, itemSkills.length, modName));
                     }
                     
-                    // Send a message with the embeds
-                    message.channel.send({ 
+                    await interaction.editReply({ 
                         content: `Found ${itemSkills.length} item skills in '${modName}' matching '${searchTerm}'${itemSkills.length > 10 ? ` (showing first 10)` : ''}:`,
-                        embeds: embeds.slice(0, 10) // Discord allows max 10 embeds per message
+                        embeds: embeds.slice(0, 10)
                     });
                     
-                    // If there are more than 10 results, suggest the user narrow their search
                     if (itemSkills.length > 10) {
-                        message.channel.send({ 
+                        await interaction.followUp({ 
                             content: `⚠️ Showing only the first 10 results. Please refine your search to see more specific results.`
                         });
                     }
@@ -329,8 +311,9 @@ module.exports = {
             }
 
         } catch (error) {
-            this.logger.error('Error finding item skills:', error);
-            message.channel.send({ content: 'An error occurred while finding item skills.' });
+            console.error('Error finding item skills:', error);
+            if (interaction.deferred) await interaction.editReply({ content: 'An error occurred while finding item skills.' });
+            else await interaction.reply({ content: 'An error occurred while finding item skills.', ephemeral: true });
         }
     }
 };

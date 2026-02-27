@@ -1,49 +1,48 @@
 const fs = require('fs');
 const path = require('path');
-const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 
 module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('prizes')
+        .setDescription('Shows prize information for a specified encounter or league')
+        .addStringOption(opt =>
+            opt.setName('encounter_name')
+                .setDescription('The encounter or league name to look up')
+                .setRequired(true))
+        .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
+                .setRequired(false)),
     name: 'prizes',
-    description: 'Finds and displays prize information for a specified encounter or league.',
-    syntax: 'prizes [mod (optional)] [encounter/league name]',    num_args: 1,
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
-    async execute(message, args, extra) {
-        // Adjusted sanitizeInput to allow apostrophes, hyphens, and ampersands
+    async execute(interaction, extra) {
+        await interaction.deferReply();
+
         const sanitizeInput = (input) => {
             return input.replace(/[^\w\s''&-]/g, '').trim();
         };
 
-        if (args.length <= 1) {
-            message.channel.send({ content: 'Please provide the encounter or league name.' });
-            return;
-        }
-
         const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
-        let index = 1; // Start after the command name
 
         try {
             // Load modders.json
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
 
-            // Sanitize modNameInput
-            let modNameInput = sanitizeInput(args[1]);
-
-            // Check if args[1] is a valid mod name
-            let isMod = false;
-            for (const modder in moddersConfig) {
-                const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
-                    isMod = true;
-                    modName = moddersConfig[modder].replace(/\s+/g, '_');
-                    index = 2; // Move index to next argument
-                    break;
+            const modNameInput = interaction.options.getString('mod_name');
+            if (modNameInput) {
+                const sanitizedInput = sanitizeInput(modNameInput);
+                for (const modder in moddersConfig) {
+                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
+                    if (modConfigName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
+                        modName = moddersConfig[modder].replace(/\s+/g, '_');
+                        break;
+                    }
                 }
             }
 
-            // Sanitize modName
             modName = path.basename(sanitizeInput(modName));
 
             // Define file paths securely
@@ -55,17 +54,17 @@ module.exports = {
 
             // Check if files exist
             if (!fs.existsSync(lookupFilePath)) {
-                message.channel.send({ content: `That mod does not have files yet!` });
+                await interaction.editReply({ content: `That mod does not have files yet!` });
                 return;
             }
 
             if (!fs.existsSync(prizesFilePath)) {
-                message.channel.send({ content: `That mod is missing its prizes.tok file!` });
+                await interaction.editReply({ content: `That mod is missing its prizes.tok file!` });
                 return;
             }
 
             if (!fs.existsSync(leaguesPath)) {
-                message.channel.send({ content: `That mod is missing its leagues folder!` });
+                await interaction.editReply({ content: `That mod is missing its leagues folder!` });
                 return;
             }
 
@@ -86,15 +85,13 @@ module.exports = {
                 nameToEntryIds[name].push(id);
             }
 
-            // Get the search name from user input
-            const searchName = args.slice(index).join(' ').trim();
-            const sanitizedSearchName = sanitizeInput(searchName);
+            const searchName = sanitizeInput(interaction.options.getString('encounter_name'));
 
             // Get all entry IDs for the search name
-            const entryIds = nameToEntryIds[sanitizedSearchName.toLowerCase()] || [];
+            const entryIds = nameToEntryIds[searchName.toLowerCase()] || [];
 
             if (entryIds.length === 0) {
-                message.channel.send({ content: `No encounter or league named '${searchName}' found in '${modName}'.` });
+                await interaction.editReply({ content: `No encounter or league named '${searchName}' found in '${modName}'.` });
                 return;
             }
 
@@ -185,7 +182,7 @@ module.exports = {
             }
 
             if (matchingItems.length === 0) {
-                message.channel.send({ content: `No encounter or league named '${searchName}' found in '${modName}'.` });
+                await interaction.editReply({ content: `No encounter or league named '${searchName}' found in '${modName}'.` });
                 return;
             }
 
@@ -356,11 +353,12 @@ module.exports = {
             }
 
             // Send the embed
-            await message.channel.send({ embeds: [embed] });
+            await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Error finding prizes:', error);
-            message.channel.send({ content: 'An error occurred while finding the prizes.' });
+            if (interaction.deferred) await interaction.editReply({ content: 'An error occurred while finding the prizes.' });
+            else await interaction.reply({ content: 'An error occurred while finding the prizes.', ephemeral: true });
         }
     }
 };

@@ -1,12 +1,13 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('cheats')
+        .setDescription('Outputs all known Gladius cheat codes'),
     name: 'cheats',
-    description: 'Outputs all known cheat codes.',
-    syntax: 'cheats',
-    num_args: 0,
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
-    execute(message, args, extra) {
+    async execute(interaction, extra) {
         const cheats =
 "```" +
 `NOTE FOR PLAYSTATION 2 USERS:
@@ -63,6 +64,6 @@ Turn All Random Encounters ON (World Map):
 Right, Left, Up, Down, Left x4, A x3` +
 "```";
 
-        message.channel.send({ content: cheats });
+        await interaction.reply({ content: cheats });
     }
 };

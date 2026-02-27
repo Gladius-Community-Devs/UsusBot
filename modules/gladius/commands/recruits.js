@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const helpers = require('../functions');
 
 /**
@@ -34,77 +34,63 @@ const capList = (arr, max = 10) => {
 };
 
 module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('recruits')
+        .setDescription('Shows where to recruit gladiators of a specified class')
+        .addStringOption(opt =>
+            opt.setName('class_name')
+                .setDescription('The class name to search for')
+                .setRequired(true))
+        .addStringOption(opt =>
+            opt.setName('mod_name')
+                .setDescription('Mod name to search in (optional, defaults to Vanilla)')
+                .setRequired(false))
+        .addBooleanOption(opt =>
+            opt.setName('statset5')
+                .setDescription('Filter results by the best statset at level 30')
+                .setRequired(false))
+        .addBooleanOption(opt =>
+            opt.setName('debug')
+                .setDescription('Show internal debug information')
+                .setRequired(false)),
     name: 'recruits',
-    description: 'Shows where to recruit gladiators of a specified class, optionally filtered by statset.',
-    syntax: 'recruits [mod (optional)] [class name] [statset5 (optional)] [debug (optional)]',
-    num_args: 1,
-    args_to_lower: true,
     needs_api: false,
     has_state: false,
 
-    async execute(message, args) {
-        if (args.length <= 1) {
-            return message.channel.send({ content: 'Please provide the class name.' });
-        }
+    async execute(interaction, extra) {
+        await interaction.deferReply();
 
         const moddersConfigPath = path.join(__dirname, '../modders.json');
 
-        let modName = 'Vanilla';
-        let index = 1;
-        let className = '';
+        const className = helpers.sanitizeInput(interaction.options.getString('class_name'));
+        const modNameInput = interaction.options.getString('mod_name');
+        const useStatSetFilter = interaction.options.getBoolean('statset5') ?? false;
+        const debugMode = interaction.options.getBoolean('debug') ?? false;
 
-        let useStatSetFilter = false;
-        let debugMode = false;
+        let modName = 'Vanilla';
 
         try {
-            // ─────────────────────────────────────────────
-            // Load modders.json
-            // ─────────────────────────────────────────────
             const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
 
-            // ─────────────────────────────────────────────
-            // Detect mod name
-            // ─────────────────────────────────────────────
-            const modNameInput = helpers.sanitizeInput(args[1]);
-            for (const modder in moddersConfig) {
-                const cfgName = moddersConfig[modder]
-                    .replace(/\s+/g, '_')
-                    .toLowerCase();
-
-                if (cfgName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
-                    modName = moddersConfig[modder].replace(/\s+/g, '_');
-                    index = 2;
-                    break;
+            if (modNameInput) {
+                const sanitizedInput = helpers.sanitizeInput(modNameInput);
+                for (const modder in moddersConfig) {
+                    const cfgName = moddersConfig[modder]
+                        .replace(/\s+/g, '_')
+                        .toLowerCase();
+                    if (cfgName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
+                        modName = moddersConfig[modder].replace(/\s+/g, '_');
+                        break;
+                    }
                 }
             }
 
             modName = path.basename(helpers.sanitizeInput(modName));
-            const filePaths = helpers.getModFilePaths(modName);
-
-            // ─────────────────────────────────────────────
-            // Parse trailing flags
-            // ─────────────────────────────────────────────
-            let argsToProcess = [...args.slice(index)];
-
-            if (argsToProcess.at(-1) === 'debug') {
-                debugMode = true;
-                argsToProcess.pop();
-            }
-
-            if (argsToProcess.at(-1) === 'statset5') {
-                useStatSetFilter = true;
-                argsToProcess.pop();
-            }
-
-            className = argsToProcess.join(' ').trim();
-            if (!className) {
-                return message.channel.send({ content: 'Please provide the class name.' });
-            }
 
             const result = this.generateRecruitsEmbed(modName, className, useStatSetFilter, debugMode);
 
             if (result.error) {
-                return message.channel.send({
+                return interaction.editReply({
                     content:
                         `❌ **${result.error.title}**\n` +
                         `**Mod:** ${modName}\n` +
@@ -113,17 +99,15 @@ module.exports = {
                 });
             }
 
-            // Create dropdowns
+            // Create class-browser dropdowns
             const rows = [];
             if (result.allClasses && result.allClasses.length > 0) {
                 const encodedModName = encodeURIComponent(modName);
-                // Filter out duplicates and sort (already done in generateRecruitsEmbed, but good to be safe)
                 const classOptions = result.allClasses.map(cls => ({
                     label: cls.charAt(0).toUpperCase() + cls.slice(1),
                     value: encodeURIComponent(cls.toLowerCase())
                 }));
 
-                // Split into chunks of 25
                 for (let i = 0; i < classOptions.length; i += 25) {
                     const optionsChunk = classOptions.slice(i, i + 25);
                     const selectMenu = new StringSelectMenuBuilder()
@@ -134,11 +118,11 @@ module.exports = {
                 }
             }
 
-            return message.channel.send({ embeds: [result.embed], components: rows });
+            return interaction.editReply({ embeds: [result.embed], components: rows });
 
         } catch (err) {
             console.error('[recruits]', err);
-            return message.channel.send({ content: 'An error occurred while finding recruitment information.' });
+            return interaction.editReply({ content: 'An error occurred while finding recruitment information.' });
         }
     },
 
