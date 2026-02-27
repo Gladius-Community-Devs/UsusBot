@@ -151,7 +151,7 @@ class ModuleHandler {
                         .setName(command.name)
                         .setDescription(description);
                     
-                    const isRequired = (command.num_args && command.num_args > 0);
+                    const isRequired = !!(command.num_args && command.num_args > 0);
                     legacyBuilder.addStringOption(option => 
                         option.setName('args')
                             .setDescription(argDesc)
