@@ -489,6 +489,8 @@ module.exports = {
             await interaction.respond(filtered.map(c => ({ name: c, value: c.toLowerCase() })));
         }
     },
+    async execute(interaction, extra) {
+        await interaction.deferReply();
 
         // Adjusted sanitizeInput to allow apostrophes and hyphens.
         const sanitizeInput = (input) => {
