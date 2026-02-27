@@ -207,4 +207,3 @@ module.exports = {
         }
     }
 };
-                    const lines = chunk.trim().split(/\r?\n/);
