@@ -14,24 +14,61 @@ module.exports = {
         .addStringOption(opt =>
             opt.setName('encounter_name')
                 .setDescription('The encounter or league name to look up')
-                .setRequired(true)),
+                .setRequired(true)
+                .setAutocomplete(true)),
     name: 'prizes',
     needs_api: false,
     has_state: false,
     async autocomplete(interaction) {
         const fs = require('fs');
         const path = require('path');
-        const focused = interaction.options.getFocused().toLowerCase();
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
-        const choices = ['Vanilla'];
-        try {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-            for (const modder in moddersConfig) {
-                choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-            }
-        } catch {}
-        const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-        await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        const focusedOption = interaction.options.getFocused(true);
+        const focused = focusedOption.value.toLowerCase();
+
+        if (focusedOption.name === 'mod_name') {
+            const moddersConfigPath = path.join(__dirname, '../modders.json');
+            const choices = ['Vanilla'];
+            try {
+                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+                for (const modder in moddersConfig) {
+                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
+                }
+            } catch {}
+            const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        } else if (focusedOption.name === 'encounter_name') {
+            const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
+            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
+            const leaguesPath = path.join(__dirname, '../../../uploads', modName, 'data', 'towns', 'leagues');
+            const lookupPath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'lookuptext_eng.txt');
+            const names = [];
+            try {
+                // Build id -> name map from lookup
+                const idToName = {};
+                const lookupContent = fs.readFileSync(lookupPath, 'utf8');
+                for (const line of lookupContent.split(/\r?\n/)) {
+                    if (!line.includes('^')) continue;
+                    const parts = line.split('^');
+                    idToName[parts[0].trim()] = parts[parts.length - 1].trim();
+                }
+                // Scan league files for LEAGUE/ENCOUNTER entry IDs
+                const seen = new Set();
+                const leagueFiles = fs.readdirSync(leaguesPath).filter(f => f.endsWith('.tok'));
+                for (const file of leagueFiles) {
+                    const content = fs.readFileSync(path.join(leaguesPath, file), 'utf8');
+                    for (const match of content.matchAll(/^(?:LEAGUE|ENCOUNTER)\s+"[^"]+",\s*(\d+)/gm)) {
+                        const displayName = idToName[match[1].trim()];
+                        if (displayName && !seen.has(displayName.toLowerCase())) {
+                            seen.add(displayName.toLowerCase());
+                            names.push(displayName);
+                        }
+                    }
+                }
+                names.sort();
+            } catch {}
+            const filtered = names.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        }
     },
     async execute(interaction, extra) {
         await interaction.deferReply();
