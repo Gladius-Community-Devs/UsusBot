@@ -12,17 +12,58 @@ module.exports = {
         .addStringOption(option => 
             option.setName('class_name')
                 .setDescription('The name of the class')
-                .setRequired(true))
+                .setRequired(true)
+                .setAutocomplete(true))
         .addStringOption(option => 
             option.setName('mod_name')
                 .setDescription('The name of the mod (optional)')
-                .setRequired(false))
+                .setRequired(false)
+                .setAutocomplete(true))
         .addIntegerOption(option => 
             option.setName('level')
                 .setDescription('The level to check (optional)')
                 .setRequired(false)
                 .setMinValue(1)
                 .setMaxValue(30)),
+    async autocomplete(interaction) {
+        const focusedOption = interaction.options.getFocused(true);
+        const focused = focusedOption.value.toLowerCase();
+        const moddersConfigPath = path.join(__dirname, '../modders.json');
+
+        if (focusedOption.name === 'mod_name') {
+            const choices = ['Vanilla'];
+            try {
+                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+                for (const modder in moddersConfig) {
+                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
+                }
+            } catch {}
+            const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        } else if (focusedOption.name === 'class_name') {
+            const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
+            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
+            const filePaths = helpers.getModFilePaths(modName);
+            const classes = new Set();
+            try {
+                const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
+                const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
+                for (const chunk of gladiatorChunks) {
+                    for (const line of chunk.trim().split(/\r?\n/)) {
+                        if (line.startsWith('Class:')) {
+                            let baseClass = line.split(':')[1].trim();
+                            if (baseClass.match(/^(.+)F$/)) baseClass = baseClass.replace(/^(.+)F$/, '$1');
+                            if (baseClass.match(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/)) baseClass = baseClass.replace(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/, '$1');
+                            if (baseClass.match(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/)) baseClass = baseClass.replace(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/, '$1');
+                            classes.add(baseClass);
+                        }
+                    }
+                }
+            } catch {}
+            const filtered = [...classes].filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        }
+    },
     async execute(interaction, extra) {
         await interaction.deferReply();
         const moddersConfigPath = path.join(__dirname, '../modders.json');

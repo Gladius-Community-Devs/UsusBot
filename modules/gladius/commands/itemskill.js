@@ -14,24 +14,77 @@ module.exports = {
         .addStringOption(opt =>
             opt.setName('search')
                 .setDescription('Item or skill name to search for (omit to browse all)')
-                .setRequired(false)),
+                .setRequired(false)
+                .setAutocomplete(true)),
     name: 'itemskill',
     needs_api: false,
     has_state: false,
     async autocomplete(interaction) {
-        const fs = require('fs');
-        const path = require('path');
-        const focused = interaction.options.getFocused().toLowerCase();
+        const focusedOption = interaction.options.getFocused(true);
+        const focused = focusedOption.value.toLowerCase();
         const moddersConfigPath = path.join(__dirname, '../modders.json');
-        const choices = ['Vanilla'];
-        try {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-            for (const modder in moddersConfig) {
-                choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-            }
-        } catch {}
-        const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-        await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+
+        if (focusedOption.name === 'mod_name') {
+            const choices = ['Vanilla'];
+            try {
+                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
+                for (const modder in moddersConfig) {
+                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
+                }
+            } catch {}
+            const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
+        } else if (focusedOption.name === 'search') {
+            const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
+            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
+            const baseUploadsPath = path.join(__dirname, '../../../uploads');
+            const modPath = path.join(baseUploadsPath, modName);
+            const suggestions = new Set();
+
+            // Load lookup text for resolving display names
+            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
+            const entryIdToName = {};
+            try {
+                const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+                for (const line of lookupContent.split(/\r?\n/)) {
+                    if (!line.trim()) continue;
+                    const fields = line.split('^');
+                    const id = parseInt(fields[0].trim());
+                    const name = fields[fields.length - 1].trim();
+                    if (!isNaN(id) && name) entryIdToName[id] = name;
+                }
+            } catch {}
+
+            // Collect item display names from items.tok (all items, with or without skills)
+            const itemsFilePath = path.join(modPath, 'data', 'config', 'items.tok');
+            try {
+                const itemsContent = fs.readFileSync(itemsFilePath, 'utf8');
+                for (const match of itemsContent.matchAll(/ITEMDISPLAYNAMEID:\s*(\d+)/g)) {
+                    const id = parseInt(match[1]);
+                    if (entryIdToName[id]) suggestions.add(entryIdToName[id]);
+                }
+                for (const match of itemsContent.matchAll(/^ITEMCREATE:\s*"?([^",\r\n]+)/gm)) {
+                    suggestions.add(match[1].trim().replace(/"/g, ''));
+                }
+            } catch {}
+
+            // Collect item skill display names from skills.tok
+            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
+            try {
+                const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
+                for (const chunk of skillsContent.split(/\n\s*\n/)) {
+                    if (!chunk.includes('SKILLCREATE:') || !chunk.includes('Item ')) continue;
+                    const nameMatch = chunk.match(/SKILLDISPLAYNAMEID:\s*(\d+)/);
+                    if (nameMatch) {
+                        const id = parseInt(nameMatch[1]);
+                        if (entryIdToName[id]) suggestions.add(entryIdToName[id]);
+                    }
+                }
+            } catch {}
+
+            const filtered = [...suggestions].filter(s => s.toLowerCase().includes(focused)).slice(0, 25);
+            await interaction.respond(filtered.map(s => ({ name: s, value: s })));
+        }
     },
     async execute(interaction, extra) {
         await interaction.deferReply();
@@ -230,7 +283,7 @@ module.exports = {
                 await interaction.editReply({ embeds: [embed], components: [row] });
                 return;
             } else {
-                // Find items matching the search term
+                // Find items matching the search term (those with ITEMSKILL)
                 const matchingItems = [];
                 for (const chunk of itemsChunks) {
                     if (chunk.includes('ITEMCREATE:')) {
@@ -276,20 +329,47 @@ module.exports = {
                     return isSkillMatch || isGrantedByMatchingItem;
                 });
 
-                if (itemSkills.length === 0) {
-                    await interaction.editReply({ content: `No item skills found matching '${searchTerm}' in '${modName}'.` });
+                // Also search for plain items (no ITEMSKILL) matching the search term
+                const plainMatchingItems = [];
+                for (const chunk of itemsChunks) {
+                    if (!chunk.includes('ITEMCREATE:')) continue;
+                    const itemData = parseChunk(chunk);
+                    if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) continue;
+
+                    let itemName = '';
+                    if (itemData['ITEMDISPLAYNAMEID'] && itemData['ITEMDISPLAYNAMEID'].length) {
+                        const displayNameId = parseInt(itemData['ITEMDISPLAYNAMEID'][0]);
+                        if (entryIdToName[displayNameId]) itemName = entryIdToName[displayNameId];
+                    }
+                    if (!itemName && itemData['ITEMCREATE'] && itemData['ITEMCREATE'].length) {
+                        itemName = itemData['ITEMCREATE'][0].split(',')[0].trim().replace(/"/g, '');
+                    }
+
+                    if (itemName && itemName.toLowerCase().includes(searchTerm)) {
+                        let rawName = itemName;
+                        if (itemData['ITEMCREATE'] && itemData['ITEMCREATE'].length) {
+                            const m = itemData['ITEMCREATE'][0].match(/^"?([^",\r\n]+)"?/);
+                            if (m) rawName = m[1].trim().replace(/"/g, '');
+                        }
+                        plainMatchingItems.push({ itemName, rawName, chunk, itemData });
+                    }
+                }
+
+                if (itemSkills.length === 0 && plainMatchingItems.length === 0) {
+                    await interaction.editReply({ content: `No items or item skills found matching '${searchTerm}' in '${modName}'.` });
                     return;
                 }
 
-                // Sort skills alphabetically
+                // Sort alphabetically
                 itemSkills.sort((a, b) => a.displayName.localeCompare(b.displayName));
+                plainMatchingItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
 
-                // CHANGED: Use embeds for search results instead of plain text
-                if (itemSkills.length === 1) {
-                    // If there's only one result, use the same format as the browse mode with shop button
+                const totalResults = itemSkills.length + plainMatchingItems.length;
+
+                // Single skill result — show with shop button
+                if (itemSkills.length === 1 && plainMatchingItems.length === 0) {
                     const skill = itemSkills[0];
                     const embed = createSkillEmbed(skill, 0, 1, modName);
-                    
                     const row = new ActionRowBuilder()
                         .addComponents(
                             new ButtonBuilder()
@@ -298,27 +378,43 @@ module.exports = {
                                 .setStyle(ButtonStyle.Secondary)
                                 .setDisabled(skill.items.length === 0)
                         );
-                    
                     await interaction.editReply({ 
                         content: `Item skill in '${modName}' matching '${searchTerm}':`, 
                         embeds: [embed], 
                         components: [row] 
                     });
-                } else {
-                    const embeds = [];
-                    const maxEmbedsToShow = Math.min(itemSkills.length, 10);
-                    
-                    for (let i = 0; i < maxEmbedsToShow; i++) {
-                        const skill = itemSkills[i];
-                        embeds.push(createSkillEmbed(skill, i, itemSkills.length, modName));
-                    }
-                    
+                // Single plain item result — show with shop button
+                } else if (itemSkills.length === 0 && plainMatchingItems.length === 1) {
+                    const item = plainMatchingItems[0];
+                    const embed = createPlainItemEmbed(item, 0, 1, modName);
+                    const row = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`itemskill-item-shop|${modName}|${encodeURIComponent(item.rawName)}`)
+                                .setLabel('🏪 Locate Shop')
+                                .setStyle(ButtonStyle.Secondary)
+                        );
                     await interaction.editReply({ 
-                        content: `Found ${itemSkills.length} item skills in '${modName}' matching '${searchTerm}'${itemSkills.length > 10 ? ` (showing first 10)` : ''}:`,
-                        embeds: embeds.slice(0, 10)
+                        content: `Item in '${modName}' matching '${searchTerm}':`, 
+                        embeds: [embed], 
+                        components: [row] 
                     });
-                    
-                    if (itemSkills.length > 10) {
+                } else {
+                    // Multiple results — show embeds (up to 10)
+                    const embeds = [];
+                    for (const skill of itemSkills) {
+                        if (embeds.length >= 10) break;
+                        embeds.push(createSkillEmbed(skill, itemSkills.indexOf(skill), itemSkills.length, modName));
+                    }
+                    for (const item of plainMatchingItems) {
+                        if (embeds.length >= 10) break;
+                        embeds.push(createPlainItemEmbed(item, plainMatchingItems.indexOf(item), plainMatchingItems.length, modName));
+                    }
+                    await interaction.editReply({ 
+                        content: `Found ${totalResults} result(s) in '${modName}' matching '${searchTerm}'${totalResults > 10 ? ' (showing first 10)' : ''}:`,
+                        embeds
+                    });
+                    if (totalResults > 10) {
                         await interaction.followUp({ 
                             content: `⚠️ Showing only the first 10 results. Please refine your search to see more specific results.`
                         });
@@ -333,6 +429,21 @@ module.exports = {
         }
     }
 };
+
+// Helper function to create embed for a plain item (no skill attached)
+function createPlainItemEmbed(item, currentIndex, totalItems, modName) {
+    const embed = new EmbedBuilder()
+        .setTitle(item.itemName)
+        .setDescription(`Item in ${modName} (${currentIndex + 1}/${totalItems}) — No skill attached`)
+        .setColor(0x888888);
+
+    const itemLines = item.chunk.split('\n');
+    const formatted = itemLines.map(line => line.trim()).filter(Boolean).join('\n');
+    const truncated = formatted.length > 1000 ? formatted.substring(0, 997) + '...' : formatted;
+    embed.addFields({ name: 'Item Definition', value: `\`\`\`\n${truncated}\`\`\`` });
+
+    return embed;
+}
 
 // Helper function to create embed for a skill
 function createSkillEmbed(skill, currentPage, totalPages, modName) {

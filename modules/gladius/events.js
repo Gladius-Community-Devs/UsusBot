@@ -736,6 +736,82 @@ async function onInteractionCreate(interaction) {
             await interaction.reply({ content: 'An error occurred while handling the itemskill command pagination.', ephemeral: true });
         }
     }
+    // For plain item shop lookup (items without a skill attached)
+    else if (customId.startsWith('itemskill-item-shop|')) {
+        const parts = customId.split('|');
+        if (parts.length < 3) {
+            await interaction.reply({ content: 'Invalid interaction data.', ephemeral: true });
+            return;
+        }
+
+        const modName = parts[1];
+        const rawItemName = decodeURIComponent(parts[2]);
+
+        await interaction.deferReply();
+
+        try {
+            const filePaths = helpers.getModFilePaths(modName);
+
+            if (!fs.existsSync(filePaths.shopsPath)) {
+                await interaction.editReply({ content: `The shop files directory does not exist for this mod.` });
+                return;
+            }
+
+            const shopFiles = fs.readdirSync(filePaths.shopsPath).filter(file => file.endsWith('.tok'));
+
+            // Search all shop files for this item
+            const foundShops = [];
+            for (const shopFile of shopFiles) {
+                const shopFilePath = path.join(filePaths.shopsPath, shopFile);
+                try {
+                    const shopContent = fs.readFileSync(shopFilePath, 'utf8');
+                    let shopName = shopFile.replace('.tok', '');
+                    const nameMatch = shopContent.match(/NAME\s+"([^"]+)"/);
+                    if (nameMatch) shopName = nameMatch[1];
+
+                    const itemRegex = /ITEM\s+"([^"]+)"/ig;
+                    let match;
+                    while ((match = itemRegex.exec(shopContent)) !== null) {
+                        const shopItemName = match[1];
+                        if (shopItemName === rawItemName ||
+                            (shopItemName.endsWith(rawItemName) && shopItemName.length > rawItemName.length)) {
+                            foundShops.push({ exactName: shopItemName, shopName });
+                        }
+                    }
+                } catch (err) {
+                    logger.error(`Error reading shop file ${shopFile}:`, err);
+                }
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle(`Shop Locations for ${rawItemName}`)
+                .setDescription(`Shops selling this item in ${modName}`)
+                .setColor(0x00AAFF);
+
+            if (foundShops.length === 0) {
+                embed.addFields({ name: 'Not Found', value: 'Not sold in any shops (may be a drop or league reward)' });
+            } else {
+                // Group by exact variant name
+                const grouped = new Map();
+                for (const found of foundShops) {
+                    if (!grouped.has(found.exactName)) grouped.set(found.exactName, []);
+                    if (!grouped.get(found.exactName).includes(found.shopName)) {
+                        grouped.get(found.exactName).push(found.shopName);
+                    }
+                }
+                for (const [exactName, shops] of grouped.entries()) {
+                    let value = shops.map(s => `• ${s}`).join('\n');
+                    if (value.length > 1024) value = value.substring(0, 1021) + '...';
+                    embed.addFields({ name: exactName !== rawItemName ? exactName : 'Sold at', value });
+                }
+            }
+
+            await interaction.editReply({ embeds: [embed] });
+        } catch (error) {
+            logger.error('Error handling itemskill-item-shop:', error);
+            await interaction.reply({ content: 'An error occurred while looking up shop locations.', ephemeral: true });
+        }
+    }
     // For learnable skills pagination and explanation
     else if (customId.startsWith('learnable-skills|') ||
         customId.startsWith('class-skills|') ||      // Handle both prefixes
