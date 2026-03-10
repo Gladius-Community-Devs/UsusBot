@@ -9,15 +9,15 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('updatemod')
         .setDescription('(MODDER ONLY) Apply an xdelta patch to vanilla.iso and unpack your mod files')
+        .addAttachmentOption(option =>
+            option.setName('patch')
+                .setDescription('The .xdelta or .xdelta3 patch file to apply')
+                .setRequired(true))
         .addStringOption(option =>
             option.setName('mod_name')
                 .setDescription('Target mod (required if you own multiple mods)')
                 .setAutocomplete(true)
-                .setRequired(false))
-        .addAttachmentOption(option =>
-            option.setName('patch')
-                .setDescription('The .xdelta or .xdelta3 patch file to apply')
-                .setRequired(true)),
+                .setRequired(false)),
     name: 'updatemod',
     has_state: false,
     needs_api: false,
