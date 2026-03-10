@@ -345,14 +345,6 @@ function getAvailableMods() {
     const dataRoot = getGladiusDataRoot();
     const mods = new Set();
 
-    const vanillaConfigDir = path.join(dataRoot, 'data', 'config');
-    if (
-        fs.existsSync(path.join(vanillaConfigDir, 'skills.tok')) &&
-        fs.existsSync(path.join(vanillaConfigDir, 'lookuptext_eng.txt'))
-    ) {
-        mods.add('Vanilla');
-    }
-
     if (fs.existsSync(dataRoot)) {
         for (const entry of fs.readdirSync(dataRoot, { withFileTypes: true })) {
             if (!entry.isDirectory()) continue;
@@ -378,15 +370,34 @@ function resolveModName(requestedModName) {
     return matched || requested;
 }
 
+function hasCoreSkillFiles(modPath) {
+    const configDir = path.join(modPath, 'data', 'config');
+    return (
+        fs.existsSync(path.join(configDir, 'skills.tok')) &&
+        fs.existsSync(path.join(configDir, 'lookuptext_eng.txt'))
+    );
+}
+
+function resolveModPath(dataRoot, safeModName) {
+    const candidates = [path.join(dataRoot, safeModName)];
+    if (safeModName.includes('_')) {
+        candidates.push(path.join(dataRoot, safeModName.replace(/_/g, ' ')));
+    }
+
+    for (const candidate of candidates) {
+        if (hasCoreSkillFiles(candidate)) return candidate;
+    }
+
+    return candidates[0];
+}
+
 /**
  * Get files paths for a mod
  */
 function getModFilePaths(modName) {
     const safeModName = sanitizeModName(modName);
     const dataRoot = getGladiusDataRoot();
-    const modPath = safeModName.toLowerCase() === 'vanilla'
-        ? dataRoot
-        : path.join(dataRoot, safeModName);
+        const modPath = resolveModPath(dataRoot, safeModName);
       return {
         modPath,
         lookupFilePath: path.join(modPath, 'data', 'config', 'lookuptext_eng.txt'),

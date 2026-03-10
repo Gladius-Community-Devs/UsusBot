@@ -103,7 +103,7 @@ module.exports = {
 
             // Check if files exist
             if (!fs.existsSync(lookupFilePath)) {
-                await interaction.editReply({ content: `That mod does not have files yet!` });
+                await interaction.editReply({ content: `That mod does not have files yet! Expected: ${lookupFilePath}` });
                 return;
             }
 
