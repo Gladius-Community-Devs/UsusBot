@@ -321,18 +321,79 @@ function loadLookupText(lookupFilePath) {
     return { idToText, nameToIds };
 }
 
+function getGladiusDataRoot() {
+    const configured = process.env.GLADIUS_DATA_ROOT || process.env.GLADIUS_GAME_DATA_PATH;
+    if (!configured || !configured.trim()) {
+        throw new Error('GLADIUS_DATA_ROOT is not set. Configure it in the bot environment.');
+    }
+    return path.resolve(configured);
+}
+
+function sanitizeModName(modName) {
+    if (!modName || typeof modName !== 'string') return 'Vanilla';
+
+    const normalized = path
+        .basename(modName)
+        .replace(/[^\w\s.-]/g, '')
+        .trim()
+        .replace(/\s+/g, '_');
+
+    return normalized || 'Vanilla';
+}
+
+function getAvailableMods() {
+    const dataRoot = getGladiusDataRoot();
+    const mods = new Set();
+
+    const vanillaConfigDir = path.join(dataRoot, 'data', 'config');
+    if (
+        fs.existsSync(path.join(vanillaConfigDir, 'skills.tok')) &&
+        fs.existsSync(path.join(vanillaConfigDir, 'lookuptext_eng.txt'))
+    ) {
+        mods.add('Vanilla');
+    }
+
+    if (fs.existsSync(dataRoot)) {
+        for (const entry of fs.readdirSync(dataRoot, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+
+            const modName = entry.name;
+            const configDir = path.join(dataRoot, modName, 'data', 'config');
+            if (
+                fs.existsSync(path.join(configDir, 'skills.tok')) &&
+                fs.existsSync(path.join(configDir, 'lookuptext_eng.txt'))
+            ) {
+                mods.add(modName);
+            }
+        }
+    }
+
+    return Array.from(mods).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+function resolveModName(requestedModName) {
+    const requested = sanitizeModName(requestedModName || 'Vanilla');
+    const availableMods = getAvailableMods();
+    const matched = availableMods.find(mod => mod.toLowerCase() === requested.toLowerCase());
+    return matched || requested;
+}
+
 /**
  * Get files paths for a mod
  */
 function getModFilePaths(modName) {
-    const baseUploadsPath = path.join(__dirname, '../../uploads');
-    const modPath = path.join(baseUploadsPath, modName);
+    const safeModName = sanitizeModName(modName);
+    const dataRoot = getGladiusDataRoot();
+    const modPath = safeModName.toLowerCase() === 'vanilla'
+        ? dataRoot
+        : path.join(dataRoot, safeModName);
       return {
         modPath,
         lookupFilePath: path.join(modPath, 'data', 'config', 'lookuptext_eng.txt'),
         skillsFilePath: path.join(modPath, 'data', 'config', 'skills.tok'),
         itemsFilePath: path.join(modPath, 'data', 'config', 'items.tok'),
         classdefsPath: path.join(modPath, 'data', 'config', 'classdefs.tok'),
+        prizesFilePath: path.join(modPath, 'data', 'config', 'prizes.tok'),
         shopsPath: path.join(modPath, 'data', 'towns', 'shops'),
         leaguesPath: path.join(modPath, 'data', 'towns', 'leagues'),
         statsetsFilePath: path.join(modPath, 'data', 'units', 'statsets.txt'),
@@ -369,6 +430,10 @@ module.exports = {
     collectComboChain,
     createItemSkillEmbed,
     loadLookupText,
+    getGladiusDataRoot,
+    sanitizeModName,
+    getAvailableMods,
+    resolveModName,
     getModFilePaths,
     validateModFiles,
     splitContentIntoChunks

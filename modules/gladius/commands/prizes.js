@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const helpers = require('../functions');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -20,27 +21,19 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async autocomplete(interaction) {
-        const fs = require('fs');
-        const path = require('path');
         const focusedOption = interaction.options.getFocused(true);
         const focused = focusedOption.value.toLowerCase();
 
         if (focusedOption.name === 'mod_name') {
-            const moddersConfigPath = path.join(__dirname, '../modders.json');
-            const choices = ['Vanilla'];
-            try {
-                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-                for (const modder in moddersConfig) {
-                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-                }
-            } catch {}
+            const choices = helpers.getAvailableMods();
             const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         } else if (focusedOption.name === 'encounter_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
-            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
-            const leaguesPath = path.join(__dirname, '../../../uploads', modName, 'data', 'towns', 'leagues');
-            const lookupPath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'lookuptext_eng.txt');
+            const modName = helpers.resolveModName(rawMod);
+            const filePaths = helpers.getModFilePaths(modName);
+            const leaguesPath = filePaths.leaguesPath;
+            const lookupPath = filePaths.lookupFilePath;
             const names = [];
             try {
                 // Build id -> name map from lookup
@@ -77,33 +70,21 @@ module.exports = {
             return input.replace(/[^\w\s''&-]/g, '').trim();
         };
 
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
 
         try {
-            // Load modders.json
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-
             const modNameInput = interaction.options.getString('mod_name');
             if (modNameInput) {
-                const sanitizedInput = sanitizeInput(modNameInput);
-                for (const modder in moddersConfig) {
-                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                    if (modConfigName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
-                        modName = moddersConfig[modder].replace(/\s+/g, '_');
-                        break;
-                    }
-                }
+                modName = helpers.resolveModName(modNameInput);
             }
 
-            modName = path.basename(sanitizeInput(modName));
+            modName = helpers.resolveModName(sanitizeInput(modName));
 
             // Define file paths securely
-            const baseUploadsPath = path.join(__dirname, '../../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
-            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
-            const prizesFilePath = path.join(modPath, 'data', 'config', 'prizes.tok');
-            const leaguesPath = path.join(modPath, 'data', 'towns', 'leagues');
+            const filePaths = helpers.getModFilePaths(modName);
+            const lookupFilePath = filePaths.lookupFilePath;
+            const prizesFilePath = filePaths.prizesFilePath;
+            const leaguesPath = filePaths.leaguesPath;
 
             // Check if files exist
             if (!fs.existsSync(lookupFilePath)) {

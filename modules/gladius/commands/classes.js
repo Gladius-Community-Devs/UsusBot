@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const helpers = require('../functions');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -19,25 +20,16 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async autocomplete(interaction) {
-        const fs = require('fs');
-        const path = require('path');
         const focusedOption = interaction.options.getFocused(true);
         const focused = focusedOption.value.toLowerCase();
         if (focusedOption.name === 'mod_name') {
-            const moddersConfigPath = path.join(__dirname, '../modders.json');
-            const choices = ['Vanilla'];
-            try {
-                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-                for (const modder in moddersConfig) {
-                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-                }
-            } catch {}
+            const choices = helpers.getAvailableMods();
             const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
-            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
-            const classdefsPath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'classdefs.tok');
+            const modName = helpers.resolveModName(rawMod);
+            const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
             const classes = [];
             try {
                 const content = fs.readFileSync(classdefsPath, 'utf8');
@@ -56,24 +48,13 @@ module.exports = {
             return input.replace(/[^\w\s''-]/g, '').trim();
         };
 
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
         let searchTerm = '';
 
         try {
-            // Load modders.json and handle mod name
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-
             const modNameInput = interaction.options.getString('mod_name');
             if (modNameInput) {
-                const sanitizedInput = sanitizeInput(modNameInput);
-                for (const modder in moddersConfig) {
-                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                    if (modConfigName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
-                        modName = moddersConfig[modder].replace(/\s+/g, '_');
-                        break;
-                    }
-                }
+                modName = helpers.resolveModName(modNameInput);
             }
 
             const classNameInput = interaction.options.getString('class_name');
@@ -82,11 +63,10 @@ module.exports = {
             }
 
             // Sanitize modName and define paths
-            modName = path.basename(sanitizeInput(modName));
-            const baseUploadsPath = path.join(__dirname, '../../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
-            const classdefsPath = path.join(modPath, 'data', 'config', 'classdefs.tok');
-            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
+            modName = helpers.resolveModName(sanitizeInput(modName));
+            const filePaths = helpers.getModFilePaths(modName);
+            const classdefsPath = filePaths.classdefsPath;
+            const lookupFilePath = filePaths.lookupFilePath;
 
             // Check if files exist
             if (!fs.existsSync(classdefsPath) || !fs.existsSync(lookupFilePath)) {

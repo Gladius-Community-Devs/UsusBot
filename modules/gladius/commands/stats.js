@@ -28,21 +28,14 @@ module.exports = {
     async autocomplete(interaction) {
         const focusedOption = interaction.options.getFocused(true);
         const focused = focusedOption.value.toLowerCase();
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
 
         if (focusedOption.name === 'mod_name') {
-            const choices = ['Vanilla'];
-            try {
-                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-                for (const modder in moddersConfig) {
-                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-                }
-            } catch {}
+            const choices = helpers.getAvailableMods();
             const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
-            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
+            const modName = helpers.resolveModName(rawMod);
             const filePaths = helpers.getModFilePaths(modName);
             const classes = new Set();
             try {
@@ -66,7 +59,6 @@ module.exports = {
     },
     async execute(interaction, extra) {
         await interaction.deferReply();
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
         
         const className = helpers.sanitizeInput(interaction.options.getString('class_name'));
         let modNameInput = interaction.options.getString('mod_name');
@@ -75,22 +67,11 @@ module.exports = {
         let modName = 'Vanilla';
 
         try {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-
             if (modNameInput) {
-                modNameInput = helpers.sanitizeInput(modNameInput);
-                let isMod = false;
-                for (const modder in moddersConfig) {
-                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                    if (modConfigName === modNameInput.replace(/\s+/g, '_').toLowerCase()) {
-                        isMod = true;
-                        modName = moddersConfig[modder].replace(/\s+/g, '_');
-                        break;
-                    }
-                }
+                modName = helpers.resolveModName(modNameInput);
             }
             
-            modName = path.basename(helpers.sanitizeInput(modName));
+            modName = helpers.resolveModName(helpers.sanitizeInput(modName));
             const filePaths = helpers.getModFilePaths(modName);
 
             if (!fs.existsSync(filePaths.gladiatorsFilePath)) {

@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const helpers = require('../functions');
 
@@ -59,25 +58,16 @@ module.exports = {
     needs_api: false,
     has_state: false,
     async autocomplete(interaction) {
-        const fs = require('fs');
-        const path = require('path');
         const focusedOption = interaction.options.getFocused(true);
         const focused = focusedOption.value.toLowerCase();
         if (focusedOption.name === 'mod_name') {
-            const moddersConfigPath = path.join(__dirname, '../modders.json');
-            const choices = ['Vanilla'];
-            try {
-                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-                for (const modder in moddersConfig) {
-                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-                }
-            } catch {}
+            const choices = helpers.getAvailableMods();
             const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
-            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
-            const classdefsPath = path.join(__dirname, '../../../uploads', modName, 'data', 'config', 'classdefs.tok');
+            const modName = helpers.resolveModName(rawMod);
+            const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
             const classes = [];
             try {
                 const content = fs.readFileSync(classdefsPath, 'utf8');
@@ -94,8 +84,6 @@ module.exports = {
     async execute(interaction, extra) {
         await interaction.deferReply();
 
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
-
         const className = helpers.sanitizeInput(interaction.options.getString('class_name'));
         const modNameInput = interaction.options.getString('mod_name');
         const useStatSetFilter = interaction.options.getBoolean('statset5') ?? false;
@@ -104,22 +92,11 @@ module.exports = {
         let modName = 'Vanilla';
 
         try {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-
             if (modNameInput) {
-                const sanitizedInput = helpers.sanitizeInput(modNameInput);
-                for (const modder in moddersConfig) {
-                    const cfgName = moddersConfig[modder]
-                        .replace(/\s+/g, '_')
-                        .toLowerCase();
-                    if (cfgName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
-                        modName = moddersConfig[modder].replace(/\s+/g, '_');
-                        break;
-                    }
-                }
+                modName = helpers.resolveModName(modNameInput);
             }
 
-            modName = path.basename(helpers.sanitizeInput(modName));
+            modName = helpers.resolveModName(helpers.sanitizeInput(modName));
 
             const result = this.generateRecruitsEmbed(modName, className, useStatSetFilter, debugMode);
 

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const helpers = require('../functions');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -22,27 +23,19 @@ module.exports = {
     async autocomplete(interaction) {
         const focusedOption = interaction.options.getFocused(true);
         const focused = focusedOption.value.toLowerCase();
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
 
         if (focusedOption.name === 'mod_name') {
-            const choices = ['Vanilla'];
-            try {
-                const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-                for (const modder in moddersConfig) {
-                    choices.push(moddersConfig[modder].replace(/\s+/g, '_'));
-                }
-            } catch {}
+            const choices = helpers.getAvailableMods();
             const filtered = choices.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         } else if (focusedOption.name === 'search') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
-            const modName = path.basename(rawMod.replace(/[^\w\s_-]/g, '').trim().replace(/\s+/g, '_')) || 'Vanilla';
-            const baseUploadsPath = path.join(__dirname, '../../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
+            const modName = helpers.resolveModName(rawMod);
+            const filePaths = helpers.getModFilePaths(modName);
             const suggestions = new Set();
 
             // Load lookup text for resolving display names
-            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
+            const lookupFilePath = filePaths.lookupFilePath;
             const entryIdToName = {};
             try {
                 const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
@@ -56,7 +49,7 @@ module.exports = {
             } catch {}
 
             // Collect item display names from items.tok (all items, with or without skills)
-            const itemsFilePath = path.join(modPath, 'data', 'config', 'items.tok');
+            const itemsFilePath = filePaths.itemsFilePath;
             try {
                 const itemsContent = fs.readFileSync(itemsFilePath, 'utf8');
                 for (const match of itemsContent.matchAll(/ITEMDISPLAYNAMEID:\s*(\d+)/g)) {
@@ -69,7 +62,7 @@ module.exports = {
             } catch {}
 
             // Collect item skill display names from skills.tok
-            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
+            const skillsFilePath = filePaths.skillsFilePath;
             try {
                 const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
                 for (const chunk of skillsContent.split(/\n\s*\n/)) {
@@ -93,37 +86,26 @@ module.exports = {
             return input.replace(/[^\w\s''-]/g, '').trim();
         };
 
-        const moddersConfigPath = path.join(__dirname, '../modders.json');
         let modName = 'Vanilla';
         let searchTerm = '';
         let browseModeActive = false;
 
         try {
-            const moddersConfig = JSON.parse(fs.readFileSync(moddersConfigPath, 'utf8'));
-
             const modNameInput = interaction.options.getString('mod_name');
             if (modNameInput) {
-                const sanitizedInput = sanitizeInput(modNameInput);
-                for (const modder in moddersConfig) {
-                    const modConfigName = moddersConfig[modder].replace(/\s+/g, '_').toLowerCase();
-                    if (modConfigName === sanitizedInput.replace(/\s+/g, '_').toLowerCase()) {
-                        modName = moddersConfig[modder].replace(/\s+/g, '_');
-                        break;
-                    }
-                }
+                modName = helpers.resolveModName(modNameInput);
             }
 
             searchTerm = (interaction.options.getString('search') || '').toLowerCase();
             browseModeActive = !searchTerm;
 
-            modName = path.basename(sanitizeInput(modName));
+            modName = helpers.resolveModName(sanitizeInput(modName));
 
             // Define file paths securely
-            const baseUploadsPath = path.join(__dirname, '../../../uploads');
-            const modPath = path.join(baseUploadsPath, modName);
-            const lookupFilePath = path.join(modPath, 'data', 'config', 'lookuptext_eng.txt');
-            const skillsFilePath = path.join(modPath, 'data', 'config', 'skills.tok');
-            const itemsFilePath = path.join(modPath, 'data', 'config', 'items.tok');
+            const filePaths = helpers.getModFilePaths(modName);
+            const lookupFilePath = filePaths.lookupFilePath;
+            const skillsFilePath = filePaths.skillsFilePath;
+            const itemsFilePath = filePaths.itemsFilePath;
 
             // Check if files exist
             if (!fs.existsSync(lookupFilePath) || !fs.existsSync(skillsFilePath)) {

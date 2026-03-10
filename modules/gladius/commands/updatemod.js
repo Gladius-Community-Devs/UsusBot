@@ -102,6 +102,11 @@ module.exports = {
 
             // Paths
             const uploadsRoot = path.join(__dirname, '../../../uploads');
+            const gladiusDataRoot = process.env.GLADIUS_DATA_ROOT || process.env.GLADIUS_GAME_DATA_PATH;
+            if (!gladiusDataRoot || !gladiusDataRoot.trim()) {
+                await setStatus('GLADIUS_DATA_ROOT is not set in the bot environment.');
+                return;
+            }
             const vanillaIsoPath = path.join(uploadsRoot, 'vanilla.iso');
             if (!fs.existsSync(vanillaIsoPath)) {
                 await setStatus('vanilla.iso not found in uploads folder. Notify an admin.');
@@ -195,6 +200,8 @@ module.exports = {
                                 setStatus('BEC unpack finished but data folder not found.');
                                 return;
                             }
+
+                            // Keep bot-local data and central site data in sync.
                             const finalDataDir = path.join(modFolder, 'data');
                             if (fs.existsSync(finalDataDir)) fs.rmSync(finalDataDir, { recursive: true, force: true });
                             try {
@@ -207,6 +214,21 @@ module.exports = {
                                     extra && extra.logger && extra.logger.error('Data move error:', copyErr);
                                 }
                             }
+
+                            const centralModDir = path.join(gladiusDataRoot, sanitizedModDisplayName);
+                            const centralDataDir = path.join(centralModDir, 'data');
+                            let centralSyncError = null;
+                            try {
+                                fs.mkdirSync(centralModDir, { recursive: true });
+                                if (fs.existsSync(centralDataDir)) {
+                                    fs.rmSync(centralDataDir, { recursive: true, force: true });
+                                }
+                                fs.cpSync(finalDataDir, centralDataDir, { recursive: true });
+                            } catch (syncErr) {
+                                centralSyncError = syncErr;
+                                extra && extra.logger && extra.logger.error('Central data sync error:', syncErr);
+                            }
+
                             try {
                                 for (const entry of fs.readdirSync(modFolder)) {
                                     if (entry !== 'data') fs.rmSync(path.join(modFolder, entry), { recursive: true, force: true });
@@ -214,7 +236,12 @@ module.exports = {
                             } catch (cleanErr) {
                                 extra && extra.logger && extra.logger.error('Cleanup error:', cleanErr);
                             }
-                            setStatus('Backend updated!');
+
+                            if (centralSyncError) {
+                                setStatus(`Backend updated locally, but failed to sync to ${centralModDir}: ${centralSyncError.message}`);
+                            } else {
+                                setStatus(`Backend updated and synced to ${centralModDir}`);
+                            }
                         })
                         .catch(err => {
                             extra && extra.logger && extra.logger.error('Unpack error:', err);
