@@ -12,6 +12,7 @@ module.exports = {
         .addStringOption(option =>
             option.setName('mod_name')
                 .setDescription('Target mod (required if you own multiple mods)')
+                .setAutocomplete(true)
                 .setRequired(false))
         .addAttachmentOption(option =>
             option.setName('patch')
@@ -20,6 +21,24 @@ module.exports = {
     name: 'updatemod',
     has_state: false,
     needs_api: false,
+    async autocomplete(interaction) {
+        const focusedValue = (interaction.options.getFocused() || '').toLowerCase();
+
+        try {
+            const config = readModders();
+            const modderId = interaction.user.id;
+            const ownedMods = getModNamesForDiscordId(config, modderId);
+
+            const filtered = ownedMods
+                .filter(modName => modName.toLowerCase().includes(focusedValue))
+                .slice(0, 25)
+                .map(modName => ({ name: modName, value: modName }));
+
+            await interaction.respond(filtered);
+        } catch (_) {
+            await interaction.respond([]);
+        }
+    },
     async execute(interaction, extra) {
         const fs = require('fs');
         const path = require('path');
