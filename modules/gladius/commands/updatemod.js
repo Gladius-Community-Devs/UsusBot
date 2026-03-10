@@ -1,9 +1,18 @@
 const { SlashCommandBuilder } = require('discord.js');
+const {
+    getModdersFilePath,
+    getModNamesForDiscordId,
+    readModders
+} = require('../modders_store');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('updatemod')
         .setDescription('(MODDER ONLY) Apply an xdelta patch to vanilla.iso and unpack your mod files')
+        .addStringOption(option =>
+            option.setName('mod_name')
+                .setDescription('Target mod (required if you own multiple mods)')
+                .setRequired(false))
         .addAttachmentOption(option =>
             option.setName('patch')
                 .setDescription('The .xdelta or .xdelta3 patch file to apply')
@@ -44,15 +53,32 @@ module.exports = {
         }
 
         try {
-            // 3. Determine mod name for user from modders.json
-            const configPath = path.join(__dirname, '../modders.json');
-            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            // 3. Determine target mod name for user from shared modders file
+            const moddersFilePath = getModdersFilePath();
+            const config = readModders();
             const modderId = interaction.user.id;
-            const modDisplayName = config[modderId];
-            if (!modDisplayName) {
-                await setStatus('You are not listed in modders.json. Ask an admin to register your mod.');
+            const ownedMods = getModNamesForDiscordId(config, modderId);
+            if (!ownedMods.length) {
+                await setStatus(`You are not listed in the shared modders list (${moddersFilePath}). Ask an admin to register your mod.`);
                 return;
             }
+
+            const requestedModName = interaction.options.getString('mod_name');
+            let modDisplayName = null;
+
+            if (requestedModName) {
+                modDisplayName = ownedMods.find(mod => mod.toLowerCase() === requestedModName.toLowerCase()) || null;
+                if (!modDisplayName) {
+                    await setStatus(`You do not own mod '${requestedModName}'. Owned mods: ${ownedMods.join(', ')}`);
+                    return;
+                }
+            } else if (ownedMods.length === 1) {
+                modDisplayName = ownedMods[0];
+            } else {
+                await setStatus(`You own multiple mods. Re-run with mod_name set to one of: ${ownedMods.join(', ')}`);
+                return;
+            }
+
             const sanitizedModDisplayName = modDisplayName.replace(/\s+/g, '_');
 
             // Paths

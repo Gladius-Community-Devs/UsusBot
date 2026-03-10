@@ -1,11 +1,15 @@
 const { SlashCommandBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const {
+    getModdersFilePath,
+    normalizeModNames,
+    readModders,
+    writeModders
+} = require('../modders_store');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('add_modder')
-        .setDescription('(ADMIN ONLY) Update modders.json with a modder\'s Discord ID and mod name')
+        .setDescription('(ADMIN ONLY) Add or update a modder entry in the shared modders list')
         .addUserOption(option =>
             option.setName('user')
                 .setDescription('The Discord user to register as a modder')
@@ -27,19 +31,23 @@ module.exports = {
         const modName = interaction.options.getString('mod_name');
         const discordId = targetUser.id;
 
-        const filePath = path.join(__dirname, '../modders.json');
+        const filePath = getModdersFilePath();
 
         try {
-            const data = fs.readFileSync(filePath, 'utf8');
-            const modders = JSON.parse(data);
+            const modders = readModders();
+            const existingMods = normalizeModNames(modders[discordId]);
 
-            modders[discordId] = modName;
-            fs.writeFileSync(filePath, JSON.stringify(modders, null, 4));
+            if (!existingMods.includes(modName)) {
+                existingMods.push(modName);
+            }
 
-            await interaction.reply(`Successfully updated modder <@${discordId}> (\`${discordId}\`) with mod name \`${modName}\`.`);
+            modders[discordId] = existingMods.length === 1 ? existingMods[0] : existingMods;
+            writeModders(modders);
+
+            await interaction.reply(`Successfully updated modder <@${discordId}> (${discordId}) with mod(s): ${existingMods.join(', ')}.`);
         } catch (err) {
-            console.error('Error updating modders.json:', err);
-            await interaction.reply({ content: 'There was an error updating the modders.json file.', ephemeral: true });
+            console.error('Error updating shared modders list:', err);
+            await interaction.reply({ content: `There was an error updating the shared modders list at ${filePath}.`, ephemeral: true });
         }
     }
 };
