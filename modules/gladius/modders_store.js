@@ -1,10 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_SHARED_MODDERS_PATH = '\\\\192.168.1.9\\gladiuscommunity\\config\\allowed_modders.json';
-
 function getModdersFilePath() {
-    const configured = process.env.ALLOWED_MODDERS_FILE || process.env.ALLOWED_MODDERS_FILE || DEFAULT_SHARED_MODDERS_PATH;
+    const configured = process.env.ALLOWED_MODDERS_FILE;
+    if (!configured || !configured.trim()) {
+        throw new Error('ALLOWED_MODDERS_FILE is not set. Configure it in the bot environment.');
+    }
+
     return path.resolve(configured);
 }
 
