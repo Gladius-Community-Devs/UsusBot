@@ -12,10 +12,11 @@ module.exports = {
         .setName('modlist')
         .setDescription('Gets the current list of mods and their modders'),
     async execute(interaction, extra) {
-        const filePath = getModdersFilePath();
+        let filePath = '(unresolved)';
 
         try {
             await interaction.deferReply();
+            filePath = getModdersFilePath();
             const modders = readModders();
 
             const modListPromises = Object.entries(modders).map(async ([authorId, modValue]) => {
@@ -27,7 +28,7 @@ module.exports = {
                         ownedMods
                     };
                 } catch (err) {
-                    if (this.logger) this.logger.error(`Error fetching user with ID ${authorId}:`, err);
+                    if (extra && extra.logger) extra.logger.error(`Error fetching user with ID ${authorId}: ${err.message}`);
                     else console.error(`Error fetching user with ID ${authorId}:`, err);
                     return {
                         authorName: 'Unknown',
@@ -60,11 +61,12 @@ module.exports = {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            if (this.logger) this.logger.error('Error reading shared modders list:', err);
+            if (extra && extra.logger) extra.logger.error(`Error reading shared modders list: ${err.message}`);
             else console.error('Error reading shared modders list:', err);
             
-            if(interaction.deferred) await interaction.editReply({ content: `There was an error reading the shared modders list at ${filePath}.` });
-            else await interaction.reply({ content: `There was an error reading the shared modders list at ${filePath}.`, ephemeral: true });
+            const message = `There was an error reading the shared modders list at ${filePath}. ${err.message}`;
+            if (interaction.deferred) await interaction.editReply({ content: message });
+            else await interaction.reply({ content: message, ephemeral: true });
         }
     }
 };

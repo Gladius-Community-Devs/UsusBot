@@ -7,6 +7,10 @@ function getModdersFilePath() {
         throw new Error('ALLOWED_MODDERS_FILE is not set. Configure it in the bot environment.');
     }
 
+    if (process.platform !== 'win32' && configured.startsWith('\\\\')) {
+        throw new Error(`ALLOWED_MODDERS_FILE appears to be a Windows UNC path (${configured}) but the bot is running on Linux. Use an absolute Linux path such as /var/www/gladiuscommunity/config/allowed_modders.json.`);
+    }
+
     return path.resolve(configured);
 }
 
@@ -25,6 +29,10 @@ function normalizeModNames(value) {
 
 function readModders() {
     const filePath = getModdersFilePath();
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`Shared modders file does not exist at ${filePath}`);
+    }
+
     const raw = fs.readFileSync(filePath, 'utf8');
     const parsed = JSON.parse(raw);
 

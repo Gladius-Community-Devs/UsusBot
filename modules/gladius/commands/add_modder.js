@@ -31,9 +31,10 @@ module.exports = {
         const modName = interaction.options.getString('mod_name');
         const discordId = targetUser.id;
 
-        const filePath = getModdersFilePath();
+        let filePath = '(unresolved)';
 
         try {
+            filePath = getModdersFilePath();
             const modders = readModders();
             const existingMods = normalizeModNames(modders[discordId]);
 
@@ -46,8 +47,10 @@ module.exports = {
 
             await interaction.reply(`Successfully updated modder <@${discordId}> (${discordId}) with mod(s): ${existingMods.join(', ')}.`);
         } catch (err) {
-            console.error('Error updating shared modders list:', err);
-            await interaction.reply({ content: `There was an error updating the shared modders list at ${filePath}.`, ephemeral: true });
+            if (extra && extra.logger) extra.logger.error(`Error updating shared modders list: ${err.message}`);
+            else console.error('Error updating shared modders list:', err);
+
+            await interaction.reply({ content: `There was an error updating the shared modders list at ${filePath}. ${err.message}`, ephemeral: true });
         }
     }
 };
