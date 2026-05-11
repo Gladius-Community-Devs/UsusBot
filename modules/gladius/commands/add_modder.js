@@ -44,11 +44,11 @@ module.exports = {
 
             modders[discordId] = existingMods.length === 1 ? existingMods[0] : existingMods;
             writeModders(modders);
+            this.logger.info(`Updated modder entry for ${discordId} with mod(s): ${existingMods.join(', ')}`);
 
             await interaction.reply(`Successfully updated modder <@${discordId}> (${discordId}) with mod(s): ${existingMods.join(', ')}.`);
         } catch (err) {
-            if (extra && extra.logger) extra.logger.error(`Error updating shared modders list: ${err.message}`);
-            else console.error('Error updating shared modders list:', err);
+            this.logger.error('Error updating shared modders list:', err);
 
             await interaction.reply({ content: `There was an error updating the shared modders list at ${filePath}. ${err.message}`, ephemeral: true });
         }

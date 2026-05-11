@@ -58,7 +58,9 @@ module.exports = {
                     }
                 }
                 names.sort();
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load prizes autocomplete data for ${modName}:`, error);
+            }
             const filtered = names.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         }
@@ -390,7 +392,7 @@ module.exports = {
             await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
-            console.error('Error finding prizes:', error);
+            this.logger.error('Error finding prizes:', error);
             if (interaction.deferred) await interaction.editReply({ content: 'An error occurred while finding the prizes.' });
             else await interaction.reply({ content: 'An error occurred while finding the prizes.', ephemeral: true });
         }

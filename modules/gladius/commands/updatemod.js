@@ -2,20 +2,33 @@ const { SlashCommandBuilder } = require('discord.js');
 const {
     getModdersFilePath,
     getModNamesForDiscordId,
+    normalizeModNames,
     readModders
 } = require('../modders_store');
+
+function hasRole(interaction, roleName) {
+    return interaction.member.roles.cache.some(role => role.name === roleName);
+}
+
+function getAllModNames(config) {
+    return [...new Set(Object.values(config).flatMap(normalizeModNames))];
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('updatemod')
-        .setDescription('(MODDER ONLY) Apply an xdelta patch to vanilla.iso and unpack your mod files')
+        .setDescription('(MODDER or ADMIN OVERRIDE) Apply an xdelta patch to vanilla.iso and unpack mod files')
         .addAttachmentOption(option =>
             option.setName('patch')
                 .setDescription('The .xdelta or .xdelta3 patch file to apply')
                 .setRequired(true))
+        .addBooleanOption(option =>
+            option.setName('override')
+                .setDescription('(ADMIN ONLY) Allow updating a specific mod you do not own')
+                .setRequired(false))
         .addStringOption(option =>
             option.setName('mod_name')
-                .setDescription('Target mod (required if you own multiple mods)')
+                .setDescription('Target mod (required for admin override or if you own multiple mods)')
                 .setAutocomplete(true)
                 .setRequired(false)),
     name: 'updatemod',
@@ -26,16 +39,20 @@ module.exports = {
 
         try {
             const config = readModders();
-            const modderId = interaction.user.id;
-            const ownedMods = getModNamesForDiscordId(config, modderId);
+            const hasAdminRole = hasRole(interaction, 'Admin');
+            const useOverride = hasAdminRole && (interaction.options.getBoolean('override') ?? false);
+            const availableMods = useOverride
+                ? getAllModNames(config)
+                : getModNamesForDiscordId(config, interaction.user.id);
 
-            const filtered = ownedMods
+            const filtered = availableMods
                 .filter(modName => modName.toLowerCase().includes(focusedValue))
                 .slice(0, 25)
                 .map(modName => ({ name: modName, value: modName }));
 
             await interaction.respond(filtered);
-        } catch (_) {
+        } catch (error) {
+            this.logger.error('Failed to build updatemod autocomplete results:', error);
             await interaction.respond([]);
         }
     },
@@ -50,7 +67,11 @@ module.exports = {
 
         // Helper: update the deferred reply with a status message
         const setStatus = async (text) => {
-            try { await interaction.editReply({ content: text }); } catch (_) {}
+            try {
+                await interaction.editReply({ content: text });
+            } catch (error) {
+                this.logger.error('Failed to update updatemod status reply:', error);
+            }
         };
 
         // Python launcher detection (Windows uses py -3, others use python3)
@@ -59,8 +80,17 @@ module.exports = {
         const pythonBaseArgs = isWin ? ['-3'] : [];
 
         // 1. Check role
-        if (!interaction.member.roles.cache.some(role => role.name === 'Modder')) {
-            await setStatus('You do not have permission to use this command. (Modder role required)');
+        const hasAdminRole = hasRole(interaction, 'Admin');
+        const hasModderRole = hasRole(interaction, 'Modder');
+        const overrideRequested = interaction.options.getBoolean('override') ?? false;
+        if (overrideRequested && !hasAdminRole) {
+            await setStatus('The override flag is only available to users with the Admin role.');
+            return;
+        }
+
+        const useOverride = hasAdminRole && overrideRequested;
+        if (!hasModderRole && !useOverride) {
+            await setStatus('You do not have permission to use this command. (Modder role required, or Admin with override enabled)');
             return;
         }
 
@@ -75,29 +105,44 @@ module.exports = {
             // 3. Determine target mod name for user from shared modders file
             const moddersFilePath = getModdersFilePath();
             const config = readModders();
-            const modderId = interaction.user.id;
-            const ownedMods = getModNamesForDiscordId(config, modderId);
-            if (!ownedMods.length) {
-                await setStatus(`You are not listed in the shared modders list (${moddersFilePath}). Ask an admin to register your mod.`);
-                return;
-            }
-
             const requestedModName = interaction.options.getString('mod_name');
             let modDisplayName = null;
 
-            if (requestedModName) {
-                modDisplayName = ownedMods.find(mod => mod.toLowerCase() === requestedModName.toLowerCase()) || null;
-                if (!modDisplayName) {
-                    await setStatus(`You do not own mod '${requestedModName}'. Owned mods: ${ownedMods.join(', ')}`);
+            if (useOverride) {
+                if (!requestedModName) {
+                    await setStatus('Admin override requires mod_name. Re-run the command and select the mod to update.');
                     return;
                 }
-            } else if (ownedMods.length === 1) {
-                modDisplayName = ownedMods[0];
+
+                const allMods = getAllModNames(config);
+                modDisplayName = allMods.find(mod => mod.toLowerCase() === requestedModName.toLowerCase()) || null;
+                if (!modDisplayName) {
+                    await setStatus(`Mod '${requestedModName}' was not found in the shared modders list (${moddersFilePath}).`);
+                    return;
+                }
             } else {
-                await setStatus(`You own multiple mods. Re-run with mod_name set to one of: ${ownedMods.join(', ')}`);
-                return;
+                const modderId = interaction.user.id;
+                const ownedMods = getModNamesForDiscordId(config, modderId);
+                if (!ownedMods.length) {
+                    await setStatus(`You are not listed in the shared modders list (${moddersFilePath}). Ask an admin to register your mod.`);
+                    return;
+                }
+
+                if (requestedModName) {
+                    modDisplayName = ownedMods.find(mod => mod.toLowerCase() === requestedModName.toLowerCase()) || null;
+                    if (!modDisplayName) {
+                        await setStatus(`You do not own mod '${requestedModName}'. Owned mods: ${ownedMods.join(', ')}`);
+                        return;
+                    }
+                } else if (ownedMods.length === 1) {
+                    modDisplayName = ownedMods[0];
+                } else {
+                    await setStatus(`You own multiple mods. Re-run with mod_name set to one of: ${ownedMods.join(', ')}`);
+                    return;
+                }
             }
 
+            this.logger.info(`Starting mod update for ${modDisplayName} requested by ${interaction.user.id}${useOverride ? ' with admin override' : ''}.`);
             const sanitizedModDisplayName = modDisplayName.replace(/\s+/g, '_');
 
             // Paths
@@ -140,7 +185,8 @@ module.exports = {
             const proc = spawn(xdeltaExe, argsList, { windowsHide: true });
             let stderr = '';
             proc.stderr.on('data', d => { stderr += d.toString(); });
-            proc.on('error', () => {
+            proc.on('error', error => {
+                this.logger.error('Failed to start xdelta3 process:', error);
                 setStatus('Failed to start xdelta3. Is it installed on the server?');
             });
             proc.on('close', code => {
@@ -211,7 +257,7 @@ module.exports = {
                                     fs.cpSync(unpackedDataDir, finalDataDir, { recursive: true });
                                     fs.rmSync(unpackedDataDir, { recursive: true, force: true });
                                 } catch (copyErr) {
-                                    extra && extra.logger && extra.logger.error('Data move error:', copyErr);
+                                    this.logger.error('Data move error:', copyErr);
                                 }
                             }
 
@@ -226,7 +272,7 @@ module.exports = {
                                 fs.cpSync(finalDataDir, centralDataDir, { recursive: true });
                             } catch (syncErr) {
                                 centralSyncError = syncErr;
-                                extra && extra.logger && extra.logger.error('Central data sync error:', syncErr);
+                                this.logger.error('Central data sync error:', syncErr);
                             }
 
                             try {
@@ -234,26 +280,27 @@ module.exports = {
                                     if (entry !== 'data') fs.rmSync(path.join(modFolder, entry), { recursive: true, force: true });
                                 }
                             } catch (cleanErr) {
-                                extra && extra.logger && extra.logger.error('Cleanup error:', cleanErr);
+                                this.logger.error('Cleanup error:', cleanErr);
                             }
 
                             if (centralSyncError) {
                                 setStatus(`Backend updated locally, but failed to sync to ${centralModDir}: ${centralSyncError.message}`);
                             } else {
+                                this.logger.info(`Completed mod update for ${modDisplayName}; synced data to ${centralModDir}.`);
                                 setStatus(`Backend updated and synced to ${centralModDir}`);
                             }
                         })
                         .catch(err => {
-                            extra && extra.logger && extra.logger.error('Unpack error:', err);
+                            this.logger.error('Unpack error:', err);
                             setStatus('An error occurred during unpack: ' + err.message);
                         });
                 } else {
-                    extra && extra.logger && extra.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
+                    this.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
                     setStatus('Patch application failed. Check that the patch matches vanilla.iso.');
                 }
             });
         } catch (err) {
-            extra && extra.logger && extra.logger.error('Error updating mod:', err);
+            this.logger.error('Error updating mod:', err);
             await setStatus('An error occurred while processing the patch.');
         }
     }

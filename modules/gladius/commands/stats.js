@@ -52,7 +52,9 @@ module.exports = {
                         }
                     }
                 }
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load stats class autocomplete data for ${modName}:`, error);
+            }
             const filtered = [...classes].filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         }
@@ -221,9 +223,7 @@ module.exports = {
             }
 
         } catch (error) {
-            // this.logger.error('Error executing stats command:', error); // logger might not be available on `this` if executed as method, need to check `extra`.
-            // But ModuleHandler sets `command.logger`.
-            console.error(error);
+            this.logger.error('Error executing stats command:', error);
             if(interaction.deferred) await interaction.editReply({ content: 'An error occurred.' });
             else await interaction.reply({ content: 'An error occurred.', ephemeral: true });
         }

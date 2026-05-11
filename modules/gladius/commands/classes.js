@@ -37,7 +37,9 @@ module.exports = {
                     const name = match[1].trim();
                     if (!name.startsWith('//')) classes.push(name);
                 }
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load class autocomplete data for ${modName}:`, error);
+            }
             const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         }
@@ -98,10 +100,10 @@ module.exports = {
                         }
                     }
                 } catch (parseError) {
-                    console.error('Error parsing lookup text:', parseError);
+                    this.logger.error(`Error parsing class lookup text for ${modName}:`, parseError);
                 }
             } else {
-                console.error('Invalid lookup content format');
+                this.logger.error(`Invalid lookup content format for ${modName}.`);
             }
 
             // Parse class definitions - update the splitting logic
@@ -181,7 +183,7 @@ module.exports = {
             await interaction.reply({ embeds: [embed], components: [row] });
 
         } catch (error) {
-            console.error('Error in classes command:', error);
+            this.logger.error('Error in classes command:', error);
             await interaction.reply({ content: 'An error occurred while fetching class information.' });
         }
     }

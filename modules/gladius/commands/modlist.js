@@ -28,8 +28,7 @@ module.exports = {
                         ownedMods
                     };
                 } catch (err) {
-                    if (extra && extra.logger) extra.logger.error(`Error fetching user with ID ${authorId}: ${err.message}`);
-                    else console.error(`Error fetching user with ID ${authorId}:`, err);
+                    this.logger.error(`Error fetching user with ID ${authorId} for modlist:`, err);
                     return {
                         authorName: 'Unknown',
                         ownedMods
@@ -61,8 +60,7 @@ module.exports = {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            if (extra && extra.logger) extra.logger.error(`Error reading shared modders list: ${err.message}`);
-            else console.error('Error reading shared modders list:', err);
+            this.logger.error('Error reading shared modders list for modlist:', err);
             
             const message = `There was an error reading the shared modders list at ${filePath}. ${err.message}`;
             if (interaction.deferred) await interaction.editReply({ content: message });

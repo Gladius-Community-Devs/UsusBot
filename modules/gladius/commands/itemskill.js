@@ -46,7 +46,9 @@ module.exports = {
                     const name = fields[fields.length - 1].trim();
                     if (!isNaN(id) && name) entryIdToName[id] = name;
                 }
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load itemskill lookup autocomplete data for ${modName}:`, error);
+            }
 
             // Collect item display names from items.tok (all items, with or without skills)
             const itemsFilePath = filePaths.itemsFilePath;
@@ -59,7 +61,9 @@ module.exports = {
                 for (const match of itemsContent.matchAll(/^ITEMCREATE:\s*"?([^",\r\n]+)/gm)) {
                     suggestions.add(match[1].trim().replace(/"/g, ''));
                 }
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load item autocomplete data for ${modName}:`, error);
+            }
 
             // Collect item skill display names from skills.tok
             const skillsFilePath = filePaths.skillsFilePath;
@@ -73,7 +77,9 @@ module.exports = {
                         if (entryIdToName[id]) suggestions.add(entryIdToName[id]);
                     }
                 }
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load item skill autocomplete data for ${modName}:`, error);
+            }
 
             const filtered = [...suggestions].filter(s => s.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(s => ({ name: s, value: s })));
@@ -405,7 +411,7 @@ module.exports = {
             }
 
         } catch (error) {
-            console.error('Error finding item skills:', error);
+            this.logger.error('Error finding item skills:', error);
             if (interaction.deferred) await interaction.editReply({ content: 'An error occurred while finding item skills.' });
             else await interaction.reply({ content: 'An error occurred while finding item skills.', ephemeral: true });
         }

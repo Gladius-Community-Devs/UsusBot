@@ -42,7 +42,9 @@ module.exports = {
                     const name = match[1].trim();
                     if (!name.startsWith('//')) classes.push(name);
                 }
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load class autocomplete data for ${modName}:`, error);
+            }
             const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         } else if (focusedOption.name === 'skill_name') {
@@ -72,7 +74,9 @@ module.exports = {
                     }
                 }
                 skillNames.sort();
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load skill autocomplete data for ${modName}:`, error);
+            }
             const filtered = skillNames.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c.toLowerCase() })));
         }
@@ -409,7 +413,7 @@ module.exports = {
             }
 
         } catch (error) {
-            console.error('Error finding the skill:', error);
+            this.logger.error('Error finding the skill:', error);
             if (interaction.deferred) await interaction.editReply({ content: 'An error occurred while finding the skill.' });
             else await interaction.reply({ content: 'An error occurred while finding the skill.', ephemeral: true });
         }

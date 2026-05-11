@@ -76,7 +76,9 @@ module.exports = {
                     const name = match[1].trim();
                     if (!name.startsWith('//')) classes.push(name);
                 }
-            } catch {}
+            } catch (error) {
+                this.logger.error(`Failed to load recruits class autocomplete data for ${modName}:`, error);
+            }
             const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
             await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         }
@@ -133,7 +135,7 @@ module.exports = {
             return interaction.editReply({ embeds: [result.embed], components: rows });
 
         } catch (err) {
-            console.error('[recruits]', err);
+            this.logger.error('Error finding recruitment information:', err);
             return interaction.editReply({ content: 'An error occurred while finding recruitment information.' });
         }
     },
@@ -322,6 +324,7 @@ module.exports = {
             lookupMap = idToText || {};
         } catch (e) {
             warnLines.push(`Lookup load failed: ${e.message}`);
+            this.logger.error(`Lookup load failed for recruits in ${modName}:`, e);
         }
 
         // ─────────────────────────────────────────────
@@ -344,6 +347,7 @@ module.exports = {
                 content = fs.readFileSync(filePath, 'utf8');
             } catch (e) {
                 warnLines.push(`Failed to read ${file}: ${e.message}`);
+                this.logger.error(`Failed to read recruits league file ${file} for ${modName}:`, e);
                 continue;
             }
 
