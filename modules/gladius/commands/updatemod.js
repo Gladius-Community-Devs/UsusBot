@@ -368,13 +368,16 @@ module.exports = {
                             }
 
                             const missingUnitFilesBeforeIdx = requiredUnitFiles.filter(fileName => !fs.existsSync(path.join(unitsDir, fileName)));
+                            const unpackedDataDirArg = unpackedDataDir.endsWith(path.sep)
+                                ? unpackedDataDir
+                                : unpackedDataDir + path.sep;
                             this.logger.info(
                                 `Running Units IDX unpack for ${modDisplayName} in ${unpackedDataDir}` +
                                 (missingUnitFilesBeforeIdx.length ? `; missing before unpack: ${missingUnitFilesBeforeIdx.join(', ')}` : '.')
                             );
 
                             return setStatus('BEC unpack complete. Unpacking units IDX data...')
-                                .then(() => runScript('Units IDX unpack tool', unitsIdxTool, [unpackedDataDir]))
+                                .then(() => runScript('Units IDX unpack tool', unitsIdxTool, [unpackedDataDirArg]))
                                 .then(() => {
                                     unitsDir = unitsDirCandidates.find(candidatePath => fs.existsSync(candidatePath));
                                     if (!unitsDir) {
