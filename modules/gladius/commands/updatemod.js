@@ -52,7 +52,7 @@ module.exports = {
 
             await interaction.respond(filtered);
         } catch (error) {
-            this.logger.error('Failed to build updatemod autocomplete results:', error);
+            this.logger.error(`Failed to build updatemod autocomplete results: ${error?.stack || error?.message || error}`);
             await interaction.respond([]);
         }
     },
@@ -62,46 +62,10 @@ module.exports = {
         const axios = require('axios');
         const { spawn } = require('child_process');
 
-        const safeSerialize = (value) => {
-            try {
-                return JSON.stringify(value);
-            } catch (error) {
-                return JSON.stringify({ serializationError: error.message });
-            }
-        };
-
-        const summarizeText = (value, maxLength = 1200) => {
-            if (!value) return null;
-            const normalized = String(value).replace(/\s+/g, ' ').trim();
-            if (!normalized) return null;
-            return normalized.length > maxLength
-                ? `${normalized.slice(0, maxLength)}...(+${normalized.length - maxLength} chars)`
-                : normalized;
-        };
-
-        const formatError = (error) => error?.stack || error?.message || String(error);
-
-        const baseLogContext = {
-            command: 'updatemod',
-            guildId: interaction.guildId || null,
-            channelId: interaction.channelId || null,
-            userId: interaction.user?.id || null
-        };
-
-        const logWithContext = (level, message, extraContext = {}) => {
-            const loggerMethod = this.logger && typeof this.logger[level] === 'function'
-                ? this.logger[level].bind(this.logger)
-                : this.logger && typeof this.logger.info === 'function'
-                    ? this.logger.info.bind(this.logger)
-                    : null;
-
-            if (!loggerMethod) return;
-
-            loggerMethod(`[updatemod] ${message} | ${safeSerialize({ ...baseLogContext, ...extraContext })}`);
-        };
-
         const attachment = interaction.options.getAttachment('patch');
         const requestedModName = interaction.options.getString('mod_name');
+        const userId = interaction.user?.id || 'unknown';
+        const attachmentName = attachment?.name || 'unknown';
         let activeModName = requestedModName || null;
 
         // Defer immediately — processing can take a long time
@@ -109,14 +73,10 @@ module.exports = {
 
         // Helper: update the deferred reply with a status message
         const setStatus = async (text) => {
-            logWithContext('info', 'Status update', {
-                modName: activeModName,
-                status: text
-            });
             try {
                 await interaction.editReply({ content: text });
             } catch (error) {
-                this.logger.error('Failed to update updatemod status reply:', error);
+                this.logger.error(`Failed to update updatemod status reply: ${error?.stack || error?.message || error}`);
             }
         };
 
@@ -130,40 +90,27 @@ module.exports = {
         const hasModderRole = hasRole(interaction, 'Modder');
         const overrideRequested = interaction.options.getBoolean('override') ?? false;
 
-        logWithContext('info', 'Received update request', {
-            requestedModName,
-            overrideRequested,
-            hasAdminRole,
-            hasModderRole,
-            attachmentName: attachment?.name || null,
-            attachmentSize: attachment?.size ?? null
-        });
+        this.logger.info(
+            `updatemod request from ${userId}: mod=${requestedModName || '(auto)'}, override=${overrideRequested}, ` +
+            `admin=${hasAdminRole}, modder=${hasModderRole}, attachment=${attachmentName}`
+        );
 
         if (overrideRequested && !hasAdminRole) {
-            logWithContext('warn', 'Rejected override request from non-admin user', {
-                requestedModName,
-                attachmentName: attachment?.name || null
-            });
+            this.logger.warn(`updatemod rejected for ${userId}: override requested without Admin role.`);
             await setStatus('The override flag is only available to users with the Admin role.');
             return;
         }
 
         const useOverride = hasAdminRole && overrideRequested;
         if (!hasModderRole && !useOverride) {
-            logWithContext('warn', 'Rejected update request due to missing permissions', {
-                requestedModName,
-                attachmentName: attachment?.name || null
-            });
+            this.logger.warn(`updatemod rejected for ${userId}: missing Modder role and no admin override.`);
             await setStatus('You do not have permission to use this command. (Modder role required, or Admin with override enabled)');
             return;
         }
 
         // 2. Validate attachment
         if (!attachment.name.toLowerCase().endsWith('.xdelta') && !attachment.name.toLowerCase().endsWith('.xdelta3')) {
-            logWithContext('warn', 'Rejected patch with unsupported extension', {
-                requestedModName,
-                attachmentName: attachment.name
-            });
+            this.logger.warn(`updatemod rejected for ${userId}: unsupported patch extension on ${attachment.name}.`);
             await setStatus('Attached file must end with .xdelta or .xdelta3.');
             return;
         }
@@ -174,17 +121,9 @@ module.exports = {
             const config = readModders();
             let modDisplayName = null;
 
-            logWithContext('info', 'Loaded shared modders configuration', {
-                moddersFilePath,
-                requestedModName,
-                useOverride
-            });
-
             if (useOverride) {
                 if (!requestedModName) {
-                    logWithContext('warn', 'Admin override missing target mod name', {
-                        moddersFilePath
-                    });
+                    this.logger.warn(`updatemod rejected for ${userId}: admin override requested without mod_name.`);
                     await setStatus('Admin override requires mod_name. Re-run the command and select the mod to update.');
                     return;
                 }
@@ -192,10 +131,7 @@ module.exports = {
                 const allMods = getAllModNames(config);
                 modDisplayName = allMods.find(mod => mod.toLowerCase() === requestedModName.toLowerCase()) || null;
                 if (!modDisplayName) {
-                    logWithContext('warn', 'Requested override target was not found in modders list', {
-                        requestedModName,
-                        moddersFilePath
-                    });
+                    this.logger.warn(`updatemod could not find override target "${requestedModName}" in ${moddersFilePath}.`);
                     await setStatus(`Mod '${requestedModName}' was not found in the shared modders list (${moddersFilePath}).`);
                     return;
                 }
@@ -203,9 +139,7 @@ module.exports = {
                 const modderId = interaction.user.id;
                 const ownedMods = getModNamesForDiscordId(config, modderId);
                 if (!ownedMods.length) {
-                    logWithContext('warn', 'User is not registered in modders list', {
-                        moddersFilePath
-                    });
+                    this.logger.warn(`updatemod rejected for ${userId}: no owned mods listed in ${moddersFilePath}.`);
                     await setStatus(`You are not listed in the shared modders list (${moddersFilePath}). Ask an admin to register your mod.`);
                     return;
                 }
@@ -213,79 +147,83 @@ module.exports = {
                 if (requestedModName) {
                     modDisplayName = ownedMods.find(mod => mod.toLowerCase() === requestedModName.toLowerCase()) || null;
                     if (!modDisplayName) {
-                        logWithContext('warn', 'User requested a mod they do not own', {
-                            requestedModName,
-                            ownedMods
-                        });
+                        this.logger.warn(`updatemod rejected for ${userId}: requested mod "${requestedModName}" is not owned by this user.`);
                         await setStatus(`You do not own mod '${requestedModName}'. Owned mods: ${ownedMods.join(', ')}`);
                         return;
                     }
                 } else if (ownedMods.length === 1) {
                     modDisplayName = ownedMods[0];
                 } else {
-                    logWithContext('warn', 'User owns multiple mods and did not choose one', {
-                        ownedMods
-                    });
+                    this.logger.warn(`updatemod rejected for ${userId}: multiple owned mods but no mod_name was provided.`);
                     await setStatus(`You own multiple mods. Re-run with mod_name set to one of: ${ownedMods.join(', ')}`);
                     return;
                 }
             }
 
             activeModName = modDisplayName;
-            logWithContext('info', 'Resolved target mod for update request', {
-                requestedModName,
-                modDisplayName,
-                useOverride
-            });
-
-            this.logger.info(`Starting mod update for ${modDisplayName} requested by ${interaction.user.id}${useOverride ? ' with admin override' : ''}.`);
+            this.logger.info(`Starting mod update for ${modDisplayName} requested by ${userId}${useOverride ? ' with admin override' : ''}.`);
             const sanitizedModDisplayName = modDisplayName.replace(/\s+/g, '_');
 
             // Paths
             const uploadsRoot = path.join(__dirname, '../../../uploads');
             const gladiusDataRoot = process.env.GLADIUS_DATA_ROOT || process.env.GLADIUS_GAME_DATA_PATH;
             if (!gladiusDataRoot || !gladiusDataRoot.trim()) {
-                logWithContext('error', 'Missing configured Gladius data root', {
-                    modDisplayName,
-                    envGladiusDataRoot: process.env.GLADIUS_DATA_ROOT || null,
-                    envGladiusGameDataPath: process.env.GLADIUS_GAME_DATA_PATH || null
-                });
+                this.logger.error(`Cannot update ${modDisplayName}: GLADIUS_DATA_ROOT / GLADIUS_GAME_DATA_PATH is not configured.`);
                 await setStatus('GLADIUS_DATA_ROOT is not set in the bot environment.');
                 return;
             }
             const vanillaIsoPath = path.join(uploadsRoot, 'vanilla.iso');
             if (!fs.existsSync(vanillaIsoPath)) {
-                logWithContext('error', 'Missing vanilla ISO before patch apply', {
-                    modDisplayName,
-                    vanillaIsoPath
-                });
+                this.logger.error(`Cannot update ${modDisplayName}: missing vanilla ISO at ${vanillaIsoPath}.`);
                 await setStatus('vanilla.iso not found in uploads folder. Notify an admin.');
                 return;
             }
             const modFolder = path.join(uploadsRoot, sanitizedModDisplayName);
             if (!fs.existsSync(modFolder)) {
                 fs.mkdirSync(modFolder, { recursive: true });
-                logWithContext('info', 'Created mod upload folder', {
-                    modDisplayName,
-                    modFolder
-                });
+                this.logger.info(`Created upload folder for ${modDisplayName} at ${modFolder}.`);
             }
+
+            const toolsDirCandidates = [
+                path.join(gladiusDataRoot, 'tools'),
+                path.join(uploadsRoot, 'tools')
+            ];
+            const toolsDir = toolsDirCandidates.find(candidateDir => {
+                const isoToolPath = path.join(candidateDir, 'ngciso-tool-gc.py');
+                const becToolPath = path.join(candidateDir, 'bec-tool-all.py');
+                const unitsIdxToolPath = path.join(candidateDir, 'Gladius_Units_IDX_Unpack.py');
+                return fs.existsSync(isoToolPath) && fs.existsSync(becToolPath) && fs.existsSync(unitsIdxToolPath);
+            });
+
+            if (!toolsDir) {
+                this.logger.error(`Cannot update ${modDisplayName}: required unpack tools were not found in ${toolsDirCandidates.join(' or ')}.`);
+                await setStatus('Required unpack tools were not found. Check the shared tools directory configuration.');
+                return;
+            }
+
+            const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
+            const becTool = path.join(toolsDir, 'bec-tool-all.py');
+            const unitsIdxTool = path.join(toolsDir, 'Gladius_Units_IDX_Unpack.py');
+            const fileListCandidates = [
+                path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`),
+                path.join(uploadsRoot, 'tools', `${sanitizedModDisplayName}_FileList.txt`)
+            ];
+            const fileList = fileListCandidates.find(candidatePath => fs.existsSync(candidatePath));
+            const requiredUnitFiles = ['gladiators.txt', 'statsets.txt', 'skillsets.txt', 'itemsets.txt'];
+
+            if (!fileList) {
+                this.logger.error(`Cannot update ${modDisplayName}: missing file list. Checked ${fileListCandidates.join(' and ')}.`);
+                await setStatus(`Required file list for ${modDisplayName} was not found. Check the tools directory.`);
+                return;
+            }
+
+            this.logger.info(`Preflight for ${modDisplayName}: tools=${toolsDir}, fileList=${fileList}.`);
 
             // File destinations
             const patchFilePath = path.join(modFolder, 'patch.xdelta');
             const workingVanillaPath = path.join(modFolder, 'vanilla.iso');
             const outputIsoPath = path.join(modFolder, sanitizedModDisplayName + '_modded.iso');
-
-            logWithContext('info', 'Resolved update paths', {
-                modDisplayName,
-                uploadsRoot,
-                gladiusDataRoot,
-                vanillaIsoPath,
-                modFolder,
-                patchFilePath,
-                workingVanillaPath,
-                outputIsoPath
-            });
+            this.logger.info(`Prepared paths for ${modDisplayName}: modFolder=${modFolder}, patch=${patchFilePath}, outputIso=${outputIsoPath}.`);
 
             // Clean previous artifacts
             const removedArtifacts = [];
@@ -296,115 +234,42 @@ module.exports = {
             }
 
             if (removedArtifacts.length) {
-                logWithContext('info', 'Removed stale artifacts before update', {
-                    modDisplayName,
-                    removedArtifacts
-                });
+                this.logger.info(`Removed stale artifacts for ${modDisplayName}: ${removedArtifacts.join(', ')}.`);
             }
 
             await setStatus('Downloading patch and preparing to apply...');
 
             // Download patch attachment
-            logWithContext('info', 'Downloading patch attachment', {
-                modDisplayName,
-                attachmentName: attachment.name,
-                patchFilePath
-            });
+            this.logger.info(`Downloading patch ${attachment.name} for ${modDisplayName}.`);
             const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
             const patchBuffer = Buffer.from(response.data);
             fs.writeFileSync(patchFilePath, patchBuffer);
-            logWithContext('info', 'Downloaded patch attachment', {
-                modDisplayName,
-                attachmentName: attachment.name,
-                patchBytes: patchBuffer.length,
-                patchFilePath
-            });
+            this.logger.info(`Saved patch for ${modDisplayName} to ${patchFilePath} (${patchBuffer.length} bytes).`);
 
             // Copy vanilla.iso
-            logWithContext('info', 'Copying vanilla ISO into working location', {
-                modDisplayName,
-                source: vanillaIsoPath,
-                destination: workingVanillaPath
-            });
             fs.copyFileSync(vanillaIsoPath, workingVanillaPath);
-            logWithContext('info', 'Copied vanilla ISO into working location', {
-                modDisplayName,
-                destination: workingVanillaPath
-            });
+            this.logger.info(`Copied vanilla ISO to ${workingVanillaPath} for ${modDisplayName}.`);
 
             const xdeltaExe = 'xdelta3';
             // Command: xdelta3 -d -s source patch output
             const argsList = ['-d', '-s', workingVanillaPath, patchFilePath, outputIsoPath];
-            logWithContext('info', 'Launching xdelta3 patch process', {
-                modDisplayName,
-                executable: xdeltaExe,
-                argsList
-            });
+            this.logger.info(`Running xdelta3 for ${modDisplayName}.`);
             const proc = spawn(xdeltaExe, argsList, { windowsHide: true });
             let stdout = '';
             let stderr = '';
             proc.stdout.on('data', d => { stdout += d.toString(); });
             proc.stderr.on('data', d => { stderr += d.toString(); });
             proc.on('error', error => {
-                logWithContext('error', 'Failed to start xdelta3 process', {
-                    modDisplayName,
-                    executable: xdeltaExe,
-                    argsList,
-                    error: formatError(error)
-                });
-                this.logger.error('Failed to start xdelta3 process:', error);
+                this.logger.error(`Failed to start xdelta3 for ${modDisplayName}: ${error?.stack || error?.message || error}`);
                 setStatus('Failed to start xdelta3. Is it installed on the server?');
             });
             proc.on('close', code => {
                 const outputIsoExists = fs.existsSync(outputIsoPath);
-                logWithContext(code === 0 && outputIsoExists ? 'info' : 'error', 'xdelta3 process completed', {
-                    modDisplayName,
-                    code,
-                    outputIsoPath,
-                    outputIsoExists,
-                    ...(summarizeText(stdout) ? { stdout: summarizeText(stdout) } : {}),
-                    ...(summarizeText(stderr) ? { stderr: summarizeText(stderr) } : {})
-                });
+                const stderrSummary = String(stderr || '').replace(/\s+/g, ' ').trim();
+                const stdoutSummary = String(stdout || '').replace(/\s+/g, ' ').trim();
 
                 if (code === 0 && outputIsoExists) {
-                    // Prefer the shared game-data tools directory, but keep the legacy uploads/tools fallback.
-                    const toolsDirCandidates = [
-                        path.join(gladiusDataRoot, 'tools'),
-                        path.join(uploadsRoot, 'tools')
-                    ];
-                    const toolsDir = toolsDirCandidates.find(candidateDir => {
-                        const isoToolPath = path.join(candidateDir, 'ngciso-tool-gc.py');
-                        const becToolPath = path.join(candidateDir, 'bec-tool-all.py');
-                        return fs.existsSync(isoToolPath) && fs.existsSync(becToolPath);
-                    });
-
-                    if (!toolsDir) {
-                        logWithContext('error', 'Failed to resolve extraction tools directory', {
-                            modDisplayName,
-                            toolsDirCandidates
-                        });
-                        setStatus('Tools or required scripts missing. Skipping unpack.');
-                        return;
-                    }
-
-                    const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
-                    const becTool = path.join(toolsDir, 'bec-tool-all.py');
-                    const fileListCandidates = [
-                        path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`),
-                        path.join(uploadsRoot, 'tools', `${sanitizedModDisplayName}_FileList.txt`)
-                    ];
-                    const fileList = fileListCandidates.find(candidatePath => fs.existsSync(candidatePath)) || fileListCandidates[0];
-
-                    logWithContext('info', 'Resolved extraction tool paths', {
-                        modDisplayName,
-                        toolsDirCandidates,
-                        toolsDir,
-                        isoTool,
-                        becTool,
-                        fileList,
-                        fileListExists: fs.existsSync(fileList)
-                    });
-
+                    this.logger.info(`xdelta3 completed for ${modDisplayName}; created ${outputIsoPath}.`);
                     const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
                     const becUnpackDir = path.join(modFolder, 'bec_unpacked');
                     const isoUnpackDirArg = isoUnpackDir.endsWith(path.sep) ? isoUnpackDir : isoUnpackDir + path.sep;
@@ -413,20 +278,10 @@ module.exports = {
                     if (fs.existsSync(becUnpackDir)) fs.rmSync(becUnpackDir, { recursive: true, force: true });
                     fs.mkdirSync(isoUnpackDir, { recursive: true });
                     fs.mkdirSync(becUnpackDir, { recursive: true });
-
-                    logWithContext('info', 'Prepared unpack directories', {
-                        modDisplayName,
-                        isoUnpackDir,
-                        becUnpackDir
-                    });
+                    this.logger.info(`Prepared unpack folders for ${modDisplayName}: ${isoUnpackDir} and ${becUnpackDir}.`);
 
                     const runScript = (label, scriptPath, scriptArgs, opts={}) => new Promise((resolve, reject) => {
-                        logWithContext('info', `Launching ${label}`, {
-                            modDisplayName,
-                            scriptPath,
-                            scriptArgs,
-                            cwd: toolsDir
-                        });
+                        this.logger.info(`${label} for ${modDisplayName}: ${path.basename(scriptPath)} ${scriptArgs.join(' ')}`);
 
                         const p = spawn(pythonCmd, [...pythonBaseArgs, scriptPath, ...scriptArgs], { cwd: toolsDir, ...opts });
                         let outBuf = '';
@@ -434,59 +289,37 @@ module.exports = {
                         p.stdout.on('data', d => outBuf += d.toString());
                         p.stderr.on('data', d => errBuf += d.toString());
                         p.on('error', e => {
-                            logWithContext('error', `${label} process failed to start`, {
-                                modDisplayName,
-                                scriptPath,
-                                scriptArgs,
-                                error: formatError(e)
-                            });
+                            this.logger.error(`Failed to start ${label} for ${modDisplayName}: ${e?.stack || e?.message || e}`);
                             reject(e);
                         });
                         p.on('close', c => {
-                            const scriptLogContext = {
-                                modDisplayName,
-                                scriptPath,
-                                scriptArgs,
-                                exitCode: c,
-                                ...(summarizeText(outBuf) ? { stdout: summarizeText(outBuf) } : {}),
-                                ...(summarizeText(errBuf) ? { stderr: summarizeText(errBuf) } : {})
-                            };
+                            const outSummary = String(outBuf || '').replace(/\s+/g, ' ').trim();
+                            const errSummary = String(errBuf || '').replace(/\s+/g, ' ').trim();
 
                             if (c === 0) {
-                                logWithContext('info', `${label} completed`, scriptLogContext);
+                                if (outSummary || errSummary) {
+                                    this.logger.info(`${label} completed for ${modDisplayName}: ${(outSummary || errSummary).slice(0, 800)}`);
+                                } else {
+                                    this.logger.info(`${label} completed for ${modDisplayName}.`);
+                                }
                                 resolve();
                                 return;
                             }
 
-                            logWithContext('error', `${label} failed`, scriptLogContext);
-                            reject(new Error(errBuf || ('exit code ' + c)));
+                            this.logger.error(`${label} failed for ${modDisplayName} with exit code ${c}: ${(errSummary || outSummary || 'no process output').slice(0, 800)}`);
+                            reject(new Error(errSummary || ('exit code ' + c)));
                         });
                     });
 
                     const waitForFile = (p, timeoutMs=5000, intervalMs=200) => new Promise((resolve, reject) => {
-                        logWithContext('info', 'Waiting for expected file', {
-                            modDisplayName,
-                            filePath: p,
-                            timeoutMs,
-                            intervalMs
-                        });
-
                         const deadline = Date.now() + timeoutMs;
                         const poll = () => {
                             if (fs.existsSync(p)) {
-                                logWithContext('info', 'Detected expected file', {
-                                    modDisplayName,
-                                    filePath: p
-                                });
                                 return resolve();
                             }
                             if (Date.now() > deadline) {
                                 const timeoutError = new Error('Timed out waiting for file: ' + p);
-                                logWithContext('error', 'Timed out waiting for expected file', {
-                                    modDisplayName,
-                                    filePath: p,
-                                    timeoutMs
-                                });
+                                this.logger.error(`Timed out waiting for ${p} while updating ${modDisplayName}.`);
                                 return reject(timeoutError);
                             }
                             setTimeout(poll, intervalMs);
@@ -500,29 +333,45 @@ module.exports = {
                         .then(() => {
                             const becFile = path.join(isoUnpackDir, 'gladius.bec');
                             if (!fs.existsSync(becFile)) {
-                                logWithContext('error', 'ISO unpack completed without gladius.bec', {
-                                    modDisplayName,
-                                    becFile,
-                                    isoUnpackDir
-                                });
+                                this.logger.error(`ISO unpack for ${modDisplayName} did not produce ${becFile}.`);
                                 setStatus('gladius.bec not found after ISO unpack. Cannot proceed to BEC unpack.');
                                 return Promise.reject(new Error('Missing gladius.bec'));
                             }
-                            logWithContext('info', 'ISO unpack produced gladius.bec', {
-                                modDisplayName,
-                                becFile
-                            });
+                            this.logger.info(`ISO unpack produced ${becFile} for ${modDisplayName}.`);
                             return setStatus('ISO unpack complete. Unpacking gladius.bec...')
                                 .then(() => runScript('BEC unpack tool', becTool, ['-unpack', becFile, becUnpackDirArg]));
                         })
                         .then(() => {
                             const unpackedDataDir = path.join(becUnpackDir, 'data');
-                            if (!fs.existsSync(unpackedDataDir)) {
-                                logWithContext('error', 'BEC unpack completed without data directory', {
-                                    modDisplayName,
-                                    unpackedDataDir,
-                                    becUnpackDir
+                            const unitsDir = path.join(unpackedDataDir, 'units');
+
+                            if (!fs.existsSync(unitsDir)) {
+                                this.logger.error(`BEC unpack for ${modDisplayName} did not produce units directory ${unitsDir}.`);
+                                return Promise.reject(new Error(`Units directory not found after BEC unpack: ${unitsDir}`));
+                            }
+
+                            const missingUnitFilesBeforeIdx = requiredUnitFiles.filter(fileName => !fs.existsSync(path.join(unitsDir, fileName)));
+                            this.logger.info(
+                                `Running Units IDX unpack for ${modDisplayName} in ${unitsDir}` +
+                                (missingUnitFilesBeforeIdx.length ? `; missing before unpack: ${missingUnitFilesBeforeIdx.join(', ')}` : '.')
+                            );
+
+                            return setStatus('BEC unpack complete. Unpacking units IDX data...')
+                                .then(() => runScript('Units IDX unpack tool', unitsIdxTool, [unitsDir]))
+                                .then(() => {
+                                    const remainingMissingUnitFiles = requiredUnitFiles.filter(fileName => !fs.existsSync(path.join(unitsDir, fileName)));
+                                    if (remainingMissingUnitFiles.length) {
+                                        this.logger.error(`Units IDX unpack for ${modDisplayName} is still missing: ${remainingMissingUnitFiles.join(', ')}.`);
+                                        return Promise.reject(new Error(`Units IDX unpack did not produce required files: ${remainingMissingUnitFiles.join(', ')}`));
+                                    }
+
+                                    this.logger.info(`Units IDX unpack produced required unit files for ${modDisplayName}.`);
                                 });
+                        })
+                        .then(() => {
+                            const unpackedDataDir = path.join(becUnpackDir, 'data');
+                            if (!fs.existsSync(unpackedDataDir)) {
+                                this.logger.error(`BEC unpack for ${modDisplayName} did not produce data directory ${unpackedDataDir}.`);
                                 setStatus('BEC unpack finished but data folder not found.');
                                 return;
                             }
@@ -530,71 +379,35 @@ module.exports = {
                             // Keep bot-local data and central site data in sync.
                             const finalDataDir = path.join(modFolder, 'data');
                             if (fs.existsSync(finalDataDir)) fs.rmSync(finalDataDir, { recursive: true, force: true });
-                            logWithContext('info', 'Moving unpacked data into mod folder', {
-                                modDisplayName,
-                                unpackedDataDir,
-                                finalDataDir
-                            });
+                            this.logger.info(`Moving unpacked data for ${modDisplayName} into ${finalDataDir}.`);
                             try {
                                 fs.renameSync(unpackedDataDir, finalDataDir);
-                                logWithContext('info', 'Moved unpacked data with rename', {
-                                    modDisplayName,
-                                    source: unpackedDataDir,
-                                    destination: finalDataDir
-                                });
+                                this.logger.info(`Moved unpacked data for ${modDisplayName} with rename.`);
                             } catch (e) {
-                                logWithContext('warn', 'Rename failed; falling back to copy for unpacked data', {
-                                    modDisplayName,
-                                    source: unpackedDataDir,
-                                    destination: finalDataDir,
-                                    error: formatError(e)
-                                });
+                                this.logger.warn(`Rename failed for ${modDisplayName}; falling back to copy: ${e?.stack || e?.message || e}`);
                                 try {
                                     fs.cpSync(unpackedDataDir, finalDataDir, { recursive: true });
                                     fs.rmSync(unpackedDataDir, { recursive: true, force: true });
-                                    logWithContext('info', 'Copied unpacked data after rename failure', {
-                                        modDisplayName,
-                                        source: unpackedDataDir,
-                                        destination: finalDataDir
-                                    });
+                                    this.logger.info(`Copied unpacked data for ${modDisplayName} after rename failure.`);
                                 } catch (copyErr) {
-                                    logWithContext('error', 'Failed to copy unpacked data after rename failure', {
-                                        modDisplayName,
-                                        source: unpackedDataDir,
-                                        destination: finalDataDir,
-                                        error: formatError(copyErr)
-                                    });
-                                    this.logger.error('Data move error:', copyErr);
+                                    this.logger.error(`Failed to copy unpacked data for ${modDisplayName}: ${copyErr?.stack || copyErr?.message || copyErr}`);
                                 }
                             }
 
                             const centralModDir = path.join(gladiusDataRoot, sanitizedModDisplayName);
                             const centralDataDir = path.join(centralModDir, 'data');
                             let centralSyncError = null;
-                            logWithContext('info', 'Syncing unpacked data to shared Gladius data root', {
-                                modDisplayName,
-                                finalDataDir,
-                                centralModDir,
-                                centralDataDir
-                            });
+                            this.logger.info(`Syncing ${modDisplayName} data to ${centralDataDir}.`);
                             try {
                                 fs.mkdirSync(centralModDir, { recursive: true });
                                 if (fs.existsSync(centralDataDir)) {
                                     fs.rmSync(centralDataDir, { recursive: true, force: true });
                                 }
                                 fs.cpSync(finalDataDir, centralDataDir, { recursive: true });
-                                logWithContext('info', 'Synced unpacked data to shared Gladius data root', {
-                                    modDisplayName,
-                                    centralDataDir
-                                });
+                                this.logger.info(`Synced ${modDisplayName} data to ${centralDataDir}.`);
                             } catch (syncErr) {
                                 centralSyncError = syncErr;
-                                logWithContext('error', 'Failed to sync unpacked data to shared Gladius data root', {
-                                    modDisplayName,
-                                    centralDataDir,
-                                    error: formatError(syncErr)
-                                });
-                                this.logger.error('Central data sync error:', syncErr);
+                                this.logger.error(`Failed to sync ${modDisplayName} data to ${centralDataDir}: ${syncErr?.stack || syncErr?.message || syncErr}`);
                             }
 
                             try {
@@ -605,64 +418,36 @@ module.exports = {
                                         removedEntries.push(entry);
                                     }
                                 }
-                                logWithContext('info', 'Cleaned temporary mod artifacts after sync', {
-                                    modDisplayName,
-                                    modFolder,
-                                    removedEntries
-                                });
+                                if (removedEntries.length) {
+                                    this.logger.info(`Cleaned temporary artifacts for ${modDisplayName}: ${removedEntries.join(', ')}.`);
+                                }
                             } catch (cleanErr) {
-                                logWithContext('error', 'Failed to clean temporary mod artifacts', {
-                                    modDisplayName,
-                                    modFolder,
-                                    error: formatError(cleanErr)
-                                });
-                                this.logger.error('Cleanup error:', cleanErr);
+                                this.logger.error(`Failed to clean temporary artifacts for ${modDisplayName}: ${cleanErr?.stack || cleanErr?.message || cleanErr}`);
                             }
 
                             if (centralSyncError) {
-                                logWithContext('warn', 'Completed local update but shared sync failed', {
-                                    modDisplayName,
-                                    centralModDir,
-                                    error: formatError(centralSyncError)
-                                });
+                                this.logger.warn(`Completed local update for ${modDisplayName}, but sync to ${centralModDir} failed.`);
                                 setStatus(`Backend updated locally, but failed to sync to ${centralModDir}: ${centralSyncError.message}`);
                             } else {
-                                logWithContext('info', 'Completed mod update and shared sync', {
-                                    modDisplayName,
-                                    centralModDir
-                                });
                                 this.logger.info(`Completed mod update for ${modDisplayName}; synced data to ${centralModDir}.`);
                                 setStatus(`Backend updated and synced to ${centralModDir}`);
                             }
                         })
                         .catch(err => {
-                            logWithContext('error', 'Unpack pipeline failed', {
-                                modDisplayName,
-                                error: formatError(err)
-                            });
-                            this.logger.error('Unpack error:', err);
+                            this.logger.error(`Unpack pipeline failed for ${modDisplayName}: ${err?.stack || err?.message || err}`);
                             setStatus('An error occurred during unpack: ' + err.message);
                         });
                 } else {
-                    logWithContext('error', 'Patch application failed', {
-                        modDisplayName,
-                        outputIsoPath,
-                        code,
-                        stderr: summarizeText(stderr),
-                        stdout: summarizeText(stdout)
-                    });
+                    this.logger.error(
+                        `xdelta3 failed for ${modDisplayName} with exit code ${code}; outputIsoExists=${outputIsoExists}: ` +
+                        `${(stderrSummary || stdoutSummary || 'no process output').slice(0, 800)}`
+                    );
                     this.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
                     setStatus('Patch application failed. Check that the patch matches vanilla.iso.');
                 }
             });
         } catch (err) {
-            logWithContext('error', 'Unhandled error while processing mod update', {
-                modName: activeModName,
-                requestedModName,
-                attachmentName: attachment?.name || null,
-                error: formatError(err)
-            });
-            this.logger.error('Error updating mod:', err);
+            this.logger.error(`Error updating ${activeModName || requestedModName || 'unknown mod'}: ${err?.stack || err?.message || err}`);
             await setStatus('An error occurred while processing the patch.');
         }
     }
