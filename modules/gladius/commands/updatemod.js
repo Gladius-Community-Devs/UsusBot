@@ -191,15 +191,29 @@ module.exports = {
             });
             proc.on('close', code => {
                 if (code === 0 && fs.existsSync(outputIsoPath)) {
-                    // Begin unpack step (requires Python and scripts in uploads/tools)
-                    const toolsDir = path.join(uploadsRoot, 'tools');
-                    const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
-                    const becTool = path.join(toolsDir, 'bec-tool-all.py');
-                    const fileList = path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`);
-                    if (!fs.existsSync(toolsDir) || !fs.existsSync(isoTool) || !fs.existsSync(becTool)) {
+                    // Prefer the shared game-data tools directory, but keep the legacy uploads/tools fallback.
+                    const toolsDirCandidates = [
+                        path.join(gladiusDataRoot, 'tools'),
+                        path.join(uploadsRoot, 'tools')
+                    ];
+                    const toolsDir = toolsDirCandidates.find(candidateDir => {
+                        const isoToolPath = path.join(candidateDir, 'ngciso-tool-gc.py');
+                        const becToolPath = path.join(candidateDir, 'bec-tool-all.py');
+                        return fs.existsSync(isoToolPath) && fs.existsSync(becToolPath);
+                    });
+
+                    if (!toolsDir) {
                         setStatus('Tools or required scripts missing. Skipping unpack.');
                         return;
                     }
+
+                    const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
+                    const becTool = path.join(toolsDir, 'bec-tool-all.py');
+                    const fileListCandidates = [
+                        path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`),
+                        path.join(uploadsRoot, 'tools', `${sanitizedModDisplayName}_FileList.txt`)
+                    ];
+                    const fileList = fileListCandidates.find(candidatePath => fs.existsSync(candidatePath)) || fileListCandidates[0];
 
                     const isoUnpackDir = path.join(modFolder, 'iso_unpacked');
                     const becUnpackDir = path.join(modFolder, 'bec_unpacked');
