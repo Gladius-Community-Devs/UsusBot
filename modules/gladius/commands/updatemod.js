@@ -188,12 +188,29 @@ module.exports = {
                 path.join(gladiusDataRoot, 'tools'),
                 path.join(uploadsRoot, 'tools')
             ];
-            const toolsDir = toolsDirCandidates.find(candidateDir => {
-                const isoToolPath = path.join(candidateDir, 'ngciso-tool-gc.py');
-                const becToolPath = path.join(candidateDir, 'bec-tool-all.py');
-                const unitsIdxToolPath = path.join(candidateDir, 'Gladius_Units_IDX_Unpack.py');
-                return fs.existsSync(isoToolPath) && fs.existsSync(becToolPath) && fs.existsSync(unitsIdxToolPath);
-            });
+            let toolsDir = null;
+            let isoTool = null;
+            let becTool = null;
+            let unitsIdxTool = null;
+
+            for (const candidateDir of toolsDirCandidates) {
+                const isoToolCandidate = [
+                    path.join(candidateDir, 'ngciso-tool.py'),
+                    path.join(candidateDir, 'ngciso-tool-gc.py')
+                ].find(candidatePath => fs.existsSync(candidatePath));
+                const becToolCandidate = path.join(candidateDir, 'bec-tool-all.py');
+                const unitsIdxToolCandidate = path.join(candidateDir, 'Gladius_Units_IDX_Unpack.py');
+
+                if (!isoToolCandidate || !fs.existsSync(becToolCandidate) || !fs.existsSync(unitsIdxToolCandidate)) {
+                    continue;
+                }
+
+                toolsDir = candidateDir;
+                isoTool = isoToolCandidate;
+                becTool = becToolCandidate;
+                unitsIdxTool = unitsIdxToolCandidate;
+                break;
+            }
 
             if (!toolsDir) {
                 this.logger.error(`Cannot update ${modDisplayName}: required unpack tools were not found in ${toolsDirCandidates.join(' or ')}.`);
@@ -201,23 +218,10 @@ module.exports = {
                 return;
             }
 
-            const isoTool = path.join(toolsDir, 'ngciso-tool-gc.py');
-            const becTool = path.join(toolsDir, 'bec-tool-all.py');
-            const unitsIdxTool = path.join(toolsDir, 'Gladius_Units_IDX_Unpack.py');
-            const fileListCandidates = [
-                path.join(toolsDir, `${sanitizedModDisplayName}_FileList.txt`),
-                path.join(uploadsRoot, 'tools', `${sanitizedModDisplayName}_FileList.txt`)
-            ];
-            const fileList = fileListCandidates.find(candidatePath => fs.existsSync(candidatePath));
+            const fileListPath = path.join(modFolder, `${sanitizedModDisplayName}_FileList.txt`);
             const requiredUnitFiles = ['gladiators.txt', 'statsets.txt', 'skillsets.txt', 'itemsets.txt'];
 
-            if (!fileList) {
-                this.logger.error(`Cannot update ${modDisplayName}: missing file list. Checked ${fileListCandidates.join(' and ')}.`);
-                await setStatus(`Required file list for ${modDisplayName} was not found. Check the tools directory.`);
-                return;
-            }
-
-            this.logger.info(`Preflight for ${modDisplayName}: tools=${toolsDir}, fileList=${fileList}.`);
+            this.logger.info(`Preflight for ${modDisplayName}: tools=${toolsDir}, isoTool=${isoTool}, fileList=${fileListPath}.`);
 
             // File destinations
             const patchFilePath = path.join(modFolder, 'patch.xdelta');
@@ -227,7 +231,7 @@ module.exports = {
 
             // Clean previous artifacts
             const removedArtifacts = [];
-            for (const artifactPath of [patchFilePath, workingVanillaPath, outputIsoPath]) {
+            for (const artifactPath of [patchFilePath, workingVanillaPath, outputIsoPath, fileListPath]) {
                 if (!fs.existsSync(artifactPath)) continue;
                 fs.unlinkSync(artifactPath);
                 removedArtifacts.push(artifactPath);
@@ -329,7 +333,7 @@ module.exports = {
 
                     waitForFile(outputIsoPath)
                         .then(() => setStatus('Unpacking patched ISO...'))
-                        .then(() => runScript('ISO unpack tool', isoTool, ['-unpack', outputIsoPath, isoUnpackDirArg, fileList]))
+                        .then(() => runScript('ISO unpack tool', isoTool, ['-unpack', outputIsoPath, isoUnpackDirArg, fileListPath]))
                         .then(() => {
                             const becFile = path.join(isoUnpackDir, 'gladius.bec');
                             if (!fs.existsSync(becFile)) {
@@ -339,26 +343,60 @@ module.exports = {
                             }
                             this.logger.info(`ISO unpack produced ${becFile} for ${modDisplayName}.`);
                             return setStatus('ISO unpack complete. Unpacking gladius.bec...')
-                                .then(() => runScript('BEC unpack tool', becTool, ['-unpack', becFile, becUnpackDirArg]));
+                                .then(() => runScript('BEC unpack tool', becTool, ['--platform', 'GC', '-unpack', becFile, becUnpackDirArg]));
                         })
                         .then(() => {
-                            const unpackedDataDir = path.join(becUnpackDir, 'data');
-                            const unitsDir = path.join(unpackedDataDir, 'units');
+                            const unpackedDataDir = [
+                                path.join(becUnpackDir, 'Data'),
+                                path.join(becUnpackDir, 'data')
+                            ].find(candidatePath => fs.existsSync(candidatePath));
 
-                            if (!fs.existsSync(unitsDir)) {
-                                this.logger.error(`BEC unpack for ${modDisplayName} did not produce units directory ${unitsDir}.`);
-                                return Promise.reject(new Error(`Units directory not found after BEC unpack: ${unitsDir}`));
+                            if (!unpackedDataDir) {
+                                this.logger.error(`BEC unpack for ${modDisplayName} did not produce a Data folder in ${becUnpackDir}.`);
+                                return Promise.reject(new Error(`Data directory not found after BEC unpack: ${becUnpackDir}`));
+                            }
+
+                            const unitsDirCandidates = [
+                                path.join(unpackedDataDir, 'units'),
+                                path.join(unpackedDataDir, 'Units')
+                            ];
+                            let unitsDir = unitsDirCandidates.find(candidatePath => fs.existsSync(candidatePath));
+
+                            if (!unitsDir) {
+                                this.logger.error(`BEC unpack for ${modDisplayName} did not produce a units directory in ${unpackedDataDir}.`);
+                                return Promise.reject(new Error(`Units directory not found after BEC unpack: ${unitsDirCandidates.join(' or ')}`));
                             }
 
                             const missingUnitFilesBeforeIdx = requiredUnitFiles.filter(fileName => !fs.existsSync(path.join(unitsDir, fileName)));
                             this.logger.info(
-                                `Running Units IDX unpack for ${modDisplayName} in ${unitsDir}` +
+                                `Running Units IDX unpack for ${modDisplayName} in ${unpackedDataDir}` +
                                 (missingUnitFilesBeforeIdx.length ? `; missing before unpack: ${missingUnitFilesBeforeIdx.join(', ')}` : '.')
                             );
 
                             return setStatus('BEC unpack complete. Unpacking units IDX data...')
-                                .then(() => runScript('Units IDX unpack tool', unitsIdxTool, [unitsDir]))
+                                .then(() => runScript('Units IDX unpack tool', unitsIdxTool, [unpackedDataDir]))
                                 .then(() => {
+                                    unitsDir = unitsDirCandidates.find(candidatePath => fs.existsSync(candidatePath));
+                                    if (!unitsDir) {
+                                        this.logger.error(`Units IDX unpack for ${modDisplayName} did not leave a units directory in ${unpackedDataDir}.`);
+                                        return Promise.reject(new Error(`Units directory not found after Units IDX unpack: ${unpackedDataDir}`));
+                                    }
+
+                                    const unitFileNameMap = [
+                                        ['gladiators.txt', 'Gladiators.txt'],
+                                        ['itemsets.txt', 'Itemsets.txt'],
+                                        ['skillsets.txt', 'Skillsets.txt'],
+                                        ['statsets.txt', 'Statsets.txt']
+                                    ];
+
+                                    for (const [lowercaseName, originalName] of unitFileNameMap) {
+                                        const lowercasePath = path.join(unitsDir, lowercaseName);
+                                        const originalPath = path.join(unitsDir, originalName);
+                                        if (fs.existsSync(lowercasePath) || !fs.existsSync(originalPath)) continue;
+                                        fs.renameSync(originalPath, lowercasePath);
+                                        this.logger.info(`Renamed ${originalName} to ${lowercaseName} for ${modDisplayName}.`);
+                                    }
+
                                     const remainingMissingUnitFiles = requiredUnitFiles.filter(fileName => !fs.existsSync(path.join(unitsDir, fileName)));
                                     if (remainingMissingUnitFiles.length) {
                                         this.logger.error(`Units IDX unpack for ${modDisplayName} is still missing: ${remainingMissingUnitFiles.join(', ')}.`);
@@ -369,7 +407,10 @@ module.exports = {
                                 });
                         })
                         .then(() => {
-                            const unpackedDataDir = path.join(becUnpackDir, 'data');
+                            const unpackedDataDir = [
+                                path.join(becUnpackDir, 'data'),
+                                path.join(becUnpackDir, 'Data')
+                            ].find(candidatePath => fs.existsSync(candidatePath));
                             if (!fs.existsSync(unpackedDataDir)) {
                                 this.logger.error(`BEC unpack for ${modDisplayName} did not produce data directory ${unpackedDataDir}.`);
                                 setStatus('BEC unpack finished but data folder not found.');
