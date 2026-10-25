@@ -106,3 +106,43 @@ client.on('messageCreate', (message) => {
     // The retired `;command` form now just points at its slash command.
     modules.hint_legacy_prefix(message);
 });
+
+/**
+ * Exit 0 on SIGINT/SIGTERM.
+ *
+ * systemd records a non-zero main-process exit as a failure even when it is
+ * only the stop half of a restart, so every deploy fired OnFailure, paged
+ * Discord twice and made the deploy webhook see a failed unit. Closing the
+ * gateway first also lets discord.js tear down its connections instead of
+ * being killed mid-frame.
+ */
+let shutting_down = false;
+function shutdown(signal) {
+    if (shutting_down) return;
+    shutting_down = true;
+    try {
+        logger.info(`Received ${signal}; shutting down cleanly.`);
+    } catch (error) {
+        // The logger itself must never prevent a clean exit.
+    }
+
+    const finish = () => process.exit(0);
+    // Backstop: hanging here would make systemd SIGKILL us and record a
+    // failure again, which is the exact thing this handler exists to avoid.
+    const deadline = setTimeout(finish, 5000);
+    if (deadline.unref) deadline.unref();
+
+    Promise.resolve()
+        .then(() => client.destroy())
+        .catch(() => {})
+        .finally(() => {
+            try {
+                logger.end(finish);
+            } catch (error) {
+                finish();
+            }
+        });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
