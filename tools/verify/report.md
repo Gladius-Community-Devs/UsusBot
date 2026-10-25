@@ -188,7 +188,8 @@ The class lists must be derived from the data, not from suffix patterns:
 
 - **Iaar** — Yeti, `School: 0`, `RECRUIT` line in `fjordfallen_leagues.tok` (cost 0, event flag 1). League-based event recruit.
 - **Taithleach** — UndeadCasterA, `School: 0`, `RECRUIT` in `mordaresden_leagues.tok`. League-based.
-- **Langston** — Minotaur, `School: 104` (The Invaders), **no** `RECRUIT` line anywhere. A league-only cross-reference would drop every Minotaur; school membership is the other recruitment path.
+- **Langston** — Minotaur, `School: 104` (The Invaders), **no** `RECRUIT` line anywhere. He is granted by a script: `gb.SchoolAddCharacter("Langston", recruitLV)` in `script/leaguemongrelsmaw.scp` (the Mongrel's Maw league reward). A league-only cross-reference would drop every Minotaur; the school field is incidental to a scripted grant.
+- **Eiji** — Archer, `School: 0`, no `RECRUIT` line. Granted by the campaign (`SchoolAddCharacter("Eiji", 10)` appears commented out in the league scripts; the grant is in the gameflow scripts). A pure league/school cross-reference would drop her.
 
 Crossref over Vanilla:
 
@@ -203,7 +204,7 @@ Crossref over Vanilla:
 
 Prop classes (`PropBarrel`, `PropStatue`, `PropTombstone`, `PropPracticePost`) have units with `School: 0` and no `RECRUIT` line, so the union excludes them. The four story classes are also excluded from the recruit list, but their units still have stat sets and remain reachable by direct `/stats`.
 
-**Formula:** recruitable = at least one unit with a league `RECRUIT` line **or** a non-zero `School`; stats-capable = at least one unit whose `Stat set` exists in `statsets.txt`. `/recruits` should render both league locations and school names. The suffix-stripping regex in `recruits.js`/`stats.js` must go: it merges `UndeadCasterA` with `UndeadCaster`, and it is why `/recruits UndeadCasterA` finds nothing.
+**Formula:** because event grants live in scripts, the recruit list is *every class with units*, not the subset with a league/school location. Object classes (attributes include `doesntmove` and zero `ITEMCAT`) are the only data-driven exclusion. Stats-capable = at least one unit whose `Stat set` exists in `statsets.txt`. `/recruits` renders league locations and school names, and says "no standard location (event/story reward)" when both are empty (Langston, Eiji). The suffix-stripping regex in `recruits.js`/`stats.js` must go: it merges `UndeadCasterA` with `UndeadCaster`, and it is why `/recruits UndeadCasterA` finds nothing.
 
 ---
 
@@ -481,6 +482,7 @@ node tools/verify/run.js --component "class-skills|Vanilla|ArcherF"
 ```
 
 `tools/verify/sync.ps1` refreshes `.verify/` from the server (read-only; it tars only `data/config`, `data/towns`, `data/units` plus the modders file). `.verify/` is git-ignored and must stay that way — it is game content.
+
 
 
 
