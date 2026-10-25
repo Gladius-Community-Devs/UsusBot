@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder } = require('discord.js');
 const helpers = require('../functions');
+const classCatalog = require('../class_catalog');
 
 module.exports = {
     needs_api: false,
@@ -36,33 +37,19 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
-            const filePaths = helpers.getModFilePaths(modName);
-            const classes = new Set();
             try {
-                const gladiatorsContent = helpers.readTextFile(filePaths.gladiatorsFilePath);
-                const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
-                for (const chunk of gladiatorChunks) {
-                    for (const line of chunk.trim().split(/\r?\n/)) {
-                        if (line.startsWith('Class:')) {
-                            let baseClass = line.split(':')[1].trim();
-                            if (baseClass.match(/^(.+)F$/)) baseClass = baseClass.replace(/^(.+)F$/, '$1');
-                            if (baseClass.match(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/)) baseClass = baseClass.replace(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/, '$1');
-                            if (baseClass.match(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/)) baseClass = baseClass.replace(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/, '$1');
-                            classes.add(baseClass);
-                        }
-                    }
-                }
+                const catalog = classCatalog.getCatalog(modName);
+                await interaction.respond(classCatalog.classChoices(catalog.statClasses, focused));
             } catch (error) {
                 this.logger.error(`Failed to load stats class autocomplete data for ${modName}:`, error);
+                await interaction.respond([]);
             }
-            const filtered = [...classes].filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         }
     },
     async execute(interaction, extra) {
         await interaction.deferReply();
         
-        const className = helpers.sanitizeInput(interaction.options.getString('class_name'));
+        const rawClassName = (interaction.options.getString('class_name') || '').trim();
         let modNameInput = interaction.options.getString('mod_name');
         const level = interaction.options.getInteger('level');
 
@@ -86,37 +73,26 @@ module.exports = {
                 return;
             }
 
-            // Verify class exists
-            const gladiatorsContent = helpers.readTextFile(filePaths.gladiatorsFilePath);
-            const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
-            const baseClassMatches = new Set();
-            
-            for (const chunk of gladiatorChunks) {
-                const lines = chunk.trim().split(/\r?\n/);
-                for (const line of lines) {
-                    if (line.startsWith('Class:')) {
-                        let classInFile = line.split(':')[1].trim();
-                        let baseClass = classInFile;
-                        if (baseClass.match(/^(.+)F$/)) baseClass = baseClass.replace(/^(.+)F$/, '$1');
-                        if (baseClass.match(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/)) baseClass = baseClass.replace(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/, '$1');
-                        if (baseClass.match(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/)) baseClass = baseClass.replace(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/, '$1');
-                        baseClassMatches.add(baseClass.toLowerCase());
-                    }
-                }
-            }
-
-            if (!baseClassMatches.has(className.toLowerCase())) {
-                await interaction.editReply({ content: `No class named '${className}' found in '${modName}'.` });
+            // Resolve the class through the catalog. A code or "Display (Code)"
+            // selects one class; a shared display name selects the family.
+            const catalog = classCatalog.getCatalog(modName);
+            const resolvedClass = classCatalog.resolveClassInput(rawClassName, catalog);
+            if (!resolvedClass) {
+                await interaction.editReply({ content: `No class named '${rawClassName}' found in '${modName}'.` });
                 return;
             }
+            const targetCodes = new Set(resolvedClass.codes.map((code) => code.toLowerCase()));
+            const className = resolvedClass.label;
 
+            const gladiatorsContent = helpers.readTextFile(filePaths.gladiatorsFilePath);
+            const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
             const statSetCounts = new Map();
 
             for (const chunk of gladiatorChunks) {
                 const lines = chunk.trim().split(/\r?\n/);
                 let chunkClass = '';
                 let statSet = '';
-                
+
                 for (const line of lines) {
                     if (line.startsWith('Class:')) {
                         chunkClass = line.split(':')[1].trim();
@@ -125,16 +101,8 @@ module.exports = {
                     }
                 }
 
-                if (chunkClass && statSet !== '') {
-                    let baseClass = chunkClass;
-                    if (baseClass.match(/^(.+)F$/)) baseClass = baseClass.replace(/^(.+)F$/, '$1');
-                    if (baseClass.match(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/)) baseClass = baseClass.replace(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/, '$1');
-                    if (baseClass.match(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/)) baseClass = baseClass.replace(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/, '$1');
-
-                    if (baseClass.toLowerCase() === className.toLowerCase()) {
-                        const count = statSetCounts.get(statSet) || 0;
-                        statSetCounts.set(statSet, count + 1);
-                    }
+                if (chunkClass && statSet !== '' && targetCodes.has(chunkClass.toLowerCase())) {
+                    statSetCounts.set(statSet, (statSetCounts.get(statSet) || 0) + 1);
                 }
             }
 
@@ -229,4 +197,5 @@ module.exports = {
         }
     }
 };
+
 

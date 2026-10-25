@@ -2,6 +2,7 @@ const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder } = requi
 const fs = require('fs');
 const path = require('path');
 const helpers = require('../functions');
+const classCatalog = require('../class_catalog');
 
 // CODE CHANGE: parseSkillChunk is now defined at the top level so it can be reused.
 const parseSkillChunk = (chunk) => {
@@ -442,19 +443,13 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
-            const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
-            const classes = [];
             try {
-                const content = helpers.readTextFile(classdefsPath);
-                for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
-                    const name = match[1].trim();
-                    if (!name.startsWith('//')) classes.push(name);
-                }
+                const catalog = classCatalog.getCatalog(modName);
+                await interaction.respond(classCatalog.classChoices(catalog.classes, focused));
             } catch (error) {
                 this.logger.error(`Failed to load explain class autocomplete data for ${modName}:`, error);
+                await interaction.respond([]);
             }
-            const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         } else if (focusedOption.name === 'skill_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
@@ -520,6 +515,7 @@ module.exports = {
             const lookupContent = helpers.readTextFile(lookupFilePath);
             const lookupLines = lookupContent.split(/\r?\n/);
             const skillNameToEntryIds = {};
+            const idToEntryName = {};
             for (const line of lookupLines) {
                 if (!line.trim() || line.trim().startsWith('//')) continue;
                 const fields = line.split('^');
@@ -530,6 +526,7 @@ module.exports = {
                     skillNameToEntryIds[name] = [];
                 }
                 skillNameToEntryIds[name].push(id);
+                idToEntryName[id] = fields[fields.length - 1].trim();
             }
 
             const skillsContent = helpers.readTextFile(skillsFilePath);
@@ -538,16 +535,11 @@ module.exports = {
             const rawSkillName = (interaction.options.getString('skill_name') || '').trim();
             const rawClassName = (interaction.options.getString('class_name') || '').trim();
 
-            // The class picker offers CREATECLASS names while skills are filed
-            // under SKILLUSENAME, so accept either.
-            const classUseMap = helpers.loadClassUseMap(filePaths.classdefsPath);
-            const classKeys = new Set();
-            if (rawClassName) {
-                classKeys.add(rawClassName.toLowerCase());
-                const mapped = classUseMap.get(rawClassName.toLowerCase());
-                if (mapped) classKeys.add(mapped);
-            }
-            const className = rawClassName;
+            const catalog = classCatalog.getCatalog(modName);
+            const resolvedClass = rawClassName ? classCatalog.resolveClassInput(rawClassName, catalog) : null;
+            const classKeys = resolvedClass ? classCatalog.skillUseNamesFor(resolvedClass, catalog) : new Set();
+            const classFilterActive = rawClassName.length > 0;
+            const className = resolvedClass ? resolvedClass.label : rawClassName;
 
             // Try the typed name first; the sanitizer would strip punctuation
             // from names the autocomplete offers (e.g. "Song: BattleMarch").
@@ -555,7 +547,7 @@ module.exports = {
             const sanitizedKey = sanitizeInput(rawSkillName).toLowerCase();
             const lookupKey = skillNameToEntryIds[typedKey] ? typedKey : sanitizedKey;
             const entryIds = skillNameToEntryIds[lookupKey] || [];
-            const skillName = rawSkillName;
+            const skillName = entryIds.length ? (idToEntryName[entryIds[0]] || rawSkillName) : rawSkillName;
 
             if (entryIds.length === 0) {
                 await interaction.editReply({ content: `No skill named '${skillName}' found in '${modName}'.` });
@@ -570,8 +562,8 @@ module.exports = {
                     if (skillDisplayNameId && entryIds.includes(parseInt(skillDisplayNameId))) {
                         let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                         if (!Array.isArray(skillClasses)) skillClasses = [skillClasses];
-                        if (classKeys.size) {
-                            if (skillClasses.some(cls => classKeys.has(cls.toLowerCase()))) {
+                        if (classFilterActive) {
+                            if (classKeys.size && skillClasses.some(cls => classKeys.has(cls.toLowerCase()))) {
                                 matchingSkills.push({ entryId: parseInt(skillDisplayNameId), chunk: chunk.trim(), classNames: skillClasses, skillData });
                             }
                         } else {
@@ -705,4 +697,5 @@ module.exports = {
     },
     generateSkillDescription // Exporting for potential reuse.
 };
+
 

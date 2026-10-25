@@ -212,7 +212,7 @@ async function probeCommands(ctx) {
     for (const className of recruitSample) {
       await runCase('recruits', { mod_name: mod, class_name: className }, {});
     }
-    await runCase('recruits', { mod_name: mod, class_name: 'no such class' }, { contains: ['No gladiators'] });
+    await runCase('recruits', { mod_name: mod, class_name: 'no such class' }, { contains: ['No class named'] });
 
     for (const className of ctxlib.sample(classes, 2, 31)) {
       await runCase('stats', { mod_name: mod, class_name: className, level: 1 }, {});
@@ -233,9 +233,17 @@ async function probeCommands(ctx) {
   await runCase('skill', { mod_name: 'Vanilla', skill_name: 'Air Affinity Attack 1', class_name: 'ArcherF' }, { contains: ['SKILLCREATE:'] });
   await runCase('explain', { mod_name: 'Vanilla', skill_name: 'Air Affinity Attack 1', class_name: 'ArcherF' }, { contains: ['Skills.tok Information'] });
   await runCase('classes', { mod_name: 'Ragnarok', class_name: 'Jötunn' }, { minEmbeds: 1 });
+  await runCase('recruits', { mod_name: 'Vanilla', class_name: 'ArcherF' }, { contains: ['Recruitment Locations for Archer (ArcherF)'] });
+  await runCase('recruits', { mod_name: 'Vanilla', class_name: 'Archer' }, { contains: ['Archer'] });
+  await runCase('recruits', { mod_name: 'Vanilla', class_name: 'Minotaur' }, { contains: ['The Invaders'] });
+  await runCase('recruits', { mod_name: 'Vanilla', class_name: 'Eiji' }, { contains: ['No Standard Location'] });
+  await runCase('stats', { mod_name: 'Vanilla', class_name: 'ArcherF', level: 1 }, { contains: ['Stats for Archer (ArcherF)'] });
+  await runCase('stats', { mod_name: 'Vanilla', class_name: 'Mongrel Shaman', level: 1 }, { contains: ['Stats for Mongrel Shaman'] });
+  await runCase('classes', { mod_name: 'Vanilla', class_name: 'Mongrel Shaman' }, { minEmbeds: 1 });
 }
 
 module.exports = { probeCommands };
+
 
 
 

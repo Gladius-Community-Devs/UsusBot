@@ -121,9 +121,11 @@ The changes are applied locally on top of `3045b23`; nothing is pushed. The harn
 | L8 inert metadata | open | `has_state`, `/ping`'s `input` | — |
 | L9 autocomplete re-parse | open | 24 ms per keystroke | — |
 | L10 registration gate | open | no pre-registration validation | — |
-| M8 variant names in `/recruits` / `/stats` | open | — | needs exact-vs-family decision |
+| M8 variant names in `/recruits` / `/stats` | **fixed** | `class_catalog.js`: exact for a code/label, family by shared `SKILLUSENAME` for a display name | `Archer` = Archer+ArcherF, `ArcherF` exact; 153/153 recruits, 255/255 stats |
+| Class input model | **fixed** | labels `Display (Code)`, autocomplete value = label, catalog-built recruit/stat lists | 75/75 offered class choices accepted; 520/520 class filters |
+| Object exclusion | **fixed** | class `doesntmove` + zero `ITEMCAT` | PropBarrel/Statue/Tombstone/PracticePost excluded; no playable class matches |
 
-**Post-fix totals:** command matrix 525/525 · components 19/19 · autocomplete 17/17 · sweep 5,080/5,080 · conformance lossless for skills/classes/items in all four mods.
+**Post-fix totals:** command matrix 532/532 · components 19/19 · autocomplete 17/17 plus 75/75 offered class choices round-trip · sweep 5,080/5,080 · conformance lossless for skills/classes/items in all four mods.
 
 Live registration still shows the old 17 commands until the next deploy; the next boot registers 15.
 
@@ -169,7 +171,7 @@ What a user actually sees, walking the commands as a player would (Vanilla, curr
 
 What the class autocompletes show today: `ArcherF`, `BearGreater`, `BeastDarkAirGreater`, `SamniteExp`, `PropBarrel` — internal `CREATECLASS` codes. What the game shows: `Archer`, `Greater Bear`, `Mongrel Shaman`, `Southern Expanse Citizen`, `Undead Legionnaire`, `Arcane Hero`. Only **83 distinct display labels** cover the 128 classes; 20 labels cover more than one class. Ten classes have no gladiator rows at all (`Boss`, `PropBarrel`-style props, costumes, `ChannelerExp`, …), so selecting them can only ever return "No gladiators".
 
-### Recommended input model
+### Input model (implemented)
 
 1. **Autocomplete labels are game names.** `name` = `Display` when unique, `Display (Code)` when shared; `value` = the `CREATECLASS` code so the exact class survives the round trip.
 2. **Every class option accepts three forms:** the code (exact class), the `Display (Code)` label (exact class), or the bare display name (all classes sharing that label).
@@ -178,7 +180,7 @@ What the class autocompletes show today: `ArcherF`, `BearGreater`, `BeastDarkAir
 5. **Echo the display name** in responses (`Skill details for 'Chomp'`, not `'chomp'`).
 6. **Sort** the class choices; today `/stats` returns them in gladiator-file order.
 
-Open choices: whether the disambiguator in the label should be the class code (`Archer (ArcherF)`) or a derived trait (`Archer (Female)` — gender/region exist as attributes but are not guaranteed unique), and whether non-player classes should be hidden from `/recruits` and `/stats` (recommended) while staying in `/classes`.
+Implemented in `modules/gladius/class_catalog.js` (mtime-cached): classes, labels, units, league `RECRUIT` names, schools, stat sets and an object flag; `resolveClassInput` returns either exact codes or the family. Labels use the class code. Object classes (`doesntmove` + empty `ITEMCAT`) are the only exclusion; event and story units stay in the list and report "No Standard Location".
 
 ---
 
@@ -412,11 +414,9 @@ Decision: make them findable. `/prizes` currently matches only through lookuptex
 
 ---
 
-## 4. Remaining questions
+## 4. Open items
 
-1. **Variant names in `/recruits` and `/stats`.** If the typed name is a variant (`ArcherF`), show only that class, or the whole family? Recommended: code/label = exact class, bare display name = family. `/recruits` currently rejects the variant its own autocomplete offers.
-2. **Label format.** `Archer (ArcherF)` (class code — unique and matches mod data) or `Archer (Female)` (derived from `ATTRIBUTE`, friendlier but not guaranteed unique)?
-3. **Non-player classes.** Hide `PropBarrel`, `Boss`, costumes and other no-unit classes from `/recruits` and `/stats`, but keep them in `/classes`?
+None blocking. The data quirks stay as data: Ragnarok's stale `NUMCLASSDEFS`, its three copy-paste classes, `Usus → Samnite`, and the one genuinely missing sub-skill (`Item PreemptiveBlindCounterSub`) are tolerated and documented. `/recruits` reports a class with no league or school location as an event/story reward rather than hiding it.
 
 ---
 ## 5. Fix plan (from your decisions)
@@ -482,6 +482,9 @@ node tools/verify/run.js --component "class-skills|Vanilla|ArcherF"
 ```
 
 `tools/verify/sync.ps1` refreshes `.verify/` from the server (read-only; it tars only `data/config`, `data/towns`, `data/units` plus the modders file). `.verify/` is git-ignored and must stay that way — it is game content.
+
+
+
 
 
 

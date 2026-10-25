@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const helpers = require('../functions');
+const classCatalog = require('../class_catalog');
 const { splitFieldValue, addFieldsSafe } = require('../../../core/js/text_utils.js');
 
 module.exports = {
@@ -30,19 +31,13 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
-            const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
-            const classes = [];
             try {
-                const content = helpers.readTextFile(classdefsPath);
-                for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
-                    const name = match[1].trim();
-                    if (!name.startsWith('//')) classes.push(name);
-                }
+                const catalog = classCatalog.getCatalog(modName);
+                await interaction.respond(classCatalog.classChoices(catalog.classes, focused));
             } catch (error) {
                 this.logger.error(`Failed to load class autocomplete data for ${modName}:`, error);
+                await interaction.respond([]);
             }
-            const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         }
     },
     async execute(interaction, extra) {
@@ -52,7 +47,6 @@ module.exports = {
         };
 
         let modName = 'Vanilla';
-        let searchTerm = '';
 
         try {
             const modNameInput = interaction.options.getString('mod_name');
@@ -61,9 +55,6 @@ module.exports = {
             }
 
             const classNameInput = interaction.options.getString('class_name');
-            if (classNameInput) {
-                searchTerm = classNameInput.trim().toLowerCase();
-            }
 
             // Sanitize modName and define paths
             modName = helpers.resolveModName(sanitizeInput(modName));
@@ -147,15 +138,24 @@ module.exports = {
             // Sort classes alphabetically
             classes.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-            // Filter classes if search term provided; accept the CREATECLASS name
-            // as well, since that is what the autocomplete offers.
-            const filteredClasses = searchTerm ? 
-                classes.filter(c => c.displayName.toLowerCase().includes(searchTerm)
-                    || c.className.toLowerCase().includes(searchTerm)) : 
-                classes;
+            // Resolve the typed class through the catalog: a code or a
+            // "Display (Code)" label selects one class, a shared display name
+            // selects the whole family.
+            const catalog = classCatalog.getCatalog(modName);
+            const resolvedClass = classNameInput ? classCatalog.resolveClassInput(classNameInput, catalog) : null;
+            let filteredClasses = classes;
+
+            if (classNameInput) {
+                if (!resolvedClass) {
+                    await interaction.reply({ content: `No classes found matching '${classNameInput}' in '${modName}'.` });
+                    return;
+                }
+                const codes = new Set(resolvedClass.codes.map((code) => code.toLowerCase()));
+                filteredClasses = classes.filter((cls) => codes.has(cls.className.toLowerCase()));
+            }
 
             if (filteredClasses.length === 0) {
-                await interaction.reply({ content: `No classes found${searchTerm ? ` matching '${searchTerm}'` : ''} in '${modName}'.` });
+                await interaction.reply({ content: `No classes found matching '${classNameInput}' in '${modName}'.` });
                 return;
             }
 
@@ -314,5 +314,7 @@ function createClassEmbed(classData, currentPage, totalPages, modName) {
 module.exports.createClassEmbed = createClassEmbed;
 
 // New helper to re-read and filter class definitions
+
+
 
 

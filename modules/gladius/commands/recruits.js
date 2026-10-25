@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const helpers = require('../functions');
+const classCatalog = require('../class_catalog');
 
 /**
  * Extract ONLY recruit names from a league .tok file.
@@ -68,26 +69,20 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
-            const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
-            const classes = [];
             try {
-                const content = helpers.readTextFile(classdefsPath);
-                for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
-                    const name = match[1].trim();
-                    if (!name.startsWith('//')) classes.push(name);
-                }
+                const catalog = classCatalog.getCatalog(modName);
+                await interaction.respond(classCatalog.classChoices(catalog.recruitClasses, focused));
             } catch (error) {
                 this.logger.error(`Failed to load recruits class autocomplete data for ${modName}:`, error);
+                await interaction.respond([]);
             }
-            const filtered = classes.filter(c => c.toLowerCase().includes(focused)).slice(0, 25);
-            await interaction.respond(filtered.map(c => ({ name: c, value: c })));
         }
     },
 
     async execute(interaction, extra) {
         await interaction.deferReply();
 
-        const className = helpers.sanitizeInput(interaction.options.getString('class_name'));
+        const className = (interaction.options.getString('class_name') || '').trim();
         const modNameInput = interaction.options.getString('mod_name');
         const useStatSetFilter = interaction.options.getBoolean('statset5') ?? false;
         const debugMode = interaction.options.getBoolean('debug') ?? false;
@@ -118,8 +113,8 @@ module.exports = {
             if (result.allClasses && result.allClasses.length > 0) {
                 const encodedModName = encodeURIComponent(modName);
                 const classOptions = result.allClasses.map(cls => ({
-                    label: cls.charAt(0).toUpperCase() + cls.slice(1),
-                    value: encodeURIComponent(cls.toLowerCase())
+                    label: cls.label,
+                    value: encodeURIComponent(cls.code)
                 }));
 
                 for (let i = 0; i < classOptions.length; i += 25) {
@@ -144,7 +139,6 @@ module.exports = {
         const debugLines = [];
         const warnLines = [];
         const filePaths = helpers.getModFilePaths(modName);
-        const sanitizedClassName = helpers.sanitizeInput(className);
 
         // ─────────────────────────────────────────────
         // Validate required files / folders
@@ -170,25 +164,18 @@ module.exports = {
         }
 
         // ─────────────────────────────────────────────
-        // Class variant handling (unchanged)
+        // Resolve the class through the catalog
         // ─────────────────────────────────────────────
-        const applyClassVariantPatterns = (classInFile) => {
-            let baseClass = classInFile;
+        const catalog = classCatalog.getCatalog(modName);
+        const resolvedClass = classCatalog.resolveClassInput(className, catalog);
+        const allClasses = catalog.recruitClasses.map((cls) => ({ code: cls.code, label: cls.label }));
 
-            if (/^(.+)F$/.test(baseClass)) {
-                baseClass = baseClass.replace(/^(.+)F$/, '$1');
-            }
+        if (!resolvedClass) {
+            return { error: { title: 'No class named', lines: [`No class named '${className}' in '${modName}'.`] }, allClasses };
+        }
 
-            if (/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/.test(baseClass)) {
-                baseClass = baseClass.replace(/^(.+?)(?:Imp|Nor|Ste|Exp|[AB])F?$/, '$1');
-            }
-
-            if (/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/.test(baseClass)) {
-                baseClass = baseClass.replace(/^(UndeadMelee)(?:Exp|Imp|Nor|Ste)[AB]F?$/, '$1');
-            }
-
-            return baseClass;
-        };
+        const targetCodes = new Set(resolvedClass.codes.map((code) => code.toLowerCase()));
+        const classLabel = resolvedClass.label;
 
         // ─────────────────────────────────────────────
         // Read gladiators.txt
@@ -196,21 +183,20 @@ module.exports = {
         const gladiatorsContent = helpers.readTextFile(filePaths.gladiatorsFilePath);
         const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
 
-        const allGladiators = []; // full parsed list for cross-check
+        const allGladiators = [];
         const allGladiatorNames = new Set();
-
         const matchingGladiators = [];
         const statSetData = new Map();
-        const allClassesSet = new Set();
 
         for (const chunk of gladiatorChunks) {
             const lines = chunk.trim().split(/\r?\n/);
-            const gladiator = { name: '', class: '', statSet: '' };
+            const gladiator = { name: '', class: '', statSet: '', school: 0 };
 
             for (const line of lines) {
                 if (line.startsWith('Name:')) gladiator.name = line.split(':')[1]?.trim();
                 else if (line.startsWith('Class:')) gladiator.class = line.split(':')[1]?.trim();
                 else if (line.startsWith('Stat set:')) gladiator.statSet = line.split(':')[1]?.trim();
+                else if (line.startsWith('School:')) gladiator.school = Number.parseInt(line.split(':')[1]?.trim(), 10) || 0;
             }
 
             if (!gladiator.name || !gladiator.class || gladiator.statSet === '') continue;
@@ -218,23 +204,17 @@ module.exports = {
             allGladiators.push(gladiator);
             allGladiatorNames.add(gladiator.name);
 
-            const baseClass = applyClassVariantPatterns(gladiator.class);
-            allClassesSet.add(baseClass.toLowerCase());
-
-            if (baseClass.toLowerCase() === sanitizedClassName.toLowerCase()) {
+            if (targetCodes.has(gladiator.class.toLowerCase())) {
                 matchingGladiators.push(gladiator);
-
                 if (!statSetData.has(gladiator.statSet)) statSetData.set(gladiator.statSet, []);
                 statSetData.get(gladiator.statSet).push(gladiator);
             }
         }
 
-        const allClasses = [...allClassesSet].sort();
-
         if (!matchingGladiators.length) {
-            return { 
-                error: { title: 'No gladiators found', lines: [`No units found for class '${className}'`] },
-                allClasses 
+            return {
+                error: { title: 'No gladiators found', lines: [`No units found for class '${classLabel}'`] },
+                allClasses
             };
         }
 
@@ -406,6 +386,27 @@ module.exports = {
             }
         }
 
+        // School membership is the other location path.
+        const schoolGroups = new Map();
+        for (const gladiator of targetGladiators) {
+            if (gladiator.school > 0 && catalog.schoolNames.has(gladiator.school)) {
+                const name = catalog.schoolNames.get(gladiator.school);
+                if (!schoolGroups.has(name)) schoolGroups.set(name, []);
+                schoolGroups.get(name).push(gladiator);
+            }
+        }
+        for (const [school, glads] of schoolGroups.entries()) {
+            const seen = new Set();
+            const deduped = [];
+            for (const gladiator of glads) {
+                const key = `${gladiator.name}||${gladiator.class}||${gladiator.statSet}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                deduped.push(gladiator);
+            }
+            schoolGroups.set(school, deduped);
+        }
+
         // Remove duplicates per arena (same gladiator can appear multiple times in RECRUIT lines)
         for (const [arena, glads] of arenaGroups.entries()) {
             const seen = new Set();
@@ -419,103 +420,74 @@ module.exports = {
             arenaGroups.set(arena, deduped);
         }
 
-        // Identify target-class gladiators that never appear in any recruit list
+        // Target-class units with no league or school location
         const neverRecruited = [];
         for (const g of targetGladiators) {
-            if (!arenasMatchedByGladiator.has(g.name)) {
-                neverRecruited.push(g.name);
-            }
+            const hasSchool = g.school > 0 && catalog.schoolNames.has(g.school);
+            if (!arenasMatchedByGladiator.has(g.name) && !hasSchool) neverRecruited.push(g.name);
         }
 
-        // NEW: compute accurate counts for summary
         const recruitedUniqueNames = new Set();
-        for (const glads of arenaGroups.values()) {
-            for (const g of glads) recruitedUniqueNames.add(g.name);
-        }
+        for (const glads of arenaGroups.values()) for (const g of glads) recruitedUniqueNames.add(g.name);
+        for (const glads of schoolGroups.values()) for (const g of glads) recruitedUniqueNames.add(g.name);
         const recruitedUniqueCount = recruitedUniqueNames.size;
-        const arenasWithRecruitsCount = arenaGroups.size;
+        const locationCount = arenaGroups.size + schoolGroups.size;
 
         if (debugMode) {
             debugLines.push(`Class-matched gladiators in gladiators.txt: ${matchingGladiators.length}`);
             debugLines.push(`Unique recruits found (after filters): ${recruitedUniqueCount}`);
-
             if (skippedNoRecruit.length) {
                 debugLines.push(`Skipped (no RECRUIT lines): ${capList(skippedNoRecruit, 6).join(', ')}`);
             }
             if (unknownRecruitNamesGlobal.size) {
-                warnLines.push(
-                    `Unknown recruits (in leagues but not gladiators.txt): ` +
-                    `${capList([...unknownRecruitNamesGlobal], 10).join(', ')}`
-                );
+                warnLines.push(`Unknown recruits (in leagues but not gladiators.txt): ${capList([...unknownRecruitNamesGlobal], 10).join(', ')}`);
             }
             if (neverRecruited.length) {
-                warnLines.push(
-                    `${neverRecruited.length} target units never appeared in any RECRUIT list (showing some): ` +
-                    `${capList(neverRecruited, 10).join(', ')}`
-                );
+                warnLines.push(`${neverRecruited.length} target units have no league or school location (showing some): ${capList(neverRecruited, 10).join(', ')}`);
             }
         }
 
-        // ─────────────────────────────────────────────
-        // Build embed (FIELD LIMIT SAFE)
-        // ─────────────────────────────────────────────
+        // Build embed, field-limit safe
         const embed = new EmbedBuilder()
-            .setTitle(`🏛️ Recruitment Locations for ${className}`)
+            .setTitle(`🏛️ Recruitment Locations for ${classLabel}`)
             .setDescription(`**Mod:** ${modName}${filterDescription}`)
             .setColor(0x00AE86)
             .setTimestamp();
 
-        if (arenaGroups.size === 0) {
+        const MAX_FIELDS = 25;
+        let usedFields = 0;
+        const addLocationField = (name, glads) => {
+            if (usedFields >= MAX_FIELDS - 2) return;
+            let value = '';
+            for (const gladiator of glads.sort((a, b) => a.name.localeCompare(b.name))) {
+                value += `• **${gladiator.name}** (${gladiator.class})\n`;
+                if (value.length > 1000) {
+                    value = value.slice(0, 997) + '...';
+                    break;
+                }
+            }
+            embed.addFields({ name, value: value || 'No gladiators found', inline: true });
+            usedFields++;
+        };
+
+        for (const arena of [...arenaGroups.keys()].sort()) addLocationField(`🏟️ ${arena}`, arenaGroups.get(arena));
+        for (const school of [...schoolGroups.keys()].sort()) addLocationField(`🏫 ${school}`, schoolGroups.get(school));
+
+        if (locationCount > usedFields) {
+            embed.addFields({ name: '⚠️ Truncated', value: 'Some locations were omitted due to Discord embed limits.', inline: false });
+        }
+
+        if (locationCount === 0) {
             embed.addFields({
-                name: 'No Recruitment Data Found',
-                value:
-                    `No recruit entries found for **${className}**.\n` +
-                    `This usually means either:\n` +
-                    `• There are no RECRUIT lines for these units in any league .tok files\n` +
-                    `• The league .tok recruit names don’t match gladiators.txt names exactly`,
+                name: 'No Standard Location',
+                value: `No league RECRUIT lines or school assignment for **${classLabel}**.\n` +
+                    'These units are event or story rewards rather than standard recruits.',
                 inline: false
             });
         } else {
-            const MAX_FIELDS = 25;
-            let usedFields = 0;
-
-            const arenas = [...arenaGroups.keys()].sort();
-
-            for (const arena of arenas) {
-                if (usedFields >= MAX_FIELDS - 2) break;
-
-                const glads = arenaGroups.get(arena).sort((a, b) => a.name.localeCompare(b.name));
-                let value = '';
-
-                for (const g of glads) {
-                    value += `• **${g.name}** (${g.class})\n`;
-                    if (value.length > 1000) {
-                        value = value.slice(0, 997) + '...';
-                        break;
-                    }
-                }
-
-                embed.addFields({
-                    name: `🏟️ ${arena}`,
-                    value: value || 'No gladiators found',
-                    inline: true
-                });
-
-                usedFields++;
-            }
-
-            if (arenas.length > MAX_FIELDS - 2) {
-                embed.addFields({
-                    name: '⚠️ Truncated',
-                    value: 'Some arenas were omitted due to Discord embed limits.',
-                    inline: false
-                });
-            }
-
-            // UPDATED: summary uses actual recruitable unique count
             embed.addFields({
                 name: '📊 Summary',
-                value: `Found **${recruitedUniqueCount}** recruitable ${className} gladiators across **${arenasWithRecruitsCount}** arenas.`,
+                value: `Found **${recruitedUniqueCount}** recruitable ${classLabel} gladiators across **${locationCount}** locations.`,
                 inline: false
             });
         }
