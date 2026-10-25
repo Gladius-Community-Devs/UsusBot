@@ -1,8 +1,11 @@
 /**
  * Entry point for the bot. Sets up the discord client,
  * loads all the internal systems, then discovers modules and commands.
- * CURRENTLY IN THE PRODUCTION BRANCH!
  */
+
+// Must run before any third-party require(): reconciles node_modules with
+// package-lock.json so a pushed dependency change actually takes effect.
+require('./tools/preflight.js').run();
 
 var fs = require('fs');
 var axios = require('axios');
