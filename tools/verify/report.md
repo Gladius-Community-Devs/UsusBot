@@ -150,6 +150,38 @@ Verified against Vanilla:
 
 ---
 
+## User journey simulation (autocomplete + game names)
+
+What a user actually sees, walking the commands as a player would (Vanilla, current working tree):
+
+| Journey | User action | Result |
+|---|---|---|
+| Look up a skill | `/skill` → mod `Vanilla` → skill `Chomp` from autocomplete | works; the response says *"Skill details for 'chomp'"* (the submitted value is lowercased) |
+| Female archer's skills | `/skill` → class `ArcherF` from autocomplete + an Archer skill | works after the class-map fix |
+| Browse a class | `/classes` → class `ArcherF` | works; page title `Archer (ArcherF)` |
+| Recruit an archer | `/recruits` → class `ArcherF` from autocomplete | **"No gladiators found"** — the offered value is rejected |
+| Recruit an archer | `/recruits` → class `Archer` | works, but lists both Archer and ArcherF units |
+| Stats for a variant | `/stats` → class `ArcherF` (typed) | **"No class named 'ArcherF'"**; the autocomplete only offers base names |
+| Stats by display name | `/stats` → `Mongrel Shaman` (typed) | **"No class named"**; only `MongrelShaman` works |
+| Skills by display name | `/skill` → class `Mongrel Shaman` | **"No skill named ... for class"**; only `MongrelShaman` works |
+| Prizes | `/prizes` → `Chagatai Fire and Air` from autocomplete | works |
+| Items | `/itemskill` → item name from autocomplete | works |
+
+What the class autocompletes show today: `ArcherF`, `BearGreater`, `BeastDarkAirGreater`, `SamniteExp`, `PropBarrel` — internal `CREATECLASS` codes. What the game shows: `Archer`, `Greater Bear`, `Mongrel Shaman`, `Southern Expanse Citizen`, `Undead Legionnaire`, `Arcane Hero`. Only **83 distinct display labels** cover the 128 classes; 20 labels cover more than one class. Ten classes have no gladiator rows at all (`Boss`, `PropBarrel`-style props, costumes, `ChannelerExp`, …), so selecting them can only ever return "No gladiators".
+
+### Recommended input model
+
+1. **Autocomplete labels are game names.** `name` = `Display` when unique, `Display (Code)` when shared; `value` = the `CREATECLASS` code so the exact class survives the round trip.
+2. **Every class option accepts three forms:** the code (exact class), the `Display (Code)` label (exact class), or the bare display name (all classes sharing that label).
+3. **Skill commands** resolve the family to `SKILLUSENAME`, so `Archer`, `Archer (ArcherF)` and `ArcherF` all return the shared list.
+4. **Recruits/stats** use the exact class for a code or label, and the family for a bare display name. Both should offer the same sorted list, and only classes that have units.
+5. **Echo the display name** in responses (`Skill details for 'Chomp'`, not `'chomp'`).
+6. **Sort** the class choices; today `/stats` returns them in gladiator-file order.
+
+Open choices: whether the disambiguator in the label should be the class code (`Archer (ArcherF)`) or a derived trait (`Archer (Female)` — gender/region exist as attributes but are not guaranteed unique), and whether non-player classes should be hidden from `/recruits` and `/stats` (recommended) while staying in `/classes`.
+
+---
+
 ## 1. Coverage
 
 | Probe | What it exercised | Volume | Result |
@@ -354,9 +386,11 @@ Decision: make them findable. `/prizes` currently matches only through lookuptex
 
 ---
 
-## 4. Remaining question
+## 4. Remaining questions
 
-**Variant names in `/recruits` and `/stats`.** If the typed name is a variant (`ArcherF`), should the command show only that class, or the whole family (`Archer` does both today)? Recommendation: exact class when the typed name is a `CREATECLASS`, family when it is a base name. `/recruits` currently rejects the variant its own autocomplete offers.
+1. **Variant names in `/recruits` and `/stats`.** If the typed name is a variant (`ArcherF`), show only that class, or the whole family? Recommended: code/label = exact class, bare display name = family. `/recruits` currently rejects the variant its own autocomplete offers.
+2. **Label format.** `Archer (ArcherF)` (class code — unique and matches mod data) or `Archer (Female)` (derived from `ATTRIBUTE`, friendlier but not guaranteed unique)?
+3. **Non-player classes.** Hide `PropBarrel`, `Boss`, costumes and other no-unit classes from `/recruits` and `/stats`, but keep them in `/classes`?
 
 ---
 ## 5. Fix plan (from your decisions)
@@ -422,6 +456,8 @@ node tools/verify/run.js --component "class-skills|Vanilla|ArcherF"
 ```
 
 `tools/verify/sync.ps1` refreshes `.verify/` from the server (read-only; it tars only `data/config`, `data/towns`, `data/units` plus the modders file). `.verify/` is git-ignored and must stay that way — it is game content.
+
+
 
 
 
