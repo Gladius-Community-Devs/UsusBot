@@ -34,7 +34,7 @@ async function onInteractionCreate(interaction) {
         // Sanitize inputs using the helper function
         const modNameSanitized = path.basename(helpers.sanitizeInput(modName));
         const skillNameSanitized = helpers.sanitizeInput(skillName);
-        const classNameSanitized = helpers.sanitizeInput(selectedClass);
+        const classNameSanitized = selectedClass;
 
         // Define file paths using helper
         const filePaths = helpers.getModFilePaths(modNameSanitized);
@@ -1317,7 +1317,7 @@ async function onInteractionCreate(interaction) {
 
         // Sanitize inputs
         const modNameSanitized = path.basename(helpers.sanitizeInput(modName));
-        const classNameSanitized = helpers.sanitizeInput(selectedClass);
+        const classNameSanitized = selectedClass;
 
         try {
             const recruitsCommand = require('./commands/recruits');
@@ -1356,5 +1356,7 @@ function register_handlers(event_registry) {
 }
 
 module.exports = register_handlers;
+
+
 
 
