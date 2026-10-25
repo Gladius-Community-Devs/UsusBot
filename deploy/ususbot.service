@@ -1,0 +1,48 @@
+# systemd unit for UsusBot. Install to /etc/systemd/system/ususbot.service.
+#
+# Node is the MainPID on purpose. The previous version wrapped it in `screen`,
+# so `systemctl restart` signalled screen rather than node: screen exited 1
+# without forwarding the signal, systemd recorded "Failed with result
+# 'exit-code'", fired OnFailure (twice, see below) and then had to SIGKILL the
+# orphaned node child. Every deploy therefore produced two false Discord
+# alerts and made update_ususbot.php's is-active poll return 500 to GitHub
+# while the replacement instance was already booting.
+#
+# The duplicate OnFailure drop-in (/etc/systemd/system/ususbot.service.d/
+# onfail.conf) must be deleted: the unit's own directive already notifies, and
+# the drop-in expanded %N to "ususbot.service", so the same failure posted a
+# second, differently-worded alert that the notifier's dedupe could not match.
+#
+# Install:
+#   sudo cp deploy/ususbot.service /etc/systemd/system/ususbot.service
+#   sudo rm -f /etc/systemd/system/ususbot.service.d/onfail.conf
+#   sudo systemctl daemon-reload && sudo systemctl restart ususbot
+#
+# Rollback: restore /root/ususbot.service.bak and `systemctl daemon-reload`.
+
+[Unit]
+Description=UsusBot Service
+After=network-online.target
+Wants=network-online.target
+# A burst of pushes must not lock the unit out: five failed starts inside the
+# window would otherwise leave it failed until `systemctl reset-failed`.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+OnFailure=notify@ususbot.service
+
+[Service]
+Type=simple
+User=bots
+Group=bots
+WorkingDirectory=/home/bots/UsusBot/
+Restart=always
+RestartSec=5
+# The app closes its gateway and exits 0 on SIGTERM well inside this; the
+# timeout only bounds a genuinely hung shutdown.
+TimeoutStopSec=20
+ExecStart=/home/bots/.nvm/versions/node/v21.2.0/bin/node /home/bots/UsusBot/ususbot.js
+StandardOutput=append:/home/bots/ususbot.log
+StandardError=append:/home/bots/ususbot.log
+
+[Install]
+WantedBy=multi-user.target
