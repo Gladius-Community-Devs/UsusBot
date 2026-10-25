@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { addFieldsSafe, LIMITS } = require('../../../core/js/text_utils.js');
 
 module.exports = {
     needs_api: true,
@@ -15,6 +16,7 @@ module.exports = {
             .setColor(0x00AE86);
 
         if (gladius_module && gladius_module.commands) {
+            const fields = [];
             for (var current_command_name of Array.from(gladius_module.commands.keys())) {
                 var current_command = gladius_module.commands.get(current_command_name);
 
@@ -45,10 +47,21 @@ module.exports = {
                      args = "[args]";
                 }
 
-                embed.addFields({
+                fields.push({
                     name: `**${name}**`,
                     value: `${args ? `**Inputs:** ${args}\n` : ''}${description.length > 85 ? description.substring(0, 82) + '...' : description}`,
                     inline: true
+                });
+            }
+
+            // Reserve one field for the overflow note so a growing command list
+            // can never push the embed past Discord's field limit.
+            const dropped = addFieldsSafe(embed, fields, { max: LIMITS.fields - 1 });
+            if (dropped > 0) {
+                embed.addFields({
+                    name: '…and more',
+                    value: `${dropped} more command(s) are not shown here.`,
+                    inline: false
                 });
             }
         }

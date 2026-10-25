@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../functions');
+const { splitFieldValue, addFieldsSafe, batchEmbeds } = require('../../../core/js/text_utils.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -388,7 +389,8 @@ module.exports = {
                         components: [row] 
                     });
                 } else {
-                    // Multiple results — show embeds (up to 10)
+                    // Multiple results — show embeds, batched into as many
+                    // messages as Discord's per-message embed budget requires.
                     const embeds = [];
                     for (const skill of itemSkills) {
                         if (embeds.length >= 10) break;
@@ -398,10 +400,15 @@ module.exports = {
                         if (embeds.length >= 10) break;
                         embeds.push(createPlainItemEmbed(item, plainMatchingItems.indexOf(item), plainMatchingItems.length, modName));
                     }
+
+                    const batches = batchEmbeds(embeds);
                     await interaction.editReply({ 
                         content: `Found ${totalResults} result(s) in '${modName}' matching '${searchTerm}'${totalResults > 10 ? ' (showing first 10)' : ''}:`,
-                        embeds
+                        embeds: batches[0]
                     });
+                    for (const batch of batches.slice(1)) {
+                        await interaction.followUp({ embeds: batch });
+                    }
                     if (totalResults > 10) {
                         await interaction.followUp({ 
                             content: `⚠️ Showing only the first 10 results. Please refine your search to see more specific results.`
@@ -440,10 +447,10 @@ function createSkillEmbed(skill, currentPage, totalPages, modName) {
         .setDescription(`Item Skill in ${modName} (${currentPage + 1}/${totalPages})`)
         .setColor(0x0099FF);
     
-    // Add skill data
-    const skillLines = skill.chunk.split('\n');
-    const formattedSkill = skillLines.map(line => line.trim()).join('\n');
-    embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`` });
+    // Add skill data, split across numbered fields when the definition exceeds
+    // Discord's 1024-character field limit.
+    const formattedSkill = skill.chunk.split('\n').map(line => line.trim()).join('\n');
+    addFieldsSafe(embed, splitFieldValue(formattedSkill, { label: 'Skill Definition', codeBlock: true }));
     
     // Add items that grant this skill
     if (skill.items.length > 0) {

@@ -2,6 +2,7 @@ const { InteractionType, ButtonStyle, EmbedBuilder, ActionRowBuilder, ButtonBuil
 const fs = require('fs');
 const path = require('path');
 const helpers = require('./functions');  // Import the centralized helper functions
+const { addFieldsSafe, applyDescription, LIMITS } = require('../../core/js/text_utils.js');
 
 let logger;
 
@@ -654,7 +655,10 @@ async function onInteractionCreate(interaction) {
                     .setDescription(`Shops selling items that grant this skill in ${modName}`)
                     .setColor(0x00AAFF);
 
-                // Convert the grouped items to fields in the embed
+                // Convert the grouped items to fields in the embed. The field
+                // count is capped, so a wide result set degrades into a note
+                // instead of throwing.
+                const shopFields = [];
                 for (const [baseItemName, variants] of groupedItems.entries()) {
                     let fieldValue = '';
 
@@ -679,15 +683,15 @@ async function onInteractionCreate(interaction) {
                         }
                     }
 
-                    // Truncate if too long
-                    if (fieldValue.length > 1024) {
-                        fieldValue = fieldValue.substring(0, 1021) + '...';
-                    }
+                    shopFields.push({ name: baseItemName, value: fieldValue || 'Not found in any shops' });
+                }
 
-                    // Add field to embed
+                const droppedShopFields = addFieldsSafe(embed, shopFields, { max: LIMITS.fields - 1 });
+                if (droppedShopFields > 0) {
                     embed.addFields({
-                        name: baseItemName,
-                        value: fieldValue || 'Not found in any shops'
+                        name: '…and more',
+                        value: `${droppedShopFields} more item group(s) are not shown here.`,
+                        inline: false
                     });
                 }
 
@@ -799,10 +803,21 @@ async function onInteractionCreate(interaction) {
                         grouped.get(found.exactName).push(found.shopName);
                     }
                 }
+                const shopItemFields = [];
                 for (const [exactName, shops] of grouped.entries()) {
-                    let value = shops.map(s => `• ${s}`).join('\n');
-                    if (value.length > 1024) value = value.substring(0, 1021) + '...';
-                    embed.addFields({ name: exactName !== rawItemName ? exactName : 'Sold at', value });
+                    shopItemFields.push({
+                        name: exactName !== rawItemName ? exactName : 'Sold at',
+                        value: shops.map(s => `• ${s}`).join('\n')
+                    });
+                }
+
+                const droppedItemFields = addFieldsSafe(embed, shopItemFields, { max: LIMITS.fields - 1 });
+                if (droppedItemFields > 0) {
+                    embed.addFields({
+                        name: '…and more',
+                        value: `${droppedItemFields} more variant(s) are not shown here.`,
+                        inline: false
+                    });
                 }
             }
 
@@ -955,9 +970,12 @@ async function onInteractionCreate(interaction) {
                 logger.debug(`Creating embed for skill "${skillName}"`);
                 const embed = new EmbedBuilder()
                     .setTitle(`${skillName} (${className})`)
-                    .setDescription(skillDescription)
                     .setColor(0x00AAFF)
                     .setFooter({ text: `Mod: ${modName}` });
+
+                // A description caps at 4096 characters; overflow spills into
+                // continuation fields instead of rejecting the interaction.
+                applyDescription(embed, skillDescription);
 
                 // Create a button to go back to the learnable skills list
                 const row = new ActionRowBuilder()

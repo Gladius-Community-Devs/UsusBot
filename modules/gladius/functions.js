@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EmbedBuilder } = require('discord.js');
+const { splitFieldValue, addFieldsSafe } = require('../../core/js/text_utils.js');
 
 /**
  * Safely sanitizes input to prevent path traversal
@@ -270,10 +271,10 @@ function createItemSkillEmbed(skill, currentPage, totalPages, modName) {
         .setDescription(`Item Skill in ${modName} (${currentPage + 1}/${totalPages})`)
         .setColor(0x0099FF);
     
-    // Add skill data
-    const skillLines = skill.chunk.split('\n');
-    const formattedSkill = skillLines.map(line => line.trim()).join('\n');
-    embed.addFields({ name: 'Skill Definition', value: `\`\`\`\n${formattedSkill}\`\`\`` });
+    // Add skill data, split across numbered fields when the definition exceeds
+    // Discord's 1024-character field limit.
+    const formattedSkill = skill.chunk.split('\n').map(line => line.trim()).join('\n');
+    addFieldsSafe(embed, splitFieldValue(formattedSkill, { label: 'Skill Definition', codeBlock: true }));
     
     // Add items that grant this skill
     if (skill.items.length > 0) {

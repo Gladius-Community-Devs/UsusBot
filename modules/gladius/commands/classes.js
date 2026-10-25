@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const helpers = require('../functions');
+const { splitFieldValue, addFieldsSafe } = require('../../../core/js/text_utils.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -271,9 +272,10 @@ function createClassEmbed(classData, currentPage, totalPages, modName) {
         .setDescription(`Class in ${modName} (${currentPage + 1}/${totalPages})`)
         .setColor(0x00FF00);
 
-    // Add description if available
+    // Add description if available, split across fields when it is long enough
+    // to break the 1024-character field limit.
     if (classData.description) {
-        embed.addFields({ name: 'Description', value: classData.description });
+        addFieldsSafe(embed, splitFieldValue(classData.description, { label: 'Description' }));
     }
 
     // Add attributes
