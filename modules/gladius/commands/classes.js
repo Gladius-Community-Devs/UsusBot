@@ -31,6 +31,10 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
+            if (!helpers.getAvailableMods().some((name) => name.toLowerCase() === modName.toLowerCase())) {
+                await interaction.respond([]);
+                return;
+            }
             try {
                 const catalog = classCatalog.getCatalog(modName);
                 await interaction.respond(classCatalog.classChoices(catalog.classes, focused));

@@ -69,6 +69,10 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
+            if (!helpers.getAvailableMods().some((name) => name.toLowerCase() === modName.toLowerCase())) {
+                await interaction.respond([]);
+                return;
+            }
             try {
                 const catalog = classCatalog.getCatalog(modName);
                 await interaction.respond(classCatalog.classChoices(catalog.recruitClasses, focused));
@@ -386,27 +390,6 @@ module.exports = {
             }
         }
 
-        // School membership is the other location path.
-        const schoolGroups = new Map();
-        for (const gladiator of targetGladiators) {
-            if (gladiator.school > 0 && catalog.schoolNames.has(gladiator.school)) {
-                const name = catalog.schoolNames.get(gladiator.school);
-                if (!schoolGroups.has(name)) schoolGroups.set(name, []);
-                schoolGroups.get(name).push(gladiator);
-            }
-        }
-        for (const [school, glads] of schoolGroups.entries()) {
-            const seen = new Set();
-            const deduped = [];
-            for (const gladiator of glads) {
-                const key = `${gladiator.name}||${gladiator.class}||${gladiator.statSet}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                deduped.push(gladiator);
-            }
-            schoolGroups.set(school, deduped);
-        }
-
         // Remove duplicates per arena (same gladiator can appear multiple times in RECRUIT lines)
         for (const [arena, glads] of arenaGroups.entries()) {
             const seen = new Set();
@@ -420,18 +403,16 @@ module.exports = {
             arenaGroups.set(arena, deduped);
         }
 
-        // Target-class units with no league or school location
+        // Target-class units that never appear in a league RECRUIT list
         const neverRecruited = [];
         for (const g of targetGladiators) {
-            const hasSchool = g.school > 0 && catalog.schoolNames.has(g.school);
-            if (!arenasMatchedByGladiator.has(g.name) && !hasSchool) neverRecruited.push(g.name);
+            if (!arenasMatchedByGladiator.has(g.name)) neverRecruited.push(g.name);
         }
 
         const recruitedUniqueNames = new Set();
         for (const glads of arenaGroups.values()) for (const g of glads) recruitedUniqueNames.add(g.name);
-        for (const glads of schoolGroups.values()) for (const g of glads) recruitedUniqueNames.add(g.name);
         const recruitedUniqueCount = recruitedUniqueNames.size;
-        const locationCount = arenaGroups.size + schoolGroups.size;
+        const arenasWithRecruitsCount = arenaGroups.size;
 
         if (debugMode) {
             debugLines.push(`Class-matched gladiators in gladiators.txt: ${matchingGladiators.length}`);
@@ -443,7 +424,7 @@ module.exports = {
                 warnLines.push(`Unknown recruits (in leagues but not gladiators.txt): ${capList([...unknownRecruitNamesGlobal], 10).join(', ')}`);
             }
             if (neverRecruited.length) {
-                warnLines.push(`${neverRecruited.length} target units have no league or school location (showing some): ${capList(neverRecruited, 10).join(', ')}`);
+                warnLines.push(`${neverRecruited.length} target units never appeared in any RECRUIT list (showing some): ${capList(neverRecruited, 10).join(', ')}`);
             }
         }
 
@@ -471,23 +452,22 @@ module.exports = {
         };
 
         for (const arena of [...arenaGroups.keys()].sort()) addLocationField(`🏟️ ${arena}`, arenaGroups.get(arena));
-        for (const school of [...schoolGroups.keys()].sort()) addLocationField(`🏫 ${school}`, schoolGroups.get(school));
 
-        if (locationCount > usedFields) {
+        if (arenasWithRecruitsCount > usedFields) {
             embed.addFields({ name: '⚠️ Truncated', value: 'Some locations were omitted due to Discord embed limits.', inline: false });
         }
 
-        if (locationCount === 0) {
+        if (arenasWithRecruitsCount === 0) {
             embed.addFields({
                 name: 'No Standard Location',
-                value: `No league RECRUIT lines or school assignment for **${classLabel}**.\n` +
+                value: `No league RECRUIT lines for **${classLabel}**.\n` +
                     'These units are event or story rewards rather than standard recruits.',
                 inline: false
             });
         } else {
             embed.addFields({
                 name: '📊 Summary',
-                value: `Found **${recruitedUniqueCount}** recruitable ${classLabel} gladiators across **${locationCount}** locations.`,
+                value: `Found **${recruitedUniqueCount}** recruitable ${classLabel} gladiators across **${arenasWithRecruitsCount}** arenas.`,
                 inline: false
             });
         }

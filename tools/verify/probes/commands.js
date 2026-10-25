@@ -235,7 +235,7 @@ async function probeCommands(ctx) {
   await runCase('classes', { mod_name: 'Ragnarok', class_name: 'Jötunn' }, { minEmbeds: 1 });
   await runCase('recruits', { mod_name: 'Vanilla', class_name: 'ArcherF' }, { contains: ['Recruitment Locations for Archer (ArcherF)'] });
   await runCase('recruits', { mod_name: 'Vanilla', class_name: 'Archer' }, { contains: ['Archer'] });
-  await runCase('recruits', { mod_name: 'Vanilla', class_name: 'Minotaur' }, { contains: ['The Invaders'] });
+  await runCase('recruits', { mod_name: 'Vanilla', class_name: 'Minotaur' }, { contains: ['No Standard Location'], notContains: ['🏫'] });
   await runCase('recruits', { mod_name: 'Vanilla', class_name: 'Eiji' }, { contains: ['No Standard Location'] });
   await runCase('stats', { mod_name: 'Vanilla', class_name: 'ArcherF', level: 1 }, { contains: ['Stats for Archer (ArcherF)'] });
   await runCase('stats', { mod_name: 'Vanilla', class_name: 'Mongrel Shaman', level: 1 }, { contains: ['Stats for Mongrel Shaman'] });
@@ -243,6 +243,7 @@ async function probeCommands(ctx) {
 }
 
 module.exports = { probeCommands };
+
 
 
 

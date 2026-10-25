@@ -54,8 +54,9 @@ function parseComboChain(skillData, skillsChunks) {
 
     // Determine the maximum additional hits from the initial SKILLMETER.
     // For example, SKILLMETER: "Chain", 0, 3 means 3 hits total so 2 additional hits.
-    let meterParts = currentSkill['SKILLMETER']
-        ? currentSkill['SKILLMETER'].split(',').map(s => s.trim().replace(/"/g, ''))
+    const meterValue = Array.isArray(currentSkill['SKILLMETER']) ? currentSkill['SKILLMETER'][0] : currentSkill['SKILLMETER'];
+    let meterParts = meterValue
+        ? String(meterValue).split(',').map(s => s.trim().replace(/"/g, ''))
         : [];
     const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
     let hitNumber = 1; // hitNumber = 1 for the first additional hit.
@@ -69,7 +70,8 @@ function parseComboChain(skillData, skillsChunks) {
     }
 
     while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
-        const subSkillKey = String(currentSkill['SKILLSUBSKILL']).replace(/"/g, '').trim().toLowerCase();
+        const subValue = Array.isArray(currentSkill['SKILLSUBSKILL']) ? currentSkill['SKILLSUBSKILL'][0] : currentSkill['SKILLSUBSKILL'];
+        const subSkillKey = String(subValue).replace(/"/g, '').trim().toLowerCase();
         const foundSubSkill = skillByName.get(subSkillKey);
         if (!foundSubSkill) break;
         // Extract additional damage modifier from the sub-skill's SKILLCOMBATMODS.
@@ -85,8 +87,21 @@ function parseComboChain(skillData, skillsChunks) {
     return { totalComboDamage, additionalHits };
 }
 
+// The learnable-skills event path passes helpers.parseSkillChunk data, where
+// every value is an array; this parser normally stores strings. Normalise to one
+// shape so the split()/parseInt() calls below work for both callers.
+const normalizeSkillData = (data) => {
+    const keepArray = new Set(['SKILLATTRIBUTE', 'SKILLEFFECTCONDITION']);
+    const out = {};
+    for (const [key, value] of Object.entries(data || {})) {
+        out[key] = Array.isArray(value) && !keepArray.has(key) ? value[0] : value;
+    }
+    return out;
+};
+
 // CODE CHANGE: Updated generateSkillDescription to accept skillsChunks and output a reformatted combo chain breakdown.
 const generateSkillDescription = (skillData, lookupTextMap, skillsChunks) => {
+    skillData = normalizeSkillData(skillData);
     let description = '';
 
     // Skill Name and Description
@@ -443,6 +458,10 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
+            if (!helpers.getAvailableMods().some((name) => name.toLowerCase() === modName.toLowerCase())) {
+                await interaction.respond([]);
+                return;
+            }
             try {
                 const catalog = classCatalog.getCatalog(modName);
                 await interaction.respond(classCatalog.classChoices(catalog.classes, focused));

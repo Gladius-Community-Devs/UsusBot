@@ -124,6 +124,7 @@ The changes are applied locally on top of `3045b23`; nothing is pushed. The harn
 | M8 variant names in `/recruits` / `/stats` | **fixed** | `class_catalog.js`: exact for a code/label, family by shared `SKILLUSENAME` for a display name | `Archer` = Archer+ArcherF, `ArcherF` exact; 153/153 recruits, 255/255 stats |
 | Class input model | **fixed** | labels `Display (Code)`, autocomplete value = label, catalog-built recruit/stat lists | 75/75 offered class choices accepted; 520/520 class filters |
 | Object exclusion | **fixed** | class `doesntmove` + zero `ITEMCAT` | PropBarrel/Statue/Tombstone/PracticePost excluded; no playable class matches |
+| Stats mod option | **fixed** | `mod_name` is required, like the other gladius commands | contracts: 15 commands valid |
 
 **Post-fix totals:** command matrix 532/532 · components 19/19 · autocomplete 17/17 plus 75/75 offered class choices round-trip · sweep 5,080/5,080 · conformance lossless for skills/classes/items in all four mods.
 
@@ -190,8 +191,8 @@ The class lists must be derived from the data, not from suffix patterns:
 
 - **Iaar** — Yeti, `School: 0`, `RECRUIT` line in `fjordfallen_leagues.tok` (cost 0, event flag 1). League-based event recruit.
 - **Taithleach** — UndeadCasterA, `School: 0`, `RECRUIT` in `mordaresden_leagues.tok`. League-based.
-- **Langston** — Minotaur, `School: 104` (The Invaders), **no** `RECRUIT` line anywhere. He is granted by a script: `gb.SchoolAddCharacter("Langston", recruitLV)` in `script/leaguemongrelsmaw.scp` (the Mongrel's Maw league reward). A league-only cross-reference would drop every Minotaur; the school field is incidental to a scripted grant.
-- **Eiji** — Archer, `School: 0`, no `RECRUIT` line. Granted by the campaign (`SchoolAddCharacter("Eiji", 10)` appears commented out in the league scripts; the grant is in the gameflow scripts). A pure league/school cross-reference would drop her.
+- **Langston** — Minotaur, `School: 104` (The Invaders), **no** `RECRUIT` line anywhere. He is granted by a script: `gb.SchoolAddCharacter("Langston", recruitLV)` in `script/leaguemongrelsmaw.scp` (the Mongrel's Maw league reward). There is no `RECRUIT` line, so `/recruits Minotaur` correctly reports no standard league location; he is a Mongrel's Maw reward.
+- **Eiji** — Archer, `School: 0`, no `RECRUIT` line. Granted by the campaign (`SchoolAddCharacter("Eiji", 10)` appears commented out in the league scripts; the grant is in the gameflow scripts). She has no league location, so `/recruits Eiji` reports the event/story case.
 
 Crossref over Vanilla:
 
@@ -199,14 +200,14 @@ Crossref over Vanilla:
 |---|---|---|
 | classes with units | 118 | 10 class-defs have no units at all |
 | units in a league `RECRUIT` line and in a school | 47 | e.g. Archer, Amazon |
-| school-based only | 67 | e.g. Minotaur (`The Invaders`, `Krakens`, `ImperiaMonsterSchool`) |
+| school membership only (not a recruit location) | 67 | e.g. Minotaur (`The Invaders`, `Krakens`, `ImperiaMonsterSchool`) |
 | league-based only | 0 | — |
 | units with neither | 4 classes | Eiji, Mutuus, Nephilia, ValensNoAmulet — story/unique units |
 | classes with a valid stat set on every unit | 118 | 0 dangling stat-set ids |
 
-Prop classes (`PropBarrel`, `PropStatue`, `PropTombstone`, `PropPracticePost`) have units with `School: 0` and no `RECRUIT` line, so the union excludes them. The four story classes are also excluded from the recruit list, but their units still have stat sets and remain reachable by direct `/stats`.
+Prop classes (`PropBarrel`, `PropStatue`, `PropTombstone`, `PropPracticePost`) have `doesntmove` and no `ITEMCAT`, so the object rule removes them. The four story classes stay in the class list (they have units and stat sets) and report no standard league location.
 
-**Formula:** because event grants live in scripts, the recruit list is *every class with units*, not the subset with a league/school location. Object classes (attributes include `doesntmove` and zero `ITEMCAT`) are the only data-driven exclusion. Stats-capable = at least one unit whose `Stat set` exists in `statsets.txt`. `/recruits` renders league locations and school names, and says "no standard location (event/story reward)" when both are empty (Langston, Eiji). The suffix-stripping regex in `recruits.js`/`stats.js` must go: it merges `UndeadCasterA` with `UndeadCaster`, and it is why `/recruits UndeadCasterA` finds nothing.
+**Formula:** because event grants live in scripts, the recruit list is *every class with units*, not the subset with a league location. Object classes (`doesntmove` + zero `ITEMCAT`) are the only data-driven exclusion. Stats-capable = at least one unit whose `Stat set` exists in `statsets.txt`. `/recruits` renders **league `RECRUIT` arenas only** — a unit's school is where it lives, not where the player recruits it — and says "no standard location (event/story reward)" when there are no league lines (Minotaur, Eiji). `/stats` requires `mod_name` like the other commands. The suffix regexes are gone: they merged `UndeadCasterA` with `UndeadCaster`.
 
 ---
 
@@ -416,7 +417,7 @@ Decision: make them findable. `/prizes` currently matches only through lookuptex
 
 ## 4. Open items
 
-None blocking. The data quirks stay as data: Ragnarok's stale `NUMCLASSDEFS`, its three copy-paste classes, `Usus → Samnite`, and the one genuinely missing sub-skill (`Item PreemptiveBlindCounterSub`) are tolerated and documented. `/recruits` reports a class with no league or school location as an event/story reward rather than hiding it.
+None blocking. The data quirks stay as data: Ragnarok's stale `NUMCLASSDEFS`, its three copy-paste classes, `Usus → Samnite`, and the one genuinely missing sub-skill (`Item PreemptiveBlindCounterSub`) are tolerated and documented. `/recruits` reports a class with no league `RECRUIT` line as an event/story reward rather than showing its school memberships.
 
 ---
 ## 5. Fix plan (from your decisions)
@@ -482,6 +483,7 @@ node tools/verify/run.js --component "class-skills|Vanilla|ArcherF"
 ```
 
 `tools/verify/sync.ps1` refreshes `.verify/` from the server (read-only; it tars only `data/config`, `data/towns`, `data/units` plus the modders file). `.verify/` is git-ignored and must stay that way — it is game content.
+
 
 
 

@@ -11,14 +11,14 @@ module.exports = {
         .setName('stats')
         .setDescription('Displays stat information for a specified class at a given level.')
         .addStringOption(option => 
-            option.setName('class_name')
-                .setDescription('The name of the class')
+            option.setName('mod_name')
+                .setDescription('The name of the mod')
                 .setRequired(true)
                 .setAutocomplete(true))
         .addStringOption(option => 
-            option.setName('mod_name')
-                .setDescription('The name of the mod (optional)')
-                .setRequired(false)
+            option.setName('class_name')
+                .setDescription('The name of the class')
+                .setRequired(true)
                 .setAutocomplete(true))
         .addIntegerOption(option => 
             option.setName('level')
@@ -37,6 +37,10 @@ module.exports = {
         } else if (focusedOption.name === 'class_name') {
             const rawMod = interaction.options.getString('mod_name') || 'Vanilla';
             const modName = helpers.resolveModName(rawMod);
+            if (!helpers.getAvailableMods().some((name) => name.toLowerCase() === modName.toLowerCase())) {
+                await interaction.respond([]);
+                return;
+            }
             try {
                 const catalog = classCatalog.getCatalog(modName);
                 await interaction.respond(classCatalog.classChoices(catalog.statClasses, focused));
@@ -197,5 +201,7 @@ module.exports = {
         }
     }
 };
+
+
 
 
