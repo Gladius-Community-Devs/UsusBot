@@ -182,6 +182,31 @@ Open choices: whether the disambiguator in the label should be the class code (`
 
 ---
 
+### Recruitment and stats cross-reference (verified)
+
+The class lists must be derived from the data, not from suffix patterns:
+
+- **Iaar** — Yeti, `School: 0`, `RECRUIT` line in `fjordfallen_leagues.tok` (cost 0, event flag 1). League-based event recruit.
+- **Taithleach** — UndeadCasterA, `School: 0`, `RECRUIT` in `mordaresden_leagues.tok`. League-based.
+- **Langston** — Minotaur, `School: 104` (The Invaders), **no** `RECRUIT` line anywhere. A league-only cross-reference would drop every Minotaur; school membership is the other recruitment path.
+
+Crossref over Vanilla:
+
+| Set | Count | Notes |
+|---|---|---|
+| classes with units | 118 | 10 class-defs have no units at all |
+| units in a league `RECRUIT` line and in a school | 47 | e.g. Archer, Amazon |
+| school-based only | 67 | e.g. Minotaur (`The Invaders`, `Krakens`, `ImperiaMonsterSchool`) |
+| league-based only | 0 | — |
+| units with neither | 4 classes | Eiji, Mutuus, Nephilia, ValensNoAmulet — story/unique units |
+| classes with a valid stat set on every unit | 118 | 0 dangling stat-set ids |
+
+Prop classes (`PropBarrel`, `PropStatue`, `PropTombstone`, `PropPracticePost`) have units with `School: 0` and no `RECRUIT` line, so the union excludes them. The four story classes are also excluded from the recruit list, but their units still have stat sets and remain reachable by direct `/stats`.
+
+**Formula:** recruitable = at least one unit with a league `RECRUIT` line **or** a non-zero `School`; stats-capable = at least one unit whose `Stat set` exists in `statsets.txt`. `/recruits` should render both league locations and school names. The suffix-stripping regex in `recruits.js`/`stats.js` must go: it merges `UndeadCasterA` with `UndeadCaster`, and it is why `/recruits UndeadCasterA` finds nothing.
+
+---
+
 ## 1. Coverage
 
 | Probe | What it exercised | Volume | Result |
@@ -456,6 +481,7 @@ node tools/verify/run.js --component "class-skills|Vanilla|ArcherF"
 ```
 
 `tools/verify/sync.ps1` refreshes `.verify/` from the server (read-only; it tars only `data/config`, `data/towns`, `data/units` plus the modders file). `.verify/` is git-ignored and must stay that way — it is game content.
+
 
 
 

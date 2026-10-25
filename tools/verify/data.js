@@ -244,11 +244,16 @@ function parseGladiators(text) {
     const values = parseKeyValues(block);
     return {
       block,
+      values,
       name: (first(values, 'NAME') || '').trim(),
       class: (first(values, 'CLASS') || '').trim(),
-      statSet: (first(values, 'STAT SET') || '').trim(),
+      outfit: (first(values, 'OUTFIT') || '').trim(),
+      affinity: (first(values, 'AFFINITY') || '').trim(),
+      tintSet: (first(values, 'TINT SET') || '').trim(),
       skillSet: (first(values, 'SKILL SET') || '').trim(),
+      statSet: (first(values, 'STAT SET') || '').trim(),
       itemSet: (first(values, 'ITEM SET') || '').trim(),
+      school: (first(values, 'SCHOOL') || '').trim(),
     };
   });
 }
@@ -372,5 +377,6 @@ module.exports = {
   discoverMods,
   loadMod,
 };
+
 
 
