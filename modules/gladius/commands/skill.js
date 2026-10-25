@@ -37,7 +37,7 @@ module.exports = {
             const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
             const classes = [];
             try {
-                const content = fs.readFileSync(classdefsPath, 'utf8');
+                const content = helpers.readTextFile(classdefsPath);
                 for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
                     const name = match[1].trim();
                     if (!name.startsWith('//')) classes.push(name);
@@ -55,8 +55,8 @@ module.exports = {
             const lookupPath = filePaths.lookupFilePath;
             const skillNames = [];
             try {
-                const skillsContent = fs.readFileSync(skillsPath, 'utf8');
-                const lookupContent = fs.readFileSync(lookupPath, 'utf8');
+                const skillsContent = helpers.readTextFile(skillsPath);
+                const lookupContent = helpers.readTextFile(lookupPath);
                 // Build id -> display name map
                 const idToName = {};
                 for (const line of lookupContent.split(/\r?\n/)) {
@@ -117,15 +117,16 @@ module.exports = {
             }
 
             // Collect all possible skill names and map them to entry IDs
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+            const lookupContent = helpers.readTextFile(lookupFilePath);
             const lookupLines = lookupContent.split(/\r?\n/);
 
             // Build a map of skill names to entry IDs
             const skillNameToEntryIds = {};
             for (const line of lookupLines) {
-                if (!line.trim()) continue;
+                if (!line.trim() || line.trim().startsWith('//')) continue;
                 const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
+                const id = Number.parseInt(fields[0].trim(), 10);
+                if (!Number.isFinite(id)) continue;
                 const name = fields[fields.length - 1].trim().toLowerCase();
                 if (!skillNameToEntryIds[name]) {
                     skillNameToEntryIds[name] = [];
@@ -133,106 +134,35 @@ module.exports = {
                 skillNameToEntryIds[name].push(id);
             }
 
-            // Read the skills.tok file
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
+            // Read skills.tok and split records at SKILLCREATE: blank lines are
+            // cosmetic in this file (they appear inside records and are sometimes
+            // missing between them).
+            const skillsContent = helpers.readTextFile(skillsFilePath);
+            const skillsChunks = helpers.splitSkillRecords(skillsContent);
 
-            // Function to parse a skill chunk into a key-value object
-            const parseSkillChunk = (chunk) => {
-                const lines = chunk.trim().split(/\r?\n/);
-                const skillData = {};
-                for (const line of lines) {
-                    const lineTrimmed = line.trim();
-                    const match = lineTrimmed.match(/^(\w+):\s*(.+)$/);
-                    if (match) {
-                        const key = match[1].toUpperCase();
-                        let value = match[2].trim();
+            const rawSkillName = (interaction.options.getString('skill_name') || '').trim();
+            const rawClassName = (interaction.options.getString('class_name') || '').trim();
 
-                        // Remove surrounding quotes if present
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substring(1, value.length - 1);
-                        }
+            // The class picker offers CREATECLASS names while skills are filed
+            // under SKILLUSENAME (ArcherF -> Archer), so accept either.
+            const classUseMap = helpers.loadClassUseMap(filePaths.classdefsPath);
+            const classKeys = new Set();
+            if (rawClassName) {
+                classKeys.add(rawClassName.toLowerCase());
+                const mapped = classUseMap.get(rawClassName.toLowerCase());
+                if (mapped) classKeys.add(mapped);
+            }
+            const className = rawClassName;
 
-                        // Store all values as arrays
-                        if (!skillData[key]) {
-                            skillData[key] = [];
-                        }
-                        skillData[key].push(value);
-                    }
-                }
-                return skillData;
-            };
+            // Try the name exactly as typed before sanitising it: names such as
+            // "Song: BattleMarch" are offered by autocomplete but the sanitizer
+            // would strip the colon and miss the lookup.
+            const typedKey = rawSkillName.toLowerCase();
+            const sanitizedKey = sanitizeInput(rawSkillName).toLowerCase();
+            const lookupKey = skillNameToEntryIds[typedKey] ? typedKey : sanitizedKey;
+            const entryIds = skillNameToEntryIds[lookupKey] || [];
+            const skillName = rawSkillName;
 
-            // Function to collect all skills in a combo chain
-            const collectComboChain = (initialSkillData, skillsChunks) => {
-                const comboSkills = [];
-                let currentSkill = initialSkillData;
-                
-                // First, check if this is a combo skill (has SKILLMETER with "Chain")
-                if (currentSkill['SKILLMETER'] && currentSkill['SKILLMETER'][0].includes('Chain')) {
-                    comboSkills.push({ 
-                        skillData: currentSkill, 
-                        isInitial: true,
-                        chunk: findOriginalChunk(currentSkill, skillsChunks)
-                    });
-                    
-                    // Determine the maximum additional hits from the initial SKILLMETER
-                    let meterParts = currentSkill['SKILLMETER'][0].split(',').map(s => s.trim().replace(/"/g, ''));
-                    const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
-                    
-                    // Follow the chain of subskills
-                    let hitNumber = 1;
-                    while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
-                        const subSkillName = currentSkill['SKILLSUBSKILL'][0];
-                        let foundSubSkill = null;
-                        let foundChunk = null;
-                        
-                        // Find the subskill in the chunks
-                        for (const chunk of skillsChunks) {
-                            if (chunk.includes('SKILLCREATE:')) {
-                                const subSkillData = parseSkillChunk(chunk);
-                                if (subSkillData['SKILLCREATE'] && 
-                                    subSkillData['SKILLCREATE'][0].includes(subSkillName)) {
-                                    foundSubSkill = subSkillData;
-                                    foundChunk = chunk;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (!foundSubSkill) break;
-                        
-                        // Add the subskill to our chain
-                        comboSkills.push({ 
-                            skillData: foundSubSkill, 
-                            hitNumber: hitNumber + 1,
-                            chunk: foundChunk
-                        });
-                        
-                        currentSkill = foundSubSkill;
-                        hitNumber++;
-                    }
-                }
-                return comboSkills;
-            };
-            
-            // Helper function to find the original chunk for a skill
-            const findOriginalChunk = (skillData, skillsChunks) => {
-                if (!skillData['SKILLCREATE']) return '';
-                
-                const skillName = skillData['SKILLCREATE'][0];
-                for (const chunk of skillsChunks) {
-                    if (chunk.includes('SKILLCREATE:') && chunk.includes(skillName)) {
-                        return chunk;
-                    }
-                }
-                return '';
-            };
-
-            const skillName = sanitizeInput(interaction.options.getString('skill_name'));
-            const className = sanitizeInput(interaction.options.getString('class_name') || '');
-
-            const entryIds = skillNameToEntryIds[skillName.toLowerCase()] || [];
             if (entryIds.length === 0) {
                 await interaction.editReply({ content: `No skill named '${skillName}' found in '${modName}'.` });
                 return;
@@ -242,12 +172,12 @@ module.exports = {
             let matchingSkills = [];
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseSkillChunk(chunk);
+                    const skillData = helpers.parseSkillChunk(chunk);
                     if (skillData['SKILLDISPLAYNAMEID'] && entryIds.includes(parseInt(skillData['SKILLDISPLAYNAMEID'][0]))) {
                         let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                         if (!Array.isArray(skillClasses)) skillClasses = [skillClasses];
-                        if (className) {
-                            if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                        if (classKeys.size) {
+                            if (skillClasses.some(cls => classKeys.has(cls.toLowerCase()))) {
                                 matchingSkills.push({ entryId: parseInt(skillData['SKILLDISPLAYNAMEID'][0]), chunk: chunk.trim(), classNames: skillClasses, skillData });
                             }
                         } else {
@@ -268,7 +198,7 @@ module.exports = {
             let allMatchingSkills = [];
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseSkillChunk(chunk);
+                    const skillData = helpers.parseSkillChunk(chunk);
                     if (skillData['SKILLDISPLAYNAMEID'] && parseInt(skillData['SKILLDISPLAYNAMEID'][0]) === targetSKILLDISPLAYNAMEID) {
                         let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                         if (!Array.isArray(skillClasses)) skillClasses = [skillClasses];
@@ -285,10 +215,10 @@ module.exports = {
 
             for (const chunk of skillsChunks) {
                 if (chunk.includes('SKILLCREATE:')) {
-                    const skillData = parseSkillChunk(chunk);
+                    const skillData = helpers.parseSkillChunk(chunk);
                     if (skillData['SKILLDISPLAYNAMEID']) {
                         const entryId = parseInt(skillData['SKILLDISPLAYNAMEID'][0]);
-                        const skillEntryIds = skillNameToEntryIds[skillName.toLowerCase()] || [];
+                        const skillEntryIds = entryIds;
                         if (skillEntryIds.includes(entryId)) {
                             let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                             if (!Array.isArray(skillClasses)) {
@@ -346,7 +276,7 @@ module.exports = {
                 const skillData = skill.skillData;
                 
                 // Check if this is a combo skill
-                const comboSkills = collectComboChain(skillData, skillsChunks);
+                const comboSkills = helpers.collectComboChain(skillData, skillsChunks);
                 
                 if (comboSkills.length > 1) { // Only treat as combo if there's more than one skill
                     // This is a combo skill, add header for combo chain
@@ -419,3 +349,5 @@ module.exports = {
         }
     }
 };
+
+

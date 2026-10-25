@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { addFieldsSafe, LIMITS } = require('../../../core/js/text_utils.js');
 
 module.exports = {
-    needs_api: true,
+    needs_api: false,
     has_state: false,
     data: new SlashCommandBuilder()
         .setName('help')
@@ -20,10 +20,6 @@ module.exports = {
             for (var current_command_name of Array.from(gladius_module.commands.keys())) {
                 var current_command = gladius_module.commands.get(current_command_name);
 
-                if (current_command.module === 'Core' || current_command.module === 'Admin') {
-                    continue;
-                }
-                
                 // Get name from data or legacy property
                 const name = current_command.data ? current_command.data.name : current_command.name;
                 

@@ -71,7 +71,7 @@ module.exports = {
             const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
             const classes = [];
             try {
-                const content = fs.readFileSync(classdefsPath, 'utf8');
+                const content = helpers.readTextFile(classdefsPath);
                 for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
                     const name = match[1].trim();
                     if (!name.startsWith('//')) classes.push(name);
@@ -193,7 +193,7 @@ module.exports = {
         // ─────────────────────────────────────────────
         // Read gladiators.txt
         // ─────────────────────────────────────────────
-        const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
+        const gladiatorsContent = helpers.readTextFile(filePaths.gladiatorsFilePath);
         const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
 
         const allGladiators = []; // full parsed list for cross-check
@@ -245,7 +245,7 @@ module.exports = {
         // Statset5 filtering (hardened, unchanged behavior)
         // ─────────────────────────────────────────────
         if (useStatSetFilter) {
-            const statsetsContent = fs.readFileSync(filePaths.statsetsFilePath, 'utf8');
+            const statsetsContent = helpers.readTextFile(filePaths.statsetsFilePath);
             const statChunks = statsetsContent.split(/\n\s*\n/);
             const statAverages = new Map();
 
@@ -344,7 +344,7 @@ module.exports = {
 
             let content;
             try {
-                content = fs.readFileSync(filePath, 'utf8');
+                content = helpers.readTextFile(filePath);
             } catch (e) {
                 warnLines.push(`Failed to read ${file}: ${e.message}`);
                 this.logger.error(`Failed to read recruits league file ${file} for ${modName}:`, e);
@@ -538,3 +538,4 @@ module.exports = {
         return { embed, allClasses, error: null };
     }
 };
+

@@ -39,7 +39,7 @@ module.exports = {
             const lookupFilePath = filePaths.lookupFilePath;
             const entryIdToName = {};
             try {
-                const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+                const lookupContent = helpers.readTextFile(lookupFilePath);
                 for (const line of lookupContent.split(/\r?\n/)) {
                     if (!line.trim()) continue;
                     const fields = line.split('^');
@@ -54,7 +54,7 @@ module.exports = {
             // Collect item display names from items.tok (all items, with or without skills)
             const itemsFilePath = filePaths.itemsFilePath;
             try {
-                const itemsContent = fs.readFileSync(itemsFilePath, 'utf8');
+                const itemsContent = helpers.readTextFile(itemsFilePath);
                 for (const match of itemsContent.matchAll(/ITEMDISPLAYNAMEID:\s*(\d+)/g)) {
                     const id = parseInt(match[1]);
                     if (entryIdToName[id]) suggestions.add(entryIdToName[id]);
@@ -69,8 +69,8 @@ module.exports = {
             // Collect item skill display names from skills.tok
             const skillsFilePath = filePaths.skillsFilePath;
             try {
-                const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-                for (const chunk of skillsContent.split(/\n\s*\n/)) {
+                const skillsContent = helpers.readTextFile(skillsFilePath);
+                for (const chunk of helpers.splitSkillRecords(skillsContent)) {
                     if (!chunk.includes('SKILLCREATE:') || !chunk.includes('Item ')) continue;
                     const nameMatch = chunk.match(/SKILLDISPLAYNAMEID:\s*(\d+)/);
                     if (nameMatch) {
@@ -126,7 +126,7 @@ module.exports = {
             }
 
             // Load lookup text
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+            const lookupContent = helpers.readTextFile(lookupFilePath);
             const lookupLines = lookupContent.split(/\r?\n/);
 
             // Build a map of entry IDs to names and names to entry IDs
@@ -142,12 +142,12 @@ module.exports = {
             }
 
             // Read the skills.tok file
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
+            const skillsContent = helpers.readTextFile(skillsFilePath);
+            const skillsChunks = helpers.splitSkillRecords(skillsContent);
 
             // Read the items.tok file
-            const itemsContent = fs.readFileSync(itemsFilePath, 'utf8');
-            const itemsChunks = itemsContent.split(/\n\s*\n/);
+            const itemsContent = helpers.readTextFile(itemsFilePath);
+            const itemsChunks = helpers.splitItemRecords(itemsContent);
 
             // Function to parse a chunk into a key-value object
             const parseChunk = (chunk) => {
@@ -203,11 +203,13 @@ module.exports = {
                     const itemData = parseChunk(chunk);
                     if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) {
                         const itemSkillName = itemData['ITEMSKILL'][0].trim().replace(/"/g, '');
-                        
-                        // Find the matching skill
-                        const matchingSkill = allItemSkills.find(skill => 
-                            skill.skillName === itemSkillName ||
-                            skill.skillName === `Item ${itemSkillName}`
+
+                        // The data is not case-consistent (Item BerserkON vs
+                        // Item BerserkOn), so the join must ignore case.
+                        const itemSkillKey = itemSkillName.toLowerCase();
+                        const matchingSkill = allItemSkills.find(skill =>
+                            skill.skillName.toLowerCase() === itemSkillKey ||
+                            skill.skillName.toLowerCase() === `item ${itemSkillKey}`
                         );
                         
                         if (matchingSkill) {
@@ -310,10 +312,11 @@ module.exports = {
                     // Check if skill name matches search term or if this skill appears in matching items
                     const isSkillMatch = skill.skillName.toLowerCase().includes(searchTerm) || 
                                         (skill.displayName && skill.displayName.toLowerCase().includes(searchTerm));
-                    const isGrantedByMatchingItem = matchingItems.some(item => 
-                        item.skillName === skill.skillName || 
-                        item.skillName === skill.skillName.replace('Item ', '')
-                    );
+                    const isGrantedByMatchingItem = matchingItems.some(item => {
+                        const itemSkill = item.skillName.toLowerCase();
+                        const skillName = skill.skillName.toLowerCase();
+                        return itemSkill === skillName || itemSkill === skillName.replace('item ', '');
+                    });
                     
                     return isSkillMatch || isGrantedByMatchingItem;
                 });
@@ -465,3 +468,4 @@ function createSkillEmbed(skill, currentPage, totalPages, modName) {
     
     return embed;
 }
+

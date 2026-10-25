@@ -5,7 +5,7 @@ module.exports = {
     has_state: false,
     data: new SlashCommandBuilder()
         .setName('crashreport')
-        .setDescription('Returns the last error in the logs'),
+        .setDescription('Returns the log from the previous run'),
     async execute(interaction, extra) {
         const fs = require('fs');
         const path = require('path');

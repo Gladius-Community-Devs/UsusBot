@@ -13,8 +13,9 @@ const parseSkillChunk = (chunk) => {
         if (match) {
             const key = match[1].toUpperCase();
             let value = match[2].trim();
-            // Remove surrounding quotes if present
-            if (value.startsWith('"') && value.endsWith('"')) {
+            // Strip quotes only for a single quoted token; keep multi-argument
+            // lines ("Name", "Type", ...) intact.
+            if (value.length >= 2 && value.startsWith('"') && value.endsWith('"') && (value.match(/"/g) || []).length === 2) {
                 value = value.substring(1, value.length - 1);
             }
             // Keys that can have multiple values
@@ -58,18 +59,17 @@ function parseComboChain(skillData, skillsChunks) {
     const maxAdditionalHits = meterParts.length >= 3 ? parseInt(meterParts[2], 10) - 1 : 0;
     let hitNumber = 1; // hitNumber = 1 for the first additional hit.
 
+    // Index by SKILLCREATE name, case-insensitively: the data capitalises
+    // sub-skill references inconsistently (RIposteSub / Combochain).
+    const skillByName = new Map();
+    for (const chunk of skillsChunks) {
+        const match = chunk.match(/^SKILLCREATE:\s*"([^"]+)"/m);
+        if (match) skillByName.set(match[1].trim().toLowerCase(), parseSkillChunk(chunk));
+    }
+
     while (hitNumber <= maxAdditionalHits && currentSkill['SKILLSUBSKILL']) {
-        const subSkillName = currentSkill['SKILLSUBSKILL'];
-        let foundSubSkill = null;
-        for (const chunk of skillsChunks) {
-            if (chunk.includes('SKILLCREATE:')) {
-                const subSkillData = parseSkillChunk(chunk);
-                if (subSkillData['SKILLCREATE'] && subSkillData['SKILLCREATE'].includes(subSkillName)) {
-                    foundSubSkill = subSkillData;
-                    break;
-                }
-            }
-        }
+        const subSkillKey = String(currentSkill['SKILLSUBSKILL']).replace(/"/g, '').trim().toLowerCase();
+        const foundSubSkill = skillByName.get(subSkillKey);
         if (!foundSubSkill) break;
         // Extract additional damage modifier from the sub-skill's SKILLCOMBATMODS.
         if (foundSubSkill['SKILLCOMBATMODS']) {
@@ -445,7 +445,7 @@ module.exports = {
             const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
             const classes = [];
             try {
-                const content = fs.readFileSync(classdefsPath, 'utf8');
+                const content = helpers.readTextFile(classdefsPath);
                 for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
                     const name = match[1].trim();
                     if (!name.startsWith('//')) classes.push(name);
@@ -463,8 +463,8 @@ module.exports = {
             const lookupPath = filePaths.lookupFilePath;
             const skillNames = [];
             try {
-                const skillsContent = fs.readFileSync(skillsPath, 'utf8');
-                const lookupContent = fs.readFileSync(lookupPath, 'utf8');
+                const skillsContent = helpers.readTextFile(skillsPath);
+                const lookupContent = helpers.readTextFile(lookupPath);
                 const idToName = {};
                 for (const line of lookupContent.split(/\r?\n/)) {
                     if (!line.includes('^')) continue;
@@ -517,13 +517,14 @@ module.exports = {
                 return;
             }
 
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+            const lookupContent = helpers.readTextFile(lookupFilePath);
             const lookupLines = lookupContent.split(/\r?\n/);
             const skillNameToEntryIds = {};
             for (const line of lookupLines) {
-                if (!line.trim()) continue;
+                if (!line.trim() || line.trim().startsWith('//')) continue;
                 const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
+                const id = Number.parseInt(fields[0].trim(), 10);
+                if (!Number.isFinite(id)) continue;
                 const name = fields[fields.length - 1].trim().toLowerCase();
                 if (!skillNameToEntryIds[name]) {
                     skillNameToEntryIds[name] = [];
@@ -531,13 +532,31 @@ module.exports = {
                 skillNameToEntryIds[name].push(id);
             }
 
-            const skillsContent = fs.readFileSync(skillsFilePath, 'utf8');
-            const skillsChunks = skillsContent.split(/\n\s*\n/);
+            const skillsContent = helpers.readTextFile(skillsFilePath);
+            const skillsChunks = helpers.splitSkillRecords(skillsContent);
 
-            const skillName = sanitizeInput(interaction.options.getString('skill_name'));
-            const className = sanitizeInput(interaction.options.getString('class_name') || '');
+            const rawSkillName = (interaction.options.getString('skill_name') || '').trim();
+            const rawClassName = (interaction.options.getString('class_name') || '').trim();
 
-            const entryIds = skillNameToEntryIds[skillName.toLowerCase()] || [];
+            // The class picker offers CREATECLASS names while skills are filed
+            // under SKILLUSENAME, so accept either.
+            const classUseMap = helpers.loadClassUseMap(filePaths.classdefsPath);
+            const classKeys = new Set();
+            if (rawClassName) {
+                classKeys.add(rawClassName.toLowerCase());
+                const mapped = classUseMap.get(rawClassName.toLowerCase());
+                if (mapped) classKeys.add(mapped);
+            }
+            const className = rawClassName;
+
+            // Try the typed name first; the sanitizer would strip punctuation
+            // from names the autocomplete offers (e.g. "Song: BattleMarch").
+            const typedKey = rawSkillName.toLowerCase();
+            const sanitizedKey = sanitizeInput(rawSkillName).toLowerCase();
+            const lookupKey = skillNameToEntryIds[typedKey] ? typedKey : sanitizedKey;
+            const entryIds = skillNameToEntryIds[lookupKey] || [];
+            const skillName = rawSkillName;
+
             if (entryIds.length === 0) {
                 await interaction.editReply({ content: `No skill named '${skillName}' found in '${modName}'.` });
                 return;
@@ -551,8 +570,8 @@ module.exports = {
                     if (skillDisplayNameId && entryIds.includes(parseInt(skillDisplayNameId))) {
                         let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                         if (!Array.isArray(skillClasses)) skillClasses = [skillClasses];
-                        if (className) {
-                            if (skillClasses.some(cls => cls.toLowerCase() === className.toLowerCase())) {
+                        if (classKeys.size) {
+                            if (skillClasses.some(cls => classKeys.has(cls.toLowerCase()))) {
                                 matchingSkills.push({ entryId: parseInt(skillDisplayNameId), chunk: chunk.trim(), classNames: skillClasses, skillData });
                             }
                         } else {
@@ -592,7 +611,7 @@ module.exports = {
                     const skillDisplayNameId = skillData['SKILLDISPLAYNAMEID'];
                     if (skillDisplayNameId) {
                         const entryId = parseInt(skillDisplayNameId);
-                        const skillEntryIds = skillNameToEntryIds[skillName.toLowerCase()] || [];
+                        const skillEntryIds = entryIds;
                         if (skillEntryIds.includes(entryId)) {
                             let skillClasses = skillData['SKILLUSECLASS'] || ['Unknown'];
                             if (!Array.isArray(skillClasses)) {
@@ -686,3 +705,4 @@ module.exports = {
     },
     generateSkillDescription // Exporting for potential reuse.
 };
+

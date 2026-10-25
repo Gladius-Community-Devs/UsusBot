@@ -38,7 +38,7 @@ module.exports = {
             try {
                 // Build id -> name map from lookup
                 const idToName = {};
-                const lookupContent = fs.readFileSync(lookupPath, 'utf8');
+                const lookupContent = helpers.readTextFile(lookupPath);
                 for (const line of lookupContent.split(/\r?\n/)) {
                     if (!line.includes('^')) continue;
                     const parts = line.split('^');
@@ -105,15 +105,16 @@ module.exports = {
             }
 
             // Collect all possible encounter/league names and map them to entry IDs
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
+            const lookupContent = helpers.readTextFile(lookupFilePath);
             const lookupLines = lookupContent.split(/\r?\n/);
 
             // Build a map of encounter/league names to entry IDs
             const nameToEntryIds = {};
             for (const line of lookupLines) {
-                if (!line.trim()) continue;
+                if (!line.trim() || line.trim().startsWith('//')) continue;
                 const fields = line.split('^');
-                const id = parseInt(fields[0].trim());
+                const id = Number.parseInt(fields[0].trim(), 10);
+                if (!Number.isFinite(id)) continue;
                 const name = fields[fields.length - 1].trim().toLowerCase();
                 if (!nameToEntryIds[name]) {
                     nameToEntryIds[name] = [];
@@ -121,24 +122,35 @@ module.exports = {
                 nameToEntryIds[name].push(id);
             }
 
-            const searchName = sanitizeInput(interaction.options.getString('encounter_name'));
+            // Try the typed name before sanitising it: the sanitizer strips
+            // punctuation and accents that the data actually contains.
+            const rawSearchName = (interaction.options.getString('encounter_name') || '').trim();
+            const typedKey = rawSearchName.toLowerCase();
+            const sanitizedKey = sanitizeInput(rawSearchName).toLowerCase();
+            const searchKey = nameToEntryIds[typedKey] ? typedKey : sanitizedKey;
+            const entryIds = nameToEntryIds[searchKey] || [];
+            const nameKeys = new Set([typedKey, sanitizedKey]);
+            const searchName = rawSearchName;
 
-            // Get all entry IDs for the search name
-            const entryIds = nameToEntryIds[searchName.toLowerCase()] || [];
-
-            if (entryIds.length === 0) {
-                await interaction.editReply({ content: `No encounter or league named '${searchName}' found in '${modName}'.` });
-                return;
-            }
-
-            // Read all league files
+            // Read all league files and index the literal LEAGUE/ENCOUNTER names,
+            // so entries without a lookuptext name (id 0) are still findable.
             const leagueFiles = fs.readdirSync(leaguesPath).filter(file => file.endsWith('.tok'));
             let allLeagueContent = '';
-            
+            const literalNames = new Set();
+
             for (const file of leagueFiles) {
                 const filePath = path.join(leaguesPath, file);
-                const content = fs.readFileSync(filePath, 'utf8');
+                const content = helpers.readTextFile(filePath);
                 allLeagueContent += content + '\n';
+                for (const line of content.split(/\r?\n/)) {
+                    const found = line.match(/^(?:LEAGUE|ENCOUNTER)\s+"([^"]+)"/);
+                    if (found) literalNames.add(found[1].toLowerCase());
+                }
+            }
+
+            if (entryIds.length === 0 && !literalNames.has(typedKey) && !literalNames.has(sanitizedKey)) {
+                await interaction.editReply({ content: `No encounter or league named '${searchName}' found in '${modName}'.` });
+                return;
             }
 
             // Parse league/encounter chunks
@@ -185,7 +197,7 @@ module.exports = {
                         const match = leagueLine.match(/^"([^"]+)",\s*(\d+)$/);
                         if (match) {
                             const entryId = parseInt(match[2]);
-                            if (entryIds.includes(entryId)) {
+                            if (entryIds.includes(entryId) || nameKeys.has(match[1].toLowerCase())) {
                                 matchingItems.push({
                                     type: 'LEAGUE',
                                     name: match[1],
@@ -203,7 +215,7 @@ module.exports = {
                         const match = encounterLine.match(/^"([^"]+)",\s*(\d+)$/);
                         if (match) {
                             const entryId = parseInt(match[2]);
-                            if (entryIds.includes(entryId)) {
+                            if (entryIds.includes(entryId) || nameKeys.has(match[1].toLowerCase())) {
                                 matchingItems.push({
                                     type: 'ENCOUNTER',
                                     name: match[1],
@@ -223,7 +235,7 @@ module.exports = {
             }
 
             // Read prizes.tok file
-            const prizesContent = fs.readFileSync(prizesFilePath, 'utf8');
+            const prizesContent = helpers.readTextFile(prizesFilePath);
             const prizeChunks = prizesContent.split(/\n\s*\n/);            // Parse prize chunks
             const prizeData = {};
             for (const chunk of prizeChunks) {
@@ -398,3 +410,5 @@ module.exports = {
         }
     }
 };
+
+

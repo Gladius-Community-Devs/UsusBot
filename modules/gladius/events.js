@@ -50,8 +50,8 @@ async function onInteractionCreate(interaction) {
             const { nameToIds: skillNameToEntryIds } = helpers.loadLookupText(filePaths.lookupFilePath);
 
             // Read the skills.tok file
-            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
-            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
+            const skillsContent = helpers.readTextFile(filePaths.skillsFilePath);
+            const skillsChunks = helpers.splitSkillRecords(skillsContent);
 
             // Get all entry IDs for the skill name
             const entryIds = skillNameToEntryIds[skillNameSanitized.toLowerCase()] || [];
@@ -202,8 +202,8 @@ async function onInteractionCreate(interaction) {
             }
 
             // Read the skills.tok file
-            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
-            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
+            const skillsContent = helpers.readTextFile(filePaths.skillsFilePath);
+            const skillsChunks = helpers.splitSkillRecords(skillsContent);
 
             // Collect matching skills for the selected class
             let matchingSkills = [];
@@ -235,7 +235,7 @@ async function onInteractionCreate(interaction) {
             // Generate skill descriptions
             let messages = [];
             // Updated header with specific skill command that includes the selected class
-            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **;skill ${modNameSanitized !== 'Vanilla' ? modNameSanitized + ' ' : ''}${classNameSanitized} ${skillNameSanitized}**\n\n\nSkill details for '${skillNameSanitized}' in '${modNameSanitized}' for class '${classNameSanitized}':\n\n`;
+            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **/skill ${modNameSanitized !== 'Vanilla' ? modNameSanitized + ' ' : ''}${classNameSanitized} ${skillNameSanitized}**\n\n\nSkill details for '${skillNameSanitized}' in '${modNameSanitized}' for class '${classNameSanitized}':\n\n`;
             let currentMessage = header;
 
             for (const skill of matchingSkills) {
@@ -308,7 +308,7 @@ async function onInteractionCreate(interaction) {
 
             // Read statsets.txt and find the stat set
             logger.debug(`Reading statsets file for mod "${modNameSanitized}"`);
-            const statsetsContent = fs.readFileSync(filePaths.statsetsFilePath, 'utf8');
+            const statsetsContent = helpers.readTextFile(filePaths.statsetsFilePath);
             const statsetChunks = statsetsContent.split(/\n\s*\n/);
             
             logger.debug(`Found ${statsetChunks.length} statset chunks, searching for statset ${statSetSanitized}`);
@@ -427,12 +427,12 @@ async function onInteractionCreate(interaction) {
             const { idToText: entryIdToName } = helpers.loadLookupText(filePaths.lookupFilePath);
 
             // Read the skills.tok file
-            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
-            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
+            const skillsContent = helpers.readTextFile(filePaths.skillsFilePath);
+            const skillsChunks = helpers.splitSkillRecords(skillsContent);
 
             // Read the items.tok file
-            const itemsContent = fs.readFileSync(filePaths.itemsFilePath, 'utf8');
-            const itemsChunks = helpers.splitContentIntoChunks(itemsContent);
+            const itemsContent = helpers.readTextFile(filePaths.itemsFilePath);
+            const itemsChunks = helpers.splitItemRecords(itemsContent);
 
             // Find all item skills
             const itemSkills = [];
@@ -463,10 +463,11 @@ async function onInteractionCreate(interaction) {
                     if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) {
                         const itemSkillName = itemData['ITEMSKILL'][0].trim().replace(/"/g, '');
 
-                        // Find the matching skill
+                        // The shipped data capitalises ITEMSKILL inconsistently
+                        // (Item BerserkON vs Item BerserkOn), so match caselessly.
                         const matchingSkill = itemSkills.find(skill =>
-                            skill.skillName === itemSkillName ||
-                            skill.skillName === `Item ${itemSkillName}`
+                            skill.skillName.toLowerCase() === itemSkillName.toLowerCase() ||
+                            skill.skillName.toLowerCase() === `item ${itemSkillName.toLowerCase()}`
                         );
 
                         if (matchingSkill) {
@@ -577,7 +578,7 @@ async function onInteractionCreate(interaction) {
                 for (const shopFile of shopFiles) {
                     const shopFilePath = path.join(filePaths.shopsPath, shopFile);
                     try {
-                        const shopContent = fs.readFileSync(shopFilePath, 'utf8');
+                        const shopContent = helpers.readTextFile(shopFilePath);
 
                         // Extract shop name
                         let shopName = shopFile.replace('.tok', '');
@@ -768,7 +769,7 @@ async function onInteractionCreate(interaction) {
             for (const shopFile of shopFiles) {
                 const shopFilePath = path.join(filePaths.shopsPath, shopFile);
                 try {
-                    const shopContent = fs.readFileSync(shopFilePath, 'utf8');
+                    const shopContent = helpers.readTextFile(shopFilePath);
                     let shopName = shopFile.replace('.tok', '');
                     const nameMatch = shopContent.match(/NAME\s+"([^"]+)"/);
                     if (nameMatch) shopName = nameMatch[1];
@@ -837,7 +838,9 @@ async function onInteractionCreate(interaction) {
         const parts = customId.split('|');
         const action = parts[0].replace('class-skills', 'learnable-skills');  // Normalize the action
         const modName = parts[1];
-        const className = parts[2];  // This is the class name as provided by the button
+        // The button percent-encodes the class name (Jötunn, names with spaces).
+        let className = parts[2];
+        try { className = decodeURIComponent(className); } catch (error) { /* leave as-is */ }
 
         logger.info(`Processing learnable skills interaction: action=${action}, mod=${modName}, class=${className}`);
 
@@ -885,8 +888,8 @@ async function onInteractionCreate(interaction) {
             // *** MODIFIED lookup step to correctly handle class matching ***
             let skillUseNameForClass = className;  // fallback to raw value
             try {
-                const classDefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
-                const classChunks = helpers.splitContentIntoChunks(classDefsContent);
+                const classDefsContent = helpers.readTextFile(filePaths.classdefsPath);
+                const classChunks = helpers.splitClassRecords(classDefsContent);
 
                 // First try to find exact class name match
                 for (const chunk of classChunks) {
@@ -911,8 +914,8 @@ async function onInteractionCreate(interaction) {
 
             // Read the skills.tok file
             logger.debug(`Reading skills.tok file for mod ${modName}`);
-            const skillsContent = fs.readFileSync(filePaths.skillsFilePath, 'utf8');
-            const skillsChunks = helpers.splitContentIntoChunks(skillsContent);
+            const skillsContent = helpers.readTextFile(filePaths.skillsFilePath);
+            const skillsChunks = helpers.splitSkillRecords(skillsContent);
             logger.debug(`Split skills.tok into ${skillsChunks.length} chunks`);
 
             // For the "Explain" action, generate detailed skill description
@@ -1036,6 +1039,16 @@ async function onInteractionCreate(interaction) {
             }
 
             logger.info(`Found ${learnableSkills.length} learnable skills for class "${skillUseNameForClass}"`);
+
+            if (learnableSkills.length === 0) {
+                // A class with no skills is data, not a failure; say so instead
+                // of rendering an empty page 0/0 with broken buttons.
+                await interaction.reply({
+                    content: `No learnable skills found for class '${className}' in '${modName}'.`,
+                    ephemeral: true
+                });
+                return;
+            }
 
             // Sort skills alphabetically by name
             learnableSkills.sort((a, b) => a.name.localeCompare(b.name));
@@ -1173,10 +1186,10 @@ async function onInteractionCreate(interaction) {
             }
 
             logger.debug(`Reading lookup file for mod "${modName}"`);
-            const lookupContent = fs.readFileSync(filePaths.lookupFilePath, 'utf8');
+            const lookupContent = helpers.readTextFile(filePaths.lookupFilePath);
 
             logger.debug(`Reading class definitions file for mod "${modName}"`);
-            const classdefsContent = fs.readFileSync(filePaths.classdefsPath, 'utf8');
+            const classdefsContent = helpers.readTextFile(filePaths.classdefsPath);
 
             // Build lookup table
             logger.debug(`Building lookup table from ${filePaths.lookupFilePath}`);
@@ -1191,9 +1204,9 @@ async function onInteractionCreate(interaction) {
                 }
             });
 
-            // --- CHANGE 1: Use a regex to split the class definitions file ---
-            // This regex matches every block starting with "CREATECLASS:" until the next "CREATECLASS:" or end of file.
-            const classChunks = classdefsContent.match(/CREATECLASS:[\s\S]*?(?=CREATECLASS:|$)/g);
+            // Split records at CREATECLASS: blank lines inside a class block are
+            // cosmetic and cannot be used as separators.
+            const classChunks = helpers.splitClassRecords(classdefsContent);
             if (!classChunks || classChunks.length === 0) {
                 logger.warn(`No class definitions found in file`);
                 return;
@@ -1213,21 +1226,24 @@ async function onInteractionCreate(interaction) {
                     const displayName = classData.DISPLAYNAMEID ? (entryIdToText[classData.DISPLAYNAMEID] || classData.className) : classData.className;
                     const description = classData.DESCRIPTIONID ? (entryIdToText[classData.DESCRIPTIONID] || '') : '';
 
-                    // Process display names for classes
-                    function processClassName(displayName, createClassName) {
-                        if (!displayName || displayName === '0') {
-                            return createClassName;
-                        }
-                        return `${displayName} (${createClassName})`;
-                    }
-
                     classesList.push({
                         ...classData,
-                        displayName: processClassName(displayName, classData.className),
+                        rawDisplayName: displayName,
                         description
                     });
                     logger.debug(`Parsed class: ${displayName}`);
                 }
+            }
+
+            // Shared display names must carry the CREATECLASS code, or several
+            // pages end up titled "Hero" with no way to tell them apart.
+            const sharedNames = new Set(
+                [...classesList.reduce((counts, cls) => counts.set(cls.rawDisplayName, (counts.get(cls.rawDisplayName) || 0) + 1), new Map())]
+                    .filter(([, count]) => count > 1)
+                    .map(([name]) => name)
+            );
+            for (const cls of classesList) {
+                cls.displayName = helpers.labelClass(cls.rawDisplayName, cls.className, sharedNames);
             }
 
             classesList.sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -1340,3 +1356,5 @@ function register_handlers(event_registry) {
 }
 
 module.exports = register_handlers;
+
+

@@ -9,5 +9,7 @@ devlist.txt
 classdefs.tok
 skills.tok
 .env
+# Local game-data snapshot used by tools/verify (never commit game content).
+.verify/
 # Local-only context for agents (see the file itself); never intended for the repo.
 AGENTS.local.md

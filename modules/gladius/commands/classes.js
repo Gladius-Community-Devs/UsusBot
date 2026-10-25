@@ -33,7 +33,7 @@ module.exports = {
             const classdefsPath = helpers.getModFilePaths(modName).classdefsPath;
             const classes = [];
             try {
-                const content = fs.readFileSync(classdefsPath, 'utf8');
+                const content = helpers.readTextFile(classdefsPath);
                 for (const match of content.matchAll(/^CREATECLASS:\s*(\S+)/gm)) {
                     const name = match[1].trim();
                     if (!name.startsWith('//')) classes.push(name);
@@ -62,7 +62,7 @@ module.exports = {
 
             const classNameInput = interaction.options.getString('class_name');
             if (classNameInput) {
-                searchTerm = sanitizeInput(classNameInput).toLowerCase();
+                searchTerm = classNameInput.trim().toLowerCase();
             }
 
             // Sanitize modName and define paths
@@ -78,8 +78,8 @@ module.exports = {
             }
 
             // Load and parse files
-            const lookupContent = fs.readFileSync(lookupFilePath, 'utf8');
-            const classdefsContent = fs.readFileSync(classdefsPath, 'utf8');
+            const lookupContent = helpers.readTextFile(lookupFilePath);
+            const classdefsContent = helpers.readTextFile(classdefsPath);
 
             // Parse lookup text with more robust error handling
             const entryIdToText = {};
@@ -89,7 +89,7 @@ module.exports = {
                     
                     for (const line of lines) {
                         // Skip invalid lines
-                        if (!line || !line.includes('^')) continue;
+                        if (!line || !line.includes('^') || line.trim().startsWith('//')) continue;
                         
                         const parts = line.split('^');
                         if (parts.length >= 2) {
@@ -107,21 +107,10 @@ module.exports = {
                 this.logger.error(`Invalid lookup content format for ${modName}.`);
             }
 
-            // Parse class definitions - update the splitting logic
+            // Split records at CREATECLASS: blank lines are cosmetic inside a
+            // class block, so they cannot be used as separators.
             const classes = [];
-            // Split on CREATECLASS: to ensure we get complete class definitions
-            const classChunks = classdefsContent.split(/\nCREATECLASS:/);
-            
-            // Process each chunk, skipping the first empty chunk if it exists
-            for (let i = 0; i < classChunks.length; i++) {
-                let chunk = classChunks[i].trim();
-                if (!chunk) continue;
-                
-                // Add back the CREATECLASS: prefix except for first chunk if it already has it
-                if (!chunk.startsWith('CREATECLASS:')) {
-                    chunk = 'CREATECLASS:' + chunk;
-                }
-
+            for (const chunk of helpers.splitClassRecords(classdefsContent)) {
                 const classData = parseClassChunk(chunk);
                 if (classData && classData.className && !classData.className.startsWith('//')) {
                     // Get display name and description
@@ -138,18 +127,31 @@ module.exports = {
 
                     classes.push({
                         ...classData,
-                        displayName,
+                        rawDisplayName: displayName,
                         description
                     });
                 }
             }
 
+            // Shared display names need the CREATECLASS code to tell the pages
+            // apart (Hero x8, Samnite x6, ...).
+            const sharedNames = new Set(
+                [...classes.reduce((counts, cls) => counts.set(cls.rawDisplayName, (counts.get(cls.rawDisplayName) || 0) + 1), new Map())]
+                    .filter(([, count]) => count > 1)
+                    .map(([name]) => name)
+            );
+            for (const cls of classes) {
+                cls.displayName = helpers.labelClass(cls.rawDisplayName, cls.className, sharedNames);
+            }
+
             // Sort classes alphabetically
             classes.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-            // Filter classes if search term provided
+            // Filter classes if search term provided; accept the CREATECLASS name
+            // as well, since that is what the autocomplete offers.
             const filteredClasses = searchTerm ? 
-                classes.filter(c => c.displayName.toLowerCase().includes(searchTerm)) : 
+                classes.filter(c => c.displayName.toLowerCase().includes(searchTerm)
+                    || c.className.toLowerCase().includes(searchTerm)) : 
                 classes;
 
             if (filteredClasses.length === 0) {
@@ -312,3 +314,5 @@ function createClassEmbed(classData, currentPage, totalPages, modName) {
 module.exports.createClassEmbed = createClassEmbed;
 
 // New helper to re-read and filter class definitions
+
+

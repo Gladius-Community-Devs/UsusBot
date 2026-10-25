@@ -39,7 +39,7 @@ module.exports = {
             const filePaths = helpers.getModFilePaths(modName);
             const classes = new Set();
             try {
-                const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
+                const gladiatorsContent = helpers.readTextFile(filePaths.gladiatorsFilePath);
                 const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
                 for (const chunk of gladiatorChunks) {
                     for (const line of chunk.trim().split(/\r?\n/)) {
@@ -87,7 +87,7 @@ module.exports = {
             }
 
             // Verify class exists
-            const gladiatorsContent = fs.readFileSync(filePaths.gladiatorsFilePath, 'utf8');
+            const gladiatorsContent = helpers.readTextFile(filePaths.gladiatorsFilePath);
             const gladiatorChunks = gladiatorsContent.split(/\n\s*\n/);
             const baseClassMatches = new Set();
             
@@ -152,7 +152,7 @@ module.exports = {
                 }
             }
             
-            const statsetsContent = fs.readFileSync(filePaths.statsetsFilePath, 'utf8');
+            const statsetsContent = helpers.readTextFile(filePaths.statsetsFilePath);
             const statsetChunks = statsetsContent.split(/\n\s*\n/);
             
             let targetStatsetData = null;
@@ -229,3 +229,4 @@ module.exports = {
         }
     }
 };
+
