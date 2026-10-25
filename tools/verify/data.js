@@ -68,7 +68,8 @@ function splitBlocks(text, starter) {
 function parseKeyValues(block) {
   const values = new Map();
   for (const line of block.lines) {
-    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*:\s*(.*?)\s*$/);
+    // Keys may contain spaces (gladiators.txt has 'Stat set', 'Skill set', ...).
+    const match = line.match(/^\s*([A-Za-z0-9_]+(?: [A-Za-z0-9_]+)*)\s*:\s*(.*?)\s*$/);
     if (!match) continue;
     const key = match[1].toUpperCase();
     if (!values.has(key)) values.set(key, []);
@@ -371,4 +372,5 @@ module.exports = {
   discoverMods,
   loadMod,
 };
+
 

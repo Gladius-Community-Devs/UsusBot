@@ -121,10 +121,32 @@ The changes are applied locally on top of `3045b23`; nothing is pushed. The harn
 | L8 inert metadata | open | `has_state`, `/ping`'s `input` | — |
 | L9 autocomplete re-parse | open | 24 ms per keystroke | — |
 | L10 registration gate | open | no pre-registration validation | — |
+| M8 variant names in `/recruits` / `/stats` | open | — | needs exact-vs-family decision |
 
 **Post-fix totals:** command matrix 525/525 · components 19/19 · autocomplete 17/17 · sweep 5,080/5,080 · conformance lossless for skills/classes/items in all four mods.
 
 Live registration still shows the old 17 commands until the next deploy; the next boot registers 15.
+
+---
+
+## Class identity model (verified)
+
+The game uses three different keys for "class"; the bot has to use the right one per question.
+
+| Concept | Key | Where it appears |
+|---|---|---|
+| Unit class | `CREATECLASS` (e.g. `ArcherF`) | `classdefs.tok`, `gladiators.txt` `Class:`, class pages, recruits, stats |
+| Skill list | `SKILLUSENAME` (e.g. `Archer`) | `skills.tok` `SKILLUSECLASS`, `/skill` and `/explain` class filters, Learnable Skills |
+| Equipment | per-class `ITEMCAT` triples | `classdefs.tok`; item styles (`weapon, Bow, Archer`) match them |
+
+Verified against Vanilla:
+
+- **No `SKILLUSECLASS` value is a variant class name.** The 57 distinct values are base skill-use names, plus `Other`/`Invalid` and four lowercase spellings (`bandit`, `bear`, `channeler`, `cyclops`) that the filters match case-insensitively.
+- **20 of the 21 same-display/same-skillUse groups have identical `ITEMCAT`.** The exception is `UrsulaCostumeB`, which adds Valkyrie item categories. Item usability therefore usually carries over, but it is defined per class and must be read, not inferred.
+- **Variants differ by attributes and unit stat sets.** Archer has 51 units across sets 31/46/50/149; ArcherF has 31 units across 31/46/50. Gender/region are the usual attribute difference.
+- **Battle requirements carry with the skill list.** `SKILLPREREQ`, `SKILLWEAPONREQ` and the condition keys reference skills, weapons or statuses, not class variants. The bot displays them raw; it does not compute requirement checks yet.
+
+**Open inconsistency (M8).** `/recruits` autocomplete offers `ArcherF`, but the execute path normalises gladiators to the base class and compares against the raw input, so `ArcherF` returns "No gladiators found"; `Archer` returns both genders. `/stats` offers only base names, rejects a typed variant, and picks one "most common" stat set across the family. Needs a decision: variant name = exact class, or family?
 
 ---
 
@@ -332,17 +354,11 @@ Decision: make them findable. `/prizes` currently matches only through lookuptex
 
 ---
 
-## 4. Remaining questions
+## 4. Remaining question
 
-Most decisions are recorded above. Four small ones remain:
-
-1. **`/modules`.** With `/module` removed, `/modules` still reads `enabled_module` to print per-guild state. Remove it too, or simplify it to list the locally loaded modules?
-2. **Mod-data fixes.** The Ragnarok items (stale `NUMCLASSDEFS`, `Druid`'s missing description, the `Valkyrie`/`Sicarii`/`Jötunn` copy-paste, `Usus` → `Samnite`) and the two capitalization typos are author-side data issues, since the bot reads the served files. Do you want a short note you can forward, rather than patching the served data?
-3. **Class titles.** Confirm the `Display (Code)` format for shared names — `Hero (Usus)`, `Samnite (SamniteExp)` — or whether skins should collapse into one entry.
-4. **`/crashreport` wording.** Leave the description as is, or change it to "returns the previous run's log"?
+**Variant names in `/recruits` and `/stats`.** If the typed name is a variant (`ArcherF`), should the command show only that class, or the whole family (`Archer` does both today)? Recommendation: exact class when the typed name is a `CREATECLASS`, family when it is a base name. `/recruits` currently rejects the variant its own autocomplete offers.
 
 ---
-
 ## 5. Fix plan (from your decisions)
 
 1. **Record splitting at the opener.** Replace blank-line splitting for `skills.tok` and `classdefs.tok` with a split at `SKILLCREATE:` / `CREATECLASS:`. Fixes H1 and H4, and makes extra lines or a missing blank line harmless. Do not trust `NUM*` to equal record count.
@@ -406,6 +422,8 @@ node tools/verify/run.js --component "class-skills|Vanilla|ArcherF"
 ```
 
 `tools/verify/sync.ps1` refreshes `.verify/` from the server (read-only; it tars only `data/config`, `data/towns`, `data/units` plus the modders file). `.verify/` is git-ignored and must stay that way — it is game content.
+
+
 
 
 
