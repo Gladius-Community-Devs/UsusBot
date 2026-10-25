@@ -1,4 +1,5 @@
 var fs = require('fs');
+var crypto = require('crypto');
 var APIClient = require('./APIClient.js');
 const Discord = require('discord.js');
 const { REST, Routes, SlashCommandBuilder, Collection } = require('discord.js');
@@ -74,8 +75,9 @@ class ModuleHandler {
      * @param {string} program_path - The absolute path this ModuleHandler will use as its base working directory
      * @param {StateManager} state_manager - The instance of StateManager for this ModuleHandler
      * @param {Logger} logger - The Logger instance for this ModuleHandler
+     * @param {ErrorReporter} reporter - The {@link ErrorReporter} used to surface failures
      */
-    constructor(program_path, state_manager, logger) {
+    constructor(program_path, state_manager, logger, reporter) {
         /** @type {string} The absolute path this ModuleHandler will use as its base working directory */
         this.program_path = program_path;
         /** @type {?external:Discord.Collection<Module>} A {@link external:Discord.Collection} object containing all the modules this bot found. Will be null until {@link ModuleHandler#discover_modules} runs. */
@@ -86,6 +88,8 @@ class ModuleHandler {
         this.state_manager = state_manager;
         /** @type {external:Logger} The {@link external:Logger} object for this {@link ModuleHandler}. Will also be passed to commands when they run. */
         this.logger = logger;
+        /** @type {ErrorReporter} Surfaces failures to the log file and to Discord. */
+        this.reporter = reporter;
     }
 
     /**
@@ -226,6 +230,10 @@ class ModuleHandler {
             return;
         }
 
+        // One id per invocation so every API call made for this command, and
+        // any failure it produces, can be grouped in the log.
+        const correlationId = crypto.randomUUID();
+
         try {
             if (!moduleConfig.enabled) {
                  await interaction.reply({ content: 'This module is disabled.', ephemeral: true });
@@ -243,7 +251,7 @@ class ModuleHandler {
                  extra.state = state;
             }
             if (command.needs_api) {
-                 extra.api = new APIClient();
+                 extra.api = new APIClient({ correlationId });
             }
 
             // If command.data is present, it's a native slash command
@@ -281,8 +289,24 @@ class ModuleHandler {
             }
 
         } catch (error) {
-            this.logger.error(`Error executing ${commandName} via interaction`);
-            this.logger.error(error);
+            // The API client already reported its own failures; anything else
+            // (a command bug, a rejected reply) is reported here with the
+            // context needed to find it again.
+            if (!error || error.reported !== true) {
+                if (this.reporter) {
+                    this.reporter.report(error, {
+                        command: commandName,
+                        user: interaction.user?.id,
+                        guild: interaction.guildId,
+                        correlationId,
+                    });
+                } else {
+                    this.logger.error(`Error executing ${commandName} via interaction`);
+                    this.logger.error(error);
+                }
+            } else {
+                this.logger.error({ message: `Command ${commandName} failed`, command: commandName, correlationId });
+            }
             if (interaction.replied || interaction.deferred) {
                 await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
             } else {

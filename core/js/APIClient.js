@@ -1,29 +1,75 @@
 var axios = require('axios');
 var fs = require('fs');
-
-//TEST 11/24/2023 1:07 AM
+var { ApiError } = require('./errors.js');
 
 /**
- * Class that provides a simple wrapper around Axios to make interacting with the LabsAPI easier.
- * You'll need a variable called auth_win that will store a popup window used for CAS authentication.
- * The popup window will call opener.api.do_key_grab(), so you'll want to name your instance "api".
+ * Class that wraps Axios to make interacting with the LabsAPI easier.
+ *
+ * Every call resolves to the API's `data` section on success and **throws** an
+ * {@link ApiError} on any non-2xx response or transport failure. Failures are
+ * reported through the module-level reporter (see {@link APIClient.configure}),
+ * so callers must let the error propagate: the old behaviour of logging to
+ * stdout and returning `undefined` made every downstream
+ * `resp.hasOwnProperty(...)` fail with an unrelated TypeError and discarded
+ * the real cause.
+ *
+ * @example
+ * const APIClient = require('./APIClient.js');
+ * APIClient.configure({ reporter });          // once at boot
+ * const api = new APIClient({ correlationId });
+ * const resp = await api.get('module', { name: 'gladius' });
  */
+
+/** @type {?Object} Shared sink for every instance; set by {@link APIClient.configure}. */
+let reporter = null;
+
+/** Cached API token; read once instead of on every request. */
+let cachedToken = null;
+
+/**
+ * Read the API token from beside the deployment root, caching the result.
+ * @returns {string} The trimmed token.
+ * @throws {Error} If the token file cannot be read.
+ */
+function readToken() {
+	if (cachedToken !== null) return cachedToken;
+	try {
+		cachedToken = fs.readFileSync(__dirname + '/../../../usus_api_token.txt', 'utf8').trim();
+	} catch (error) {
+		throw new Error('usus_api_token.txt could not be read: ' + error.message);
+	}
+	return cachedToken;
+}
+
 class APIClient {
 
 	/**
-	 * Creates an instance of APIClient. Will check for an access token in browser cookie storage.
-	 * If no access token is found, it will call this.popup_auth_win(), which opens a popup window
-	 * that handles CAS authentication and passes back a temp_key, which can be exchanged for an
-	 * access token. Once the APIClient has a token, it will fire an 'ApiReady' event on document.
+	 * @param {Object} [options]
+	 * @param {number} [options.timeoutMs=10000] - Per-request timeout.
+	 * @param {?string} [options.correlationId] - Ties every call made for one
+	 *   command invocation together in the logs.
 	 */
-	constructor() {
-		this.api_url = "https://budaslounge.com/usus_api/";
-		this.access_url = "UsusBot Server";
-		this.token = fs.readFileSync(__dirname + "/../../../usus_api_token.txt", "utf8").trim();
+	constructor(options = {}) {
+		this.api_url = 'https://budaslounge.com/usus_api/';
+		this.access_url = 'UsusBot Server';
+		this.timeoutMs = options.timeoutMs || 10000;
+		this.correlationId = options.correlationId || null;
+		this.token = readToken();
 	}
 
 	/**
-	 * Builds the URL for a specific resource of form: [this.api_url][resource].php
+	 * Install the shared error reporter. Called once at boot; without it,
+	 * failures fall back to stderr.
+	 * @param {Object} options
+	 * @param {Object} options.reporter - The reporter to notify.
+	 * @returns {void}
+	 */
+	static configure({ reporter: configuredReporter }) {
+		reporter = configuredReporter || null;
+	}
+
+	/**
+	 * Builds the URL for a specific resource of form: [this.api_url][resource]
 	 * @param {string} resource - The name of the resource to build URL for
 	 * @return {string} The proper URL for the endpoint of the given resource
 	 */
@@ -32,99 +78,120 @@ class APIClient {
 	}
 
 	/**
-	 * Generic error handler for get, post, put, and delete functions. Abstracted out to reduce redundant code, and to make
-	 * it easier to change.
+	 * Perform one request and translate any failure into an {@link ApiError}.
 	 *
-	 * @param error The error that was thrown
+	 * The token is sent as a query parameter on GET (Axios cannot send a body
+	 * with GET) and in the body otherwise; either way it is redacted before the
+	 * error is stored, so failures can be logged safely.
+	 *
+	 * @param {string} method - HTTP method: get, post, put or delete.
+	 * @param {string} resource - The resource to act on.
+	 * @param {Object} payload - Query parameters (GET) or request body.
+	 * @returns {Promise<Object>} The `data` section of the API response.
+	 * @throws {ApiError} On any non-2xx response or transport failure.
 	 */
-	error_handler(error) {
-		if (error.hasOwnProperty("response") && error.response.hasOwnProperty("status") && error.response.status == 401) {
-			console.log("Unauthorized Error!");
-			console.error(error.response);
+	async request(method, resource, payload) {
+		const startedAt = Date.now();
+		const body = { ...(payload || {}), _token: this.token, _api_url: this.access_url };
+		const config = {
+			method,
+			url: this.buildUrl(resource),
+			timeout: this.timeoutMs,
+		};
+		if (method === 'get') {
+			config.params = body;
 		} else {
-			console.error(error);
+			config.data = body;
+		}
+
+		try {
+			const resp = await axios.request(config);
+			return resp.data;
+		} catch (error) {
+			const apiError = new ApiError({
+				method,
+				resource,
+				status: error?.response?.status ?? null,
+				code: error?.code ?? null,
+				body: this.describeBody(error),
+				durationMs: Date.now() - startedAt,
+				params: body,
+				correlationId: this.correlationId,
+			});
+			this.report(apiError);
+			throw apiError;
 		}
 	}
 
 	/**
-	 * The get, post, put, and delete methods are provided for ease of access, so that all of these methods can be abstracted
-	 * to accept essentially the same parameters. This is only necessary because Axios does not support sending a request body
-	 * with a get request, so we must use params instead. For delete, we have to provide the request body to the config of the
-	 * Axios function call, because it does not provide a parameter for data on delete. I understand that by using params instead
-	 * of a file path for identifying resources, this API does not follow conventional RESTful standards, but I am not sure it's
-	 * possible to use a file path for identifying resources in our case because we're using PHP with an Apache server.
-	 *
-	 * @param resource - The type of resource you want to perform an action on
-	 * @param params/data - The request body (should be JSON/JavaScript Object)
+	 * Render the server's response body for logging without blowing up on an
+	 * unexpected shape.
+	 * @param {*} error - The Axios error.
+	 * @returns {?string} A truncated, printable body.
 	 */
+	describeBody(error) {
+		const data = error?.response?.data;
+		if (data === undefined || data === null) return error?.message || null;
+		if (typeof data === 'string') return data.slice(0, 500);
+		try {
+			return JSON.stringify(data).slice(0, 500);
+		} catch (_) {
+			return null;
+		}
+	}
 
 	/**
-	 * Used for obtaining information about a specific resource instance or listing instances of a resource. Can be ordered and filtered as well.
-	 *
-	 * An async wrapper for axios.get(). This function should be placed inside a try/catch block, as it will throw any errors that come
-	 * its way. It is not necessary to include an access token in the 'params' object, as it will be added before the API call is made.
-	 * It is also worth mentioning that any response code from the server that is not in the 2xx range will be thrown as an error. To see
-	 * the server's response in this case, look at 'error.response'. When the server responds, this function will fire an ApiGET event containing
-	 * the resource and params passed to it, as well as the server's response.
-	 * @param {string} resource - A string containing the name of the resource for which to make a request -- will autmatically be built into a URL.
-	 * @param {Object} params - An object containing parameters -- Because this is a GET request, these will be parsed into a query string.
-	 * @return {Object} The data section of the LabsAPI server's response
+	 * Hand the failure to the shared reporter, or stderr when unconfigured.
+	 * @param {ApiError} apiError - The failure to report.
+	 * @returns {void}
+	 */
+	report(apiError) {
+		if (reporter) {
+			reporter.report(apiError, { correlationId: this.correlationId });
+			return;
+		}
+		console.error('[APIClient] ' + apiError.message);
+	}
+
+	/**
+	 * Used for obtaining information about a specific resource instance or
+	 * listing instances of a resource. Can be ordered and filtered as well.
+	 * @param {string} resource - The name of the resource for which to make a request
+	 * @param {Object} params - Parameters, parsed into a query string
+	 * @return {Promise<Object>} The data section of the API response
 	 */
 	async get(resource, params) {
-		try {
-			params._token = this.token;
-			params._api_url = this.access_url;
-			var resp = await axios.get(this.buildUrl(resource), { params });
-			return resp.data;
-		} catch (error) {
-			this.error_handler(error);
-		}
+		return this.request('get', resource, params);
 	}
 
 	/**
 	 * Used for creating a new instance of a resource.
-	 *
-	 * An async wrapper for axios.post(). This function should be placed inside a try/catch block, as it will throw any errors that come
-	 * its way. It is not necessary to include an access token in the 'params' object, as it will be added before the API call is made.
-	 * It is also worth mentioning that any response code from the server that is not in the 2xx range will be thrown as an error. To see
-	 * the server's response in this case, look at 'error.response'. When the server responds, this function will fire an ApiGET event containing
-	 * the resource and params passed to it, as well as the server's response.
-	 *
-	 * @param {string} resource - A string containing the name of the resource for which to make a request -- will autmatically be built into a URL.
-	 * @param {Object} params - An object containing parameters
-	 * @return {Object} The data section of the LabsAPI server's response
+	 * @param {string} resource - The name of the resource to act on
+	 * @param {Object} data - Request body
+	 * @return {Promise<Object>} The data section of the API response
 	 */
 	async post(resource, data) {
-		try {
-			data._token = this.token;
-			data._api_url = this.access_url;
-			var resp = await axios.post(this.buildUrl(resource), data);
-			return resp.data;
-		} catch (error) {
-			this.error_handler(error);
-		}
+		return this.request('post', resource, data);
 	}
 
+	/**
+	 * Used for updating an existing instance of a resource.
+	 * @param {string} resource - The name of the resource to act on
+	 * @param {Object} data - Request body
+	 * @return {Promise<Object>} The data section of the API response
+	 */
 	async put(resource, data) {
-		try {
-			data._token = this.token;
-			data._api_url = this.access_url;
-			var resp = await axios.put(this.buildUrl(resource), data);
-			return resp.data;
-		} catch (error) {
-			this.error_handler(error);
-		}
+		return this.request('put', resource, data);
 	}
 
+	/**
+	 * Used for deleting an instance of a resource.
+	 * @param {string} resource - The name of the resource to act on
+	 * @param {Object} data - Request body
+	 * @return {Promise<Object>} The data section of the API response
+	 */
 	async delete(resource, data) {
-		try {
-			data._token = this.token;
-			data._api_url = this.access_url;
-			var resp = await axios.delete(this.buildUrl(resource), { data });
-			return resp.data;
-		} catch (error) {
-			this.error_handler(error);
-		}
+		return this.request('delete', resource, data);
 	}
 }
 

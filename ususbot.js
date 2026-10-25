@@ -20,12 +20,19 @@ var ModuleHandler = require('./core/js/module_handler.js');
 var EventRegistry = require('./core/js/event_registry.js');
 var StateManager = require('./core/js/state_manager.js');
 var LogHandler = require('./core/js/log_handler.js');
+var ErrorReporter = require('./core/js/error_reporter.js');
+var APIClient = require('./core/js/APIClient.js');
 
 var logger = LogHandler.build_logger(__dirname + "/" + config.log_folder);
 
+// One sink for operational failures: a structured log record plus deduplicated
+// Discord alerts, so nothing fails silently outside the console again.
+var reporter = new ErrorReporter({ logger });
+APIClient.configure({ reporter });
+
 var state_manager = new StateManager(logger);
 
-var modules = new ModuleHandler(__dirname, state_manager, logger);
+var modules = new ModuleHandler(__dirname, state_manager, logger, reporter);
 modules.discover_modules(__dirname + "/" + config.modules_folder);
 modules.discover_commands();
 
@@ -63,7 +70,9 @@ async function botInit () {
     client.user.setActivity(config.bot_activity.name, { type: ActivityType.Watching });
 }
 
-client.on('ready', botInit);
+client.on('ready', () => {
+    botInit().catch((error) => reporter.report(error, { command: 'ready' }));
+});
 
 function authClient() {
     var token;
@@ -74,7 +83,7 @@ function authClient() {
         logger.error(error);
     }
 
-    client.login(token);
+    client.login(token).catch((error) => reporter.report(error, { command: 'login' }));
 }
 
 client.on('interactionCreate', async interaction => {
