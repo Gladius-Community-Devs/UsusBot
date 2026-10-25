@@ -18,7 +18,6 @@ var config = JSON.parse(fs.readFileSync('ususbot.json'));
 
 var ModuleHandler = require('./core/js/module_handler.js');
 var EventRegistry = require('./core/js/event_registry.js');
-var StateManager = require('./core/js/state_manager.js');
 var LogHandler = require('./core/js/log_handler.js');
 var ErrorReporter = require('./core/js/error_reporter.js');
 var APIClient = require('./core/js/APIClient.js');
@@ -30,9 +29,7 @@ var logger = LogHandler.build_logger(__dirname + "/" + config.log_folder);
 var reporter = new ErrorReporter({ logger });
 APIClient.configure({ reporter });
 
-var state_manager = new StateManager(logger);
-
-var modules = new ModuleHandler(__dirname, state_manager, logger, reporter);
+var modules = new ModuleHandler(__dirname, logger, reporter);
 modules.discover_modules(__dirname + "/" + config.modules_folder);
 modules.discover_commands();
 
@@ -96,5 +93,16 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.on('messageCreate', (message) => {
-   modules.handle_command(message);
+    if (message.author.bot) return;
+
+    // The bot is guild-scoped, so a DM can only be someone looking for where it
+    // lives: answer with the invite instead of crashing on the missing guild.
+    if (!message.inGuild()) {
+        const invite = config.guild_invite || 'https://discord.gg/wqMFnTWk4d';
+        message.reply({ content: `I only work inside the Gladius server. Come say hi: ${invite}` }).catch(() => {});
+        return;
+    }
+
+    // The retired `;command` form now just points at its slash command.
+    modules.hint_legacy_prefix(message);
 });

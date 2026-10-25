@@ -58,8 +58,7 @@ const InteractionAdapter = require('./interaction_adapter.js');
  * @property {number} num_args - The minimum number of arguments expected for this command. If less than this amount are provided, the command will not be run and the bot will display the {@link Command#syntax}.
  * @property {boolean} args_to_lower - All arguments passed with this command will be converted to lowercase before the command runs if this is true.
  * @property {boolean} needs_api - Whether this command makes use of the integrated RESTful API. If true, an instance of APIClient will be passed as 'extra.api' in the {@link Command#execute} function.
- * @property {boolean} has_state - Whether this command makes use of the {@link StateManager}. If true, the {@link ModuleHandler} will automatically build a state and pass it via 'extra.state' in the {@link Command#execute} function.
- * @property {function(external:Discord.Message, string[], Object)} execute - The function that executes the command. This is where all of the command's logic ultimately lies. The array of arguments includes the name of the command itself as the first argument. The 'extra' object has properties that vary: 'extra.api' if {@link Command#needs_api} is true, 'extra.state' if {@link Command#has_state} is true, 'extra.module_handler' if this is a core module ({@link ModuleConfig#is_core} is true).
+ * @property {function(external:Discord.Interaction, Object)} execute - The function that executes the command. This is where all of the command's logic ultimately lies. The 'extra' object has properties that vary: 'extra.api' if {@link Command#needs_api} is true, 'extra.module_handler' if this is a core module ({@link ModuleConfig#is_core} is true).
  */
 
 /**
@@ -73,19 +72,16 @@ class ModuleHandler {
      *
      * @constructor
      * @param {string} program_path - The absolute path this ModuleHandler will use as its base working directory
-     * @param {StateManager} state_manager - The instance of StateManager for this ModuleHandler
      * @param {Logger} logger - The Logger instance for this ModuleHandler
      * @param {ErrorReporter} reporter - The {@link ErrorReporter} used to surface failures
      */
-    constructor(program_path, state_manager, logger, reporter) {
+    constructor(program_path, logger, reporter) {
         /** @type {string} The absolute path this ModuleHandler will use as its base working directory */
         this.program_path = program_path;
         /** @type {?external:Discord.Collection<Module>} A {@link external:Discord.Collection} object containing all the modules this bot found. Will be null until {@link ModuleHandler#discover_modules} runs. */
         this.modules = null;
         /** @type {?external:Discord.Collection<Module>} A {@link external:Discord.Collection} object containing all the modules this bot found but were disabled (by their config). Will be null until {@link ModuleHandler#discover_modules} runs. */
         this.disabled_modules = null;
-        /** @type {StateManager} The {@link StateManager} instance for this {@link ModuleHandler}. Will be passed to commands when they run with the proper states loaded. */
-        this.state_manager = state_manager;
         /** @type {external:Logger} The {@link external:Logger} object for this {@link ModuleHandler}. Will also be passed to commands when they run. */
         this.logger = logger;
         /** @type {ErrorReporter} Surfaces failures to the log file and to Discord. */
@@ -245,11 +241,6 @@ class ModuleHandler {
                 extra.module_handler = this;
             }
 
-            if (command.has_state) {
-                 var stateKey = moduleConfig.name + ":" + (command.data ? command.data.name : command.name);
-                 var state = await this.state_manager.get_state(interaction.user.id, stateKey);
-                 extra.state = state;
-            }
             if (command.needs_api) {
                  extra.api = new APIClient({ correlationId });
             }
@@ -282,10 +273,6 @@ class ModuleHandler {
                 }
 
                 await command.execute(adapter, legacyArgs, extra);
-            }
-
-            if (command.has_state && extra.state) {
-                 this.state_manager.save_state(extra.state);
             }
 
         } catch (error) {
@@ -369,175 +356,35 @@ class ModuleHandler {
     }
 
     /**
-     * This function is in charge of handling {@link Command} execution (discovering what command was called, and from which module, then executing the command)
+     * Answers the retired `;command` form with a pointer to the slash command it
+     * became.
      *
-     * It will loop through all the {@link MessageHandler#modules} and check the registered {@link ModuleConfig#command_prefix}. If the registered prefix for the module
-     * matches the beginning of the message, that module will be checked to see if it has a command with the {@link Command#name} of the command that was run. If a
-     * command is found, this function will check the number of arguments provided to the command to see if it has at least that command's {@link Command#num_args}.
-     * If so, its {@link Command#execute} function will be run.
+     * Message-based execution is gone: every command is a slash command now, and
+     * the old path only re-derived what the slash router already knows while
+     * adding two API round trips per command, a token read per message and a
+     * crash on every DM. Keeping the hint means muscle memory (";skill") gets an
+     * answer instead of silence, without reviving any of that machinery.
      *
-     * If the module that the command belongs to is registered as a core module, this ModuleHandler will be passed as a parameter to the execute()
-     * function in 'extra.module_handler'. This allows core modules to access the internals of UsusBot.
-     *
-     * Additionally, if the message is of the format "//[module]:[command]", this function will ONLY check the provided {@link Module} for the {@link Command}
-     * to run. This is helpful for commands from different modules that use the same name, because normally the bot would just pick the command from
-     * the first module it finds to run.
-     *
-     * One more thing: every command will be passed an instance of APIClient() if {@link Command#needs_api} is true, which allows the commands an easy way to get
-     * access to the API. For more information on how to structure a command file, look at one of the existing commands (I reccommend ping, since it's simple).
-     * 
-     * @param {external:Discord.Message} message - The {@link external:Discord.Message} passed to us by the discord.js event handler
+     * @param {external:Discord.Message} message - A guild message the bot can see.
+     * @returns {Promise<void>|undefined} Resolves once a hint is sent, if any.
      */
-    async handle_command(message) {
-        this.logger.info("Got command: " + message.content);
-        var api = new APIClient();
-        if (message.author.bot) return; //Ignore messages from bots
+    hint_legacy_prefix(message) {
+        const content = (message.content || '').trim();
 
-        var command_args = message.content.split(" ");
+        for (const mod of this.modules.values()) {
+            const prefix = mod.config.command_prefix;
+            if (!prefix || !content.startsWith(prefix)) continue;
 
-        var current_module;
-        var current_command;
+            const commandName = content.slice(prefix.length).split(/\s+/)[0];
+            if (!commandName || !mod.commands.has(commandName)) continue;
 
-        //This block is for when the user runs the command in the form '//module:command'
-        if (command_args[0].startsWith("//") && command_args[0].includes(":")) {
-            var spec_module = command_args[0].substring(2, command_args[0].indexOf(":"));
-            var spec_command = command_args[0].substring(command_args[0].indexOf(":") + 1);
-            if (this.modules.has(spec_module)) { //Specified module exists
-                current_module = this.modules.get(spec_module);
-                var respModule = await api.get('module', {
-                    name: current_module.config.name
-                });
+            const command = mod.commands.get(commandName);
+            const slashName = command.data ? command.data.name : command.name;
+            if (!slashName) continue;
 
-                if (!respModule || !respModule.modules || respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
-                    message.channel.send("Sorry, the database does not contain a record of the module: " + spec_module);
-                    return;
-                }
-
-                var respEnabled = await api.get('enabled_module', {
-                    server_id: message.channel.guild.id,
-                    module_id: parseInt(respModule.modules[0].module_id)
-                });
-
-                if (!respEnabled || !respEnabled.enabled_modules || respEnabled.enabled_modules.length == 0) { //The module is not enabled for the server this message came from
-                    message.channel.send("That module is disabled on this server!");
-                    return;
-                }
-
-                if (current_module.commands.has(spec_command)) { //Command exists in this module
-                    current_command = current_module.commands.get(spec_command);
-                    // Check if command is migrated to slash-only (no execute method with message signature if we standardize)
-                    // But assume for now execute handles it if we adapt.
-                    // Actually, if we migrated the command to only accept interaction, this will crash.
-                    // We need a way to detect if legacy execution is supported.
-                    
-                    if (current_command.data && !current_command.syntax) {
-                        message.channel.send("This command has been migrated to Slash Commands. Please use `/" + current_command.data.name + "` instead.");
-                        return;
-                    }
-
-                } else { //Command specified does not exist in the specified module
-                    message.channel.send("The module '" + spec_module + "' has no command '" + spec_command + "'.");
-                    return;
-                }
-            } else { //Specified module does not exist
-                message.channel.send("Sorry, I couldn't find the module: " + spec_module);
-                return;
-            }
-        } else { //This section runs when user uses form '/[command]' (the module will be found automatically)
-            var found_command = false;
-            var matched_prefix = false;
-            //this.logger.info("Checking for command: " + command_args[0]);
-            for (var current_module_name of Array.from(this.modules.keys())) { //Iterate all modules
-                current_module = this.modules.get(current_module_name);
-
-                if (message.content.startsWith(current_module.config.command_prefix)) { //This module's command prefix matches the one used
-                    //this.logger.info("Found module with matching prefix: " + current_module.config.command_prefix);
-                    matched_prefix = true;
-                    var command_name = command_args[0].substring(current_module.config.command_prefix.length);
-
-                    if (current_module.commands.has(command_name)) { //The current module has a command with the specified name
-                        var respModule = await api.get('module', {
-                            name: current_module.config.name
-                        });
-                        //this.logger.info("Checking if module is enabled on server..." + respModule);
-                        if (!respModule || !respModule.modules || respModule.modules.length == 0) { //Module exists in UsusBot, but not in database
-                            continue;
-                        }
-
-                        var respEnabled = await api.get('enabled_module', {
-                            server_id: message.channel.guild.id,
-                            module_id: parseInt(respModule.modules[0].module_id)
-                        });
-
-                        if (!respEnabled || !respEnabled.enabled_modules || respEnabled.enabled_modules.length == 0) { //Module is not enabled on this server
-                            continue;
-                        }
-
-                        found_command = true;
-                        command_args[0] = command_name;
-                        current_command = current_module.commands.get(command_args[0]);
-                        
-                        // Check for migration
-                        if (current_command.data && !current_command.syntax) {
-                             message.channel.send("This command has been migrated to Slash Commands. Please use `/" + current_command.data.name + "` instead.");
-                             return;
-                        }
-                        
-                        break;
-                    }
-                }
-            }
-
-            if (matched_prefix && !found_command) {
-                message.channel.send("Sorry, I couldn't find that command! Try" + "```" + ";help" + "```" + "for a list of all commands!");
-                return;
-            } else if (!matched_prefix) {
-                return;
-            }
+            const hint = `\`${prefix}${commandName}\` is now \`/${slashName}\`. Slash commands are the only supported form.`;
+            return message.channel.send({ content: hint }).catch(() => {});
         }
-
-        if (command_args.length - 1 >= current_command.num_args) { //Command contains at least the required number of arguments
-            if (current_command.args_to_lower) { //If set in command, make all arguments lowercase
-                for (var i = 0; i < command_args.length; i++) {
-                    command_args[i] = command_args[i].toLowerCase();
-                }
-            }
-
-            var extra = {}; //This will contain all of the extra variables that a command may need, based on its configuration
-
-            if (current_module.config.is_core) { //If this module is a core module, it gains access to this ModuleHandler
-                extra.module_handler = this;
-            }
-
-            if (current_command.has_state) { //If command uses state system, must grab the state
-                var state = await this.state_manager.get_state(message.author.id, current_module.config.name + ":" + current_command.name);
-                extra.state = state;
-            }
-
-            if (current_command.needs_api) { //If command needs to access the API, we pass it here
-                extra.api = api;
-            }
-
-            await current_command.execute(message, command_args, extra); //NOTE: ALL command execute functions MUST be async!
-
-            if (current_command.has_state) { //If this command used the state system, we must save any changes to the state
-                this.state_manager.save_state(extra.state);
-            }
-        } else { //Not enough arguments provided
-            this.invalid_syntax(current_module, command_args[0], message);
-        }
-    }
-
-    /**
-     * This function is called when a {@link Command} is run, but less than {@link Command#num_args} arguments are provided.
-     *
-     * @param {Module} current_module The {@link Module} this command belongs to
-     * @param {string} command The {@link Command#name} of the command that was matched to the message
-     * @param {external:Discord.Message} message The message the user sent containing this command
-     */
-    invalid_syntax(current_module, command, message) {
-        var prefix = current_module.config.command_prefix;
-        message.channel.send("Not enough arguments! Syntax: `" + prefix + current_module.commands.get(command).syntax + "`");
     }
 }
 
