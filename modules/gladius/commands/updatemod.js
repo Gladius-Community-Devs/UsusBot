@@ -14,6 +14,28 @@ function getAllModNames(config) {
     return [...new Set(Object.values(config).flatMap(normalizeModNames))];
 }
 
+/**
+ * Updates currently running, keyed by mod name.
+ *
+ * Two runs for the same mod would share uploads/<Mod>/patch.xdelta, the
+ * working copy of vanilla.iso and the unpack directories, so whichever run
+ * cleaned up first would delete the other's in-flight artifacts. Runs for
+ * different mods use different folders and stay independent. In-memory is
+ * sufficient: there is one bot instance, and a restart has no in-flight run
+ * left to protect.
+ * @type {Map<string, {startedAt: number, userId: string}>}
+ */
+const inflightUpdates = new Map();
+
+/**
+ * Release the in-flight marker for a mod, if one is held.
+ * @param {?string} modName - The mod whose marker should be cleared.
+ * @returns {void}
+ */
+function releaseUpdateLock(modName) {
+    if (modName) inflightUpdates.delete(modName);
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('updatemod')
@@ -67,6 +89,7 @@ module.exports = {
         const userId = interaction.user?.id || 'unknown';
         const attachmentName = attachment?.name || 'unknown';
         let activeModName = requestedModName || null;
+        let lockedMod = null;
 
         // Defer immediately — processing can take a long time
         await interaction.deferReply();
@@ -229,6 +252,19 @@ module.exports = {
             const outputIsoPath = path.join(modFolder, sanitizedModDisplayName + '_modded.iso');
             this.logger.info(`Prepared paths for ${modDisplayName}: modFolder=${modFolder}, patch=${patchFilePath}, outputIso=${outputIsoPath}.`);
 
+            // Refuse a second concurrent run for the same mod. Different mods use
+            // different folders and may run in parallel; the same mod shares its
+            // patch, ISO and unpack directories with itself.
+            if (inflightUpdates.has(modDisplayName)) {
+                const running = inflightUpdates.get(modDisplayName);
+                const elapsed = Math.round((Date.now() - running.startedAt) / 1000);
+                this.logger.warn(`updatemod rejected for ${userId}: ${modDisplayName} already in flight (${elapsed}s).`);
+                await setStatus(`**${modDisplayName}** is already being updated (started ${elapsed}s ago). Try again once it finishes.`);
+                return;
+            }
+            inflightUpdates.set(modDisplayName, { startedAt: Date.now(), userId });
+            lockedMod = modDisplayName;
+
             // Clean previous artifacts
             const removedArtifacts = [];
             for (const artifactPath of [patchFilePath, workingVanillaPath, outputIsoPath, fileListPath]) {
@@ -265,6 +301,7 @@ module.exports = {
             proc.stderr.on('data', d => { stderr += d.toString(); });
             proc.on('error', error => {
                 this.logger.error(`Failed to start xdelta3 for ${modDisplayName}: ${error?.stack || error?.message || error}`);
+                releaseUpdateLock(modDisplayName);
                 setStatus('Failed to start xdelta3. Is it installed on the server?');
             });
             proc.on('close', code => {
@@ -480,18 +517,21 @@ module.exports = {
                         .catch(err => {
                             this.logger.error(`Unpack pipeline failed for ${modDisplayName}: ${err?.stack || err?.message || err}`);
                             setStatus('An error occurred during unpack: ' + err.message);
-                        });
+                        })
+                        .finally(() => releaseUpdateLock(modDisplayName));
                 } else {
                     this.logger.error(
                         `xdelta3 failed for ${modDisplayName} with exit code ${code}; outputIsoExists=${outputIsoExists}: ` +
                         `${(stderrSummary || stdoutSummary || 'no process output').slice(0, 800)}`
                     );
                     this.logger.error('xdelta3 failed', stderr || ('exit code ' + code));
+                    releaseUpdateLock(modDisplayName);
                     setStatus('Patch application failed. Check that the patch matches vanilla.iso.');
                 }
             });
         } catch (err) {
             this.logger.error(`Error updating ${activeModName || requestedModName || 'unknown mod'}: ${err?.stack || err?.message || err}`);
+            releaseUpdateLock(lockedMod);
             await setStatus('An error occurred while processing the patch.');
         }
     }
