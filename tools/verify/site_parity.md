@@ -1,4 +1,4 @@
-> **P0/P1 implemented locally:** class catalog and text decoding are in `site_p0.md`; Stats Lab, learnable skills, URL state, skill anchors/payload trim and the Command Companion are in `site_p1.md`. The cumulative deploy package is `.verify/site-p1.zip`. The findings below are the original stocktake.
+> **P0/P1 implemented locally:** class catalog and text decoding are in `site_p0.md`; Stats Lab, learnable skills, URL state, skill anchors/payload trim and the Command Companion are in `site_p1.md`. The cumulative deploy package is `.verify/site-p1.zip`; P1 is deployed live as of 2026-10-26 (dedicated Gladius Apache log, 600/15 rate limit with assets skipped). The findings below are the original stocktake.
 
 > **P0 implemented locally:** the class catalog, text decoding and stats/recruits/stats-page fixes are in site_p0.md; the deploy package is .verify/site-p0.zip. The findings below are the original stocktake.
 
@@ -228,5 +228,6 @@ Ordered by user value and dependency.
   modder-gated, `/relay/api` is admin/relay-gated.
 - Live measurements above were taken with `curl` against `127.0.0.1:7000`; no writes.
 - Site files were copied read-only to the gitignored `.verify/site/` for analysis only.
+
 
 

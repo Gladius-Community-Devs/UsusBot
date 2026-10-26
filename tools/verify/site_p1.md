@@ -99,4 +99,46 @@ P0+P1 patch (20 files) and supersedes `site-p0.zip`. Copy over the live site,
 back it up first, restart `gladiuscommunity-website.service`. No dependency,
 config or database changes.
 
+## Live deployment (2026-10-26)
 
+- Backup: `/var/backups/gladiuscommunity-20261026-135236` (app.js, routes, public, utils, middleware, config, package files, data; Apache config).
+- Site package deployed to `/var/www/gladiuscommunity` and `gladiuscommunity-website.service` restarted.
+- Apache vhost now has its own logs:
+  - `CustomLog ${APACHE_LOG_DIR}/gladiuscommunity-access.log combined`
+  - `ErrorLog ${APACHE_LOG_DIR}/gladiuscommunity-error.log`
+  - `apache2ctl configtest` passed; Apache reloaded gracefully.
+- Live smoke tests: `/homepage`, `/commands`, `/classes`, `/recruits`, `/stats` = 200; `ArcherF` class/stats/recruits return the new labels; skills gzip = 109 KB.
+- Rate limit: 110 consecutive homepage requests → **110 × 200**, no 429.
+- Utilization after deploy: load ~2.2 (Minecraft dominates), 21 GiB / 59 GiB RAM used, disk 37%, site node ~103 MB RSS, ~12.9% CPU during startup.
+
+## What remains
+
+**P1/P2 site work still open**
+
+1. **Bot→site deep links**: bot replies should link to the now-deep-linkable pages
+   (`/skills?mod=&q=&mode=`, `/classes?mod=&class=`, `/recruits?mod=&class=`,
+   `/stats?mod=&class=&level=`). Needs a site base URL setting in the bot.
+2. **Prizes and item-skill URL state** (`?mod=&name=`, `?mod=&q=`) and copy links;
+   the pages are complete but not deep-linkable.
+3. **Admin/modder parity**: graphical `add_modder` (read/write the allowed list),
+   `updatemod` status/upload parity, and a crash-log/ping health panel. The site
+   already has admin metrics, xDelta and ISO tools.
+4. **Site version control and deploy pipeline**: the site still has no git repo
+   and manual `.bak` files. Put it under git and deploy from a checkout.
+5. **Unify the class catalog**: the bot and site now each have a catalog
+   implementation; move them to one shared source to stop future divergence.
+6. **Lazy explain / per-skill API**: payload is 1.59 MB raw / 109 KB gzip; a
+   per-skill endpoint would make first load lighter on mobile.
+7. **Traffic observability**: the new Gladius log is now clean; add a small
+   dashboard/alert for human page views vs 429s, and consider fail2ban for the
+   scanner IPs.
+8. **Optional polish**: accessibility pass, item compare deep links, more
+   screenshots/QA on mobile.
+
+**Bot work unrelated to the site**
+
+- The bot is deployed at `1fccf98`; site docs commits are local only and were not
+  pushed (a docs-only push would restart the bot).
+- Tournament remains empty by design.
+- Data quirks (Ragnarok `NUMCLASSDEFS`, copy-paste classes, `Usus → Samnite`,
+  missing sub-skill) stay documented as data, not code changes.
