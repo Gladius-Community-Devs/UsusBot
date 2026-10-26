@@ -10,7 +10,8 @@ module.exports = {
         const fs = require('fs');
         const path = require('path');
 
-        if (!interaction.member.roles.cache.some(role => role.name === 'Admin')) {
+        const adminRoleId = process.env.ADMIN_ROLE_ID;
+        if (!interaction.member.roles.cache.some(role => (adminRoleId && role.id === adminRoleId) || role.name === 'Admin')) {
             await interaction.reply({ content: "You do not have permission to use this command.", ephemeral: true });
             return;
         }
@@ -47,3 +48,4 @@ module.exports = {
         }
     }
 };
+

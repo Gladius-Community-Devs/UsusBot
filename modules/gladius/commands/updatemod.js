@@ -6,8 +6,11 @@ const {
     readModders
 } = require('../modders_store');
 
-function hasRole(interaction, roleName) {
-    return interaction.member.roles.cache.some(role => role.name === roleName);
+function hasRole(interaction, roleName, roleEnvName) {
+    const roleId = roleEnvName ? process.env[roleEnvName] : '';
+    return interaction.member.roles.cache.some(role =>
+        (roleId && role.id === roleId) || role.name === roleName
+    );
 }
 
 function getAllModNames(config) {
@@ -61,7 +64,7 @@ module.exports = {
 
         try {
             const config = readModders();
-            const hasAdminRole = hasRole(interaction, 'Admin');
+            const hasAdminRole = hasRole(interaction, 'Admin', 'ADMIN_ROLE_ID');
             const useOverride = hasAdminRole && (interaction.options.getBoolean('override') ?? false);
             const availableMods = useOverride
                 ? getAllModNames(config)
@@ -110,7 +113,7 @@ module.exports = {
 
         // 1. Check role
         const hasAdminRole = hasRole(interaction, 'Admin');
-        const hasModderRole = hasRole(interaction, 'Modder');
+        const hasModderRole = hasRole(interaction, 'Modder', 'MODDER_ROLE_ID');
         const overrideRequested = interaction.options.getBoolean('override') ?? false;
 
         this.logger.info(
@@ -188,14 +191,14 @@ module.exports = {
             const sanitizedModDisplayName = modDisplayName.replace(/\s+/g, '_');
 
             // Paths
-            const uploadsRoot = path.join(__dirname, '../../../uploads');
             const gladiusDataRoot = process.env.GLADIUS_DATA_ROOT || process.env.GLADIUS_GAME_DATA_PATH;
             if (!gladiusDataRoot || !gladiusDataRoot.trim()) {
                 this.logger.error(`Cannot update ${modDisplayName}: GLADIUS_DATA_ROOT / GLADIUS_GAME_DATA_PATH is not configured.`);
                 await setStatus('GLADIUS_DATA_ROOT is not set in the bot environment.');
                 return;
             }
-            const vanillaIsoPath = path.join(uploadsRoot, 'vanilla.iso');
+            const uploadsRoot = path.resolve(process.env.GLADIUS_UPLOAD_DIR || path.join(gladiusDataRoot, 'uploads'));
+            const vanillaIsoPath = process.env.VANILLA_ISO_PATH || path.join(gladiusDataRoot, 'vanilla.iso');
             if (!fs.existsSync(vanillaIsoPath)) {
                 this.logger.error(`Cannot update ${modDisplayName}: missing vanilla ISO at ${vanillaIsoPath}.`);
                 await setStatus('vanilla.iso not found in uploads folder. Notify an admin.');
