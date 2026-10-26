@@ -42,6 +42,26 @@ site was not modified.
 
 The global limiter was 100 requests / 15 minutes for every request, including CSS/JS, which is only ~20 page views for a whole NAT and is easy to exhaust while testing. The local build now skips static assets, defaults to 600/15 min (`RATE_LIMIT_MAX` overrides), and bypasses the limiter when `NODE_ENV=development` or `DISABLE_RATE_LIMIT=1`. A local 120-request run returned 200 for all 120.
 
+## Traffic attribution caveat
+
+Apache's `gladiuscommunity.conf` writes to the generic `access.log`, which is
+shared with budaslounge, courtney and vaultofeternals; `gladius-access.log` is
+empty. The whole-server logs show ~306k requests and 6,643 429s, but those are
+not Gladius traffic.
+
+Isolated to Gladius-specific paths in the current+rotated `access.log`:
+~13.4k requests, 166 429s, 20 of them on content pages, across 27 IPs. The
+app-level `metrics.json` (Gladius only) has 88,333 requests since March
+(~382/day, 1,195/day over the last 30 days), but only 2,887 HTML page views in
+the last 30 days (~96/day), 6,248 visitor fingerprints (includes bots) and 20
+Discord users. Content paths in Apache show ~1,055 requests over 29 days from
+378 IPs: 237 single-request IPs, 103 with 2–5, 34 with 6–20, 3 with 21–100 and
+one with 100+.
+
+Conclusion: the site did not blow up. It is a small community plus bots and
+scanners. The 100/15 global limit was still too low because it counted assets;
+600/15 with assets skipped is reasonable, and a dedicated vhost log should be
+added if traffic/429s need to be attributed reliably.
 ## P2 (started)
 
 - **Mod list** resolves Discord display names through the bot token/guild, with
@@ -78,4 +98,5 @@ Screenshots: `E:/UsusBot/.verify/site-shots/` —
 P0+P1 patch (20 files) and supersedes `site-p0.zip`. Copy over the live site,
 back it up first, restart `gladiuscommunity-website.service`. No dependency,
 config or database changes.
+
 
