@@ -137,9 +137,26 @@ config or database changes.
 - Verified: initial push, docs push, P2 push and receiver-source push all
   delivered `200`, pulled, restarted, homepage 200.
 
-**P2 completed**: prizes `?mod=&name=` and item skills `?mod=&q=` deep links
-(with URL updates), mod-list author names, dedicated Gladius Apache log, rate
-limit at 600 with assets skipped, bot→site links (`14afcab`).
+**P2 completed**: prizes `?mod=&name=`, item skills `?mod=&q=` and item compare
+`?compare=` deep links, mod-list author names, dedicated Gladius Apache log,
+600/15 with assets skipped, bot→site links (`14afcab`), WIP tags, Stats
+compare/progression, Cheats cards, secure admin modders/health, lazy Explain,
+rate-limit metrics, canonical data paths, shared uploads and role IDs
+(`bced104` site, `97a2d5a` bot).
+
+## Storage, roles and ISO guard
+
+- Canonical uploads: /var/www/gladius-data/uploads. Both legacy paths are
+  symlinks; the canonical ISO is /var/www/gladius-data/vanilla.iso.
+- The five upload/core directories were merged into the canonical tree; the
+  old trees and example_data_vanilla are in the consolidation backup.
+- Site uploads require the shared allowed-modders entry plus the Discord
+  Modder role (admins bypass); bot role checks prefer ADMIN_ROLE_ID and
+  MODDER_ROLE_ID, falling back to role names.
+- Anonymous ISO patching: 24 active sessions, 5 GiB free-space floor, 15-minute
+  idle cleanup, active download/patch protection, immediate failed-session
+  cleanup. The site env sets both caps explicitly.
+- Apache strips client X-Forwarded-For before proxying.
 
 ## What remains
 
