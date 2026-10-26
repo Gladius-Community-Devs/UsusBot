@@ -111,30 +111,35 @@ config or database changes.
 - Rate limit: 110 consecutive homepage requests → **110 × 200**, no 429.
 - Utilization after deploy: load ~2.2 (Minecraft dominates), 21 GiB / 59 GiB RAM used, disk 37%, site node ~103 MB RSS, ~12.9% CPU during startup.
 
+## Repository and auto-deploy
+
+- Repo: `Gladius-Community-Devs/gladiuscommunitywebsite`, branch `main` (private).
+- Local dev checkout: `E:\code_stuff\gladiuscommunitywebsite` — npm ci,
+  `.env` against `E:\UsusBot\.verify`, port 7101, `node tools/smoke.js`.
+- Server checkout: `/var/www/gladiuscommunity`, owned `www-data`, deploy key
+  `/var/www/.ssh/gladius_deploy` (read-only GitHub deploy key).
+- Webhook: `https://budaslounge.com/automation/update_gladiuscommunitywebsite.php`;
+  verifies HMAC, `git pull --ff-only` as `www-data`, restarts
+  `gladiuscommunity-website`, returns 200 only when active.
+- Sudoers: `/etc/sudoers.d/gladiuscommunity-deploy` allows `www-data` to restart
+  exactly that unit.
+- Verified: initial push, docs push, P2 push and receiver-source push all
+  delivered `200`, pulled, restarted, homepage 200.
+
+**P2 completed**: prizes `?mod=&name=` and item skills `?mod=&q=` deep links
+(with URL updates), mod-list author names, dedicated Gladius Apache log, rate
+limit at 600 with assets skipped, bot→site links (`14afcab`).
+
 ## What remains
 
-**P1/P2 site work still open**
-
-1. **Bot→site deep links**: bot replies should link to the now-deep-linkable pages
-   (`/skills?mod=&q=&mode=`, `/classes?mod=&class=`, `/recruits?mod=&class=`,
-   `/stats?mod=&class=&level=`). Needs a site base URL setting in the bot.
-2. **Prizes and item-skill URL state** (`?mod=&name=`, `?mod=&q=`) and copy links;
-   the pages are complete but not deep-linkable.
-3. **Admin/modder parity**: graphical `add_modder` (read/write the allowed list),
-   `updatemod` status/upload parity, and a crash-log/ping health panel. The site
-   already has admin metrics, xDelta and ISO tools.
-4. **Site version control and deploy pipeline**: the site still has no git repo
-   and manual `.bak` files. Put it under git and deploy from a checkout.
-5. **Unify the class catalog**: the bot and site now each have a catalog
-   implementation; move them to one shared source to stop future divergence.
-6. **Lazy explain / per-skill API**: payload is 1.59 MB raw / 109 KB gzip; a
-   per-skill endpoint would make first load lighter on mobile.
-7. **Traffic observability**: the new Gladius log is now clean; add a small
-   dashboard/alert for human page views vs 429s, and consider fail2ban for the
-   scanner IPs.
-8. **Optional polish**: accessibility pass, item compare deep links, more
-   screenshots/QA on mobile.
-
+1. **Admin/modder parity**: graphical `add_modder`, `updatemod` status/upload
+   parity, crash-log/ping health panel.
+2. **Unify the class catalog**: bot and site have separate implementations.
+3. **Lazy explain / per-skill API**: 1.59 MB raw / 109 KB gzip still loads all
+   skills; a per-skill endpoint would help mobile.
+4. **Traffic observability**: new log is clean; add human-vs-429 view/alert and
+   consider fail2ban for scanner IPs.
+5. **Polish**: accessibility, item-compare deep links, more mobile QA.
 **Bot work unrelated to the site**
 
 - The bot is deployed at `1fccf98`; site docs commits are local only and were not
@@ -142,3 +147,4 @@ config or database changes.
 - Tournament remains empty by design.
 - Data quirks (Ragnarok `NUMCLASSDEFS`, copy-paste classes, `Usus → Samnite`,
   missing sub-skill) stay documented as data, not code changes.
+
