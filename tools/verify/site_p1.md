@@ -62,14 +62,26 @@ Conclusion: the site did not blow up. It is a small community plus bots and
 scanners. The 100/15 global limit was still too low because it counted assets;
 600/15 with assets skipped is reasonable, and a dedicated vhost log should be
 added if traffic/429s need to be attributed reliably.
-## P2 (started)
+## P2
 
 - **Mod list** resolves Discord display names through the bot token/guild, with
-  the author ID as fallback. The local copy uses a dummy token, so it shows the
-  fallback; production will show names.
-
-Still open: prizes/item-skill URL state, admin/modder parity (`add_modder`,
-`updatemod`, crash/ping), and optional bot→site deep links.
+  the author ID as fallback.
+- **Prizes / item skills / item compare**: `?mod=&name=`, `?mod=&q=` and
+  repeated `?compare=` state; URLs update as the user works.
+- **Admin**: Discord-role-gated modder add/remove against the shared
+  `ALLOWED_MODDERS_FILE` (same-origin, write-limited, validated, atomic 0644
+  write, immediate reload) plus read-only service/host health.
+- **Stats Lab**: optional class comparison, level-progression chart, best-stat
+  emphasis, copy link; all URL-backed.
+- **Cheats**: category cards, search, copy-to-clipboard, `?q=`.
+- **Lazy Explain**: per-skill endpoint used by a card button; the full explain
+  mode remains while the engine is WIP.
+- **Observability**: global 429s are counted in metrics and shown with HTML
+  share in admin.
+- **Data**: bot and site point at `/var/www/gladius-data`; site path resolution
+  now prefers the bot's `data/units` and `data/towns/leagues` files. Local
+  sample data removed.
+- **UI**: WIP tags restored for Classes/Stats/Cheats; Command Companion removed.
 
 ## Validation
 
@@ -80,11 +92,10 @@ Still open: prizes/item-skill URL state, admin/modder parity (`add_modder`,
 | Learnable skills | ArcherF → 42 distinct skills (43 records, duplicate `Cover Area` deduped) |
 | Skills deep link | `q=Air Affinity Attack 1` → 30 cards; 30 anchors |
 | Skills payload | 1,588,926 B raw / 109,023 B gzip |
-| Commands page | 11 command cards; search “recruits” → 1 |
 | Recruits deep link | `Showing 2 recruits for Archer (ArcherF) in Vanilla.` |
 | Mobile 390px | all pages scrollWidth = innerWidth (no horizontal overflow) |
 | CSP | no inline-style violations on stats/classes/commands |
-| Pages | homepage, commands, skills, classes, recruits, stats, prizes, itemskills, modlist, cheats = 200 |
+| Pages | homepage, skills, classes, recruits, stats, prizes, itemskills, modlist, cheats = 200; /commands = 404 |
 | Errors | no 500s after the final restart |
 | Rate limit | 120 local requests all 200; assets skipped; default 600/15 min |
 
@@ -132,19 +143,20 @@ limit at 600 with assets skipped, bot→site links (`14afcab`).
 
 ## What remains
 
-1. **Admin/modder parity**: graphical `add_modder`, `updatemod` status/upload
-   parity, crash-log/ping health panel.
-2. **Unify the class catalog**: bot and site have separate implementations.
-3. **Lazy explain / per-skill API**: 1.59 MB raw / 109 KB gzip still loads all
-   skills; a per-skill endpoint would help mobile.
-4. **Traffic observability**: new log is clean; add human-vs-429 view/alert and
-   consider fail2ban for scanner IPs.
-5. **Polish**: accessibility, item-compare deep links, more mobile QA.
+1. **Admin/modder parity remaining**: web `updatemod` status/upload parity and a
+   bot crash-log view; modder add/remove and read-only health are done.
+2. **Unify the class catalog code**: both apps read one data root now, but each
+   still has its own parser.
+3. **Traffic observability remaining**: 429s and HTML share are in admin metrics;
+   an external log view/alert or fail2ban is still open.
+4. **Optional polish**: broader accessibility audit and more mobile QA.
+
 **Bot work unrelated to the site**
 
-- The bot is deployed at `1fccf98`; site docs commits are local only and were not
+- The bot is deployed at `14afcab`; site docs commits are local only and were not
   pushed (a docs-only push would restart the bot).
 - Tournament remains empty by design.
 - Data quirks (Ragnarok `NUMCLASSDEFS`, copy-paste classes, `Usus → Samnite`,
   missing sub-skill) stay documented as data, not code changes.
+
 
