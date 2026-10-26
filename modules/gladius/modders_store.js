@@ -30,6 +30,13 @@ function normalizeModNames(value) {
 function readModders() {
     const filePath = getModdersFilePath();
     if (!fs.existsSync(filePath)) {
+        try {
+            fs.accessSync(filePath, fs.constants.R_OK);
+        } catch (err) {
+            if (err.code === 'EACCES' || err.code === 'EPERM') {
+                throw new Error(`Shared modders file is not readable at ${filePath} (${err.code}). Check parent directory execute permissions and group ownership.`);
+            }
+        }
         throw new Error(`Shared modders file does not exist at ${filePath}`);
     }
 
@@ -45,7 +52,14 @@ function readModders() {
 
 function writeModders(modders) {
     const filePath = getModdersFilePath();
-    fs.writeFileSync(filePath, JSON.stringify(modders, null, 4));
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+        fs.writeFileSync(tmpPath, `${JSON.stringify(modders, null, 4)}\n`, { mode: 0o644 });
+        fs.renameSync(tmpPath, filePath);
+    } catch (err) {
+        try { fs.unlinkSync(tmpPath); } catch (_) { /* best effort */ }
+        throw err;
+    }
 }
 
 function getModNamesForDiscordId(modders, discordId) {
