@@ -4,6 +4,7 @@ const {
     normalizeModNames,
     readModders
 } = require('../modders_store');
+const siteLinks = require('../site_links');
 
 module.exports = {
     needs_api: false,
@@ -57,6 +58,8 @@ module.exports = {
             if (fields.length > 25) {
                 embed.setDescription(`Below is a partial list (first 25 entries) from ${fields.length} total mods.`);
             }
+
+            embed.setDescription(`${embed.data.description}\n\n🔗 [Open the mod list on the site](${siteLinks.modListUrl()})`);
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {

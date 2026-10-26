@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../functions');
+const siteLinks = require('../site_links');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -401,6 +402,8 @@ module.exports = {
             }
 
             // Send the embed
+            embed.setDescription(`${embed.data.description}\n\n🔗 [Open this prize page on the site](${siteLinks.prizeUrl(modName, searchName)})`);
+
             await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {

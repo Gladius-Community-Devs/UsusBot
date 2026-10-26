@@ -3,6 +3,7 @@ const path = require('path');
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const helpers = require('../functions');
 const classCatalog = require('../class_catalog');
+const siteLinks = require('../site_links');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -264,6 +265,7 @@ module.exports = {
             // Prepare the response
             let messages = [];
             let header = `Skill details for '${skillName}' in '${modName}'${className ? ` for class '${className}'` : ''}:
+🔗 [Open in Skill Explorer](${siteLinks.skillUrl(modName, skillName)})
 
 `;
             let currentMessage = header;

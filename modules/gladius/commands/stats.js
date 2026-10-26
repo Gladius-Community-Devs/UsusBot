@@ -3,6 +3,7 @@ const path = require('path');
 const { SlashCommandBuilder } = require('discord.js');
 const helpers = require('../functions');
 const classCatalog = require('../class_catalog');
+const siteLinks = require('../site_links');
 
 module.exports = {
     needs_api: false,
@@ -170,7 +171,8 @@ module.exports = {
 
                 const response = `**Stats for ${className} (Level ${level}) in ${modName}**\n` +
                     `*Using stat set ${mostCommonStatSet} (most common for this class)*\n\n` +
-                    `**CON:** ${stats.con} | **PWR:** ${stats.pwr} | **ACC:** ${stats.acc} | **DEF:** ${stats.def} | **INI:** ${stats.ini}`;
+                    `**CON:** ${stats.con} | **PWR:** ${stats.pwr} | **ACC:** ${stats.acc} | **DEF:** ${stats.def} | **INI:** ${stats.ini}\n\n` +
+                    `🔗 [Open in Stats Lab](${siteLinks.statsUrl(modName, className, level)})`;
 
                 await interaction.editReply({ content: response });
                 return;
@@ -188,7 +190,8 @@ module.exports = {
                 const response = `**Stats for ${className} (Level 1) in ${modName}**\n` +
                 `*Using stat set ${mostCommonStatSet} (most common for this class)*\n\n` +
                 `**CON:** ${stats.con} | **PWR:** ${stats.pwr} | **ACC:** ${stats.acc} | **DEF:** ${stats.def} | **INI:** ${stats.ini}\n` + 
-                `(Tip: Use the 'level' option to see other levels)`;
+                `(Tip: Use the 'level' option to see other levels)\n` +
+                `🔗 [Open in Stats Lab](${siteLinks.statsUrl(modName, className, 1)})`;
                 await interaction.editReply({ content: response });
             } else {
                  await interaction.editReply({ content: "Could not retrieve level 1 stats. Please specify a level."});

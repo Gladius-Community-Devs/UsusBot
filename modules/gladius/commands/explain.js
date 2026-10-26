@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const helpers = require('../functions');
 const classCatalog = require('../class_catalog');
+const siteLinks = require('../site_links');
 
 // CODE CHANGE: parseSkillChunk is now defined at the top level so it can be reused.
 const parseSkillChunk = (chunk) => {
@@ -641,7 +642,10 @@ module.exports = {
             let messages = [];
             // Updated header with specific skill command
             let currentClass = matchingSkills[0].classNames[0];
-            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **/skill${modName !== 'Vanilla' ? ' mod_name:' + modName : ''} skill_name:${skillName}${currentClass ? ' class_name:' + currentClass : ''}**\n\n\nSkill details for '${skillName}' in '${modName}' for class '${currentClass}':\n\n`;
+            let header = `This is **WIP** and is missing some details beyond damage numbers. For more info try **/skill${modName !== 'Vanilla' ? ' mod_name:' + modName : ''} skill_name:${skillName}${currentClass ? ' class_name:' + currentClass : ''}**\n\n\nSkill details for '${skillName}' in '${modName}' for class '${currentClass}':
+🔗 [Open the explain view](${siteLinks.explainUrl(modName, skillName)})
+
+`;
             let currentMessage = header;
             const lookupTextMap = {};
             for (const line of lookupLines) {

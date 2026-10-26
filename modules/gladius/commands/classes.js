@@ -4,6 +4,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const helpers = require('../functions');
 const classCatalog = require('../class_catalog');
 const { splitFieldValue, addFieldsSafe } = require('../../../core/js/text_utils.js');
+const siteLinks = require('../site_links');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -311,6 +312,12 @@ function createClassEmbed(classData, currentPage, totalPages, modName) {
         }
     }
 
+    embed.addFields({
+        name: '🔗 Web',
+        value: `[Open this class on the site](${siteLinks.classUrl(modName, classData.className)})`,
+        inline: false
+    });
+
     return embed;
 }
 
@@ -318,6 +325,7 @@ function createClassEmbed(classData, currentPage, totalPages, modName) {
 module.exports.createClassEmbed = createClassEmbed;
 
 // New helper to re-read and filter class definitions
+
 
 
 

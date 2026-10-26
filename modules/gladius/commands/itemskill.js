@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../functions');
+const siteLinks = require('../site_links');
 const { splitFieldValue, addFieldsSafe, batchEmbeds } = require('../../../core/js/text_utils.js');
 
 module.exports = {
@@ -439,6 +440,11 @@ function createPlainItemEmbed(item, currentIndex, totalItems, modName) {
     const formatted = itemLines.map(line => line.trim()).filter(Boolean).join('\n');
     const truncated = formatted.length > 1000 ? formatted.substring(0, 997) + '...' : formatted;
     embed.addFields({ name: 'Item Definition', value: `\`\`\`\n${truncated}\`\`\`` });
+    embed.addFields({
+        name: '🔗 Web',
+        value: `[Open in the item browser](${siteLinks.itemSkillUrl(modName, item.itemName)})`,
+        inline: false
+    });
 
     return embed;
 }
@@ -465,6 +471,12 @@ function createSkillEmbed(skill, currentPage, totalPages, modName) {
     } else {
         embed.addFields({ name: 'Items', value: 'No items found that grant this skill.' });
     }
+
+    embed.addFields({
+        name: '🔗 Web',
+        value: `[Open in the item browser](${siteLinks.itemSkillUrl(modName, skill.displayName || skill.skillName)})`,
+        inline: false
+    });
     
     return embed;
 }

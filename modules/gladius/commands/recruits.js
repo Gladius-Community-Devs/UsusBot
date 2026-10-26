@@ -3,6 +3,7 @@ const path = require('path');
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const helpers = require('../functions');
 const classCatalog = require('../class_catalog');
+const siteLinks = require('../site_links');
 
 /**
  * Extract ONLY recruit names from a league .tok file.
@@ -483,6 +484,14 @@ module.exports = {
             embed.addFields({
                 name: '🧪 Debug',
                 value: dbg.join('\n').slice(0, 1024) || 'No debug info.',
+                inline: false
+            });
+        }
+
+        if (resolvedClass) {
+            embed.addFields({
+                name: '🔗 Web',
+                value: `[Open the recruitment map](${siteLinks.recruitsUrl(modName, classLabel)})`,
                 inline: false
             });
         }
