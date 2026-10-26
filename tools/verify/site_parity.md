@@ -1,3 +1,5 @@
+> **P0 implemented locally:** the class catalog, text decoding and stats/recruits/stats-page fixes are in site_p0.md; the deploy package is .verify/site-p0.zip. The findings below are the original stocktake.
+
 # Website ↔ bot parity stocktake
 
 Read-only review of `/var/www/gladiuscommunity` (the `\\192.168.1.9\gladiuscommunity` share),
@@ -224,3 +226,4 @@ Ordered by user value and dependency.
   modder-gated, `/relay/api` is admin/relay-gated.
 - Live measurements above were taken with `curl` against `127.0.0.1:7000`; no writes.
 - Site files were copied read-only to the gitignored `.verify/site/` for analysis only.
+
