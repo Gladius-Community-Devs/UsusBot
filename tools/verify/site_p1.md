@@ -38,6 +38,10 @@ site was not modified.
 - Searchable page listing all 11 user-facing commands, examples, and the page that
   does the same job; linked from the homepage. Removed the stale WIP tags.
 
+## Rate limit fix
+
+The global limiter was 100 requests / 15 minutes for every request, including CSS/JS, which is only ~20 page views for a whole NAT and is easy to exhaust while testing. The local build now skips static assets, defaults to 600/15 min (`RATE_LIMIT_MAX` overrides), and bypasses the limiter when `NODE_ENV=development` or `DISABLE_RATE_LIMIT=1`. A local 120-request run returned 200 for all 120.
+
 ## P2 (started)
 
 - **Mod list** resolves Discord display names through the bot token/guild, with
@@ -62,6 +66,7 @@ Still open: prizes/item-skill URL state, admin/modder parity (`add_modder`,
 | CSP | no inline-style violations on stats/classes/commands |
 | Pages | homepage, commands, skills, classes, recruits, stats, prizes, itemskills, modlist, cheats = 200 |
 | Errors | no 500s after the final restart |
+| Rate limit | 120 local requests all 200; assets skipped; default 600/15 min |
 
 Screenshots: `E:/UsusBot/.verify/site-shots/` —
 `stats-lab-archerf-30.png`, `stats-lab-mobile.png`, `classes-learnable-skills.png`,
@@ -73,3 +78,4 @@ Screenshots: `E:/UsusBot/.verify/site-shots/` —
 P0+P1 patch (20 files) and supersedes `site-p0.zip`. Copy over the live site,
 back it up first, restart `gladiuscommunity-website.service`. No dependency,
 config or database changes.
+
