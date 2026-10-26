@@ -33,7 +33,11 @@ A cached, mtime-keyed view of one mod's classes, mirroring the bot's model:
 
 - `classes`: one card per CREATECLASS, exact gladiator counts, `label`, and
   exact/family filtering. The old `normalizeClassVariant` grouping is gone, so
-  Archer and ArcherF no longer both show 82 gladiators.
+  Archer and ArcherF no longer both show 82 gladiators. The card no longer shows
+  raw stat/skill/item set IDs; equipment, attributes, all stat sets and the
+  gladiator table remain. Each recruitable unit gets a small 🏟️ arena line
+  cross-referenced from the league `RECRUIT` entries; a class with none shows a
+  one-line note.
 - `recruits`: exact/family class filter, labels, `noStandardLocation` for classes
   with units but no league `RECRUIT` lines (Minotaur), and `classLabel` on each
   unit so the page can show `Archer (ArcherF)` instead of `ARCHERF`.
@@ -64,6 +68,7 @@ A cached, mtime-keyed view of one mod's classes, mirroring the bot's model:
 | `stats` ArcherF | 200, `Archer (ArcherF)` |
 | `recruits` ArcherF | 200, `Archer (ArcherF)`, only ArcherF units |
 | `recruits` Minotaur | `noStandardLocation: true` |
+| Class card | no set-ID pills; recruitable units show league arena names; non-recruitable units no line; Minotaur note |
 | Encoding | 0 U+FFFD in classes/prizes/recruits |
 | Skills | 1,811; badges `Archer`, `Archer (Eiji)` |
 | Itemskills | 55 item skills, 1,569 plain items |
@@ -85,3 +90,4 @@ README with copy/restart instructions. No dependency, database or config changes
 Stats Lab (slider/graph/URL state), Learnable Skills on the class card, per-skill
 URLs, skills payload reduction/gzip/cache, Command Companion page, modlist display
 names, admin/modder parity.
+
