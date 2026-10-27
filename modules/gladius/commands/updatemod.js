@@ -495,9 +495,19 @@ module.exports = {
                             }
 
                             try {
+                                // The uploads folder is shared with the public xdelta
+                                // patches; only remove artifacts this run created.
+                                const removableArtifacts = new Set([
+                                    'patch.xdelta',
+                                    'vanilla.iso',
+                                    `${sanitizedModDisplayName}_modded.iso`,
+                                    `${sanitizedModDisplayName}_FileList.txt`,
+                                    'iso_unpacked',
+                                    'bec_unpacked'
+                                ]);
                                 const removedEntries = [];
                                 for (const entry of fs.readdirSync(modFolder)) {
-                                    if (entry !== 'data') {
+                                    if (removableArtifacts.has(entry)) {
                                         fs.rmSync(path.join(modFolder, entry), { recursive: true, force: true });
                                         removedEntries.push(entry);
                                     }
