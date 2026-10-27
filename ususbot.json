@@ -7,7 +7,7 @@
         "restart": "I have restarted!"
     },
     "bot_activity": {
-        "name": "the High Tournaments",
+        "name": "Watching the High Tournaments",
         "type": "WATCHING"
     },
     "modules_folder": "modules",

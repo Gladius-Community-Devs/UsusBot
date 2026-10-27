@@ -40,6 +40,19 @@ logger.info("Event Registration Complete!");
 
 authClient();
 
+// Discord renders a bot's presence as an app card: the bot's own name plus the
+// APP badge on one line, and the activity's `name` verbatim below it. The
+// "Watching"/"Playing" verb used to be added by the client and no longer is, so
+// it has to be part of the name in ususbot.json. The type still decides the
+// member-list entry, hence the lookup instead of the old hardcoded Watching.
+function activity_type(value) {
+    var wanted = String(value || '').toUpperCase();
+    var key = Object.keys(ActivityType).find(function (name) {
+        return name.toUpperCase() === wanted;
+    });
+    return key ? ActivityType[key] : ActivityType.Watching;
+}
+
 async function botInit () {
     shell.exec('/home/bots/clean_usus_logs.sh');
     logger.info("Logs older than 3 days have been cleaned");
@@ -64,7 +77,7 @@ async function botInit () {
     } else {
         channel.send({ content: config.startup_messages.restart});
     }
-    client.user.setActivity(config.bot_activity.name, { type: ActivityType.Watching });
+    client.user.setActivity(config.bot_activity.name, { type: activity_type(config.bot_activity.type) });
 }
 
 client.on('ready', () => {
