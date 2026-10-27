@@ -158,6 +158,23 @@ rate-limit metrics, canonical data paths, shared uploads and role IDs
   cleanup. The site env sets both caps explicitly.
 - Apache strips client X-Forwarded-For before proxying.
 
+## Web mod updater and notifications
+
+- /modder is available to authenticated modders; the API requires the shared
+  allowed-modders entry, the Discord Modder role, ownership of the selected
+  mod, same-origin and .xdelta/.xdelta3 uploads.
+- Full Tournament test: copied blank Vanilla into Tournament, applied
+  Gladius_Ragnarok_v2.2.2_patch.xdelta through the web updater service. All
+  stages completed (patch, ISO, BEC, units IDX, central replace, cleanup);
+  Tournament data showed Ragnarok NUMCLASSDEFS 135 and the live classes API
+  returned ArcherF. Tournament was restored to blank afterward.
+- Site deploy receiver and web mod updater post to the shared Discord channel
+  via /var/www/data/gladius_discord_webhook.json (0640 root:www-data); a test
+  message was delivered.
+- Bot production deps updated within semver; npm audit --omit=dev is 0 after
+  moving jsdoc/clean-jsdoc-theme to devDependencies. Updated-deps verification:
+  commands 532/532, components 19/19, sweep 5,080/5,080.
+
 ## What remains
 
 1. **Admin/modder parity remaining**: web `updatemod` status/upload parity and a
