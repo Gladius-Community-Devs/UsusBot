@@ -1,65 +1,103 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { addFieldsSafe, LIMITS } = require('../../../core/js/text_utils.js');
+
+const GROUPS = [
+    {
+        name: '👋 General',
+        commands: ['hello']
+    },
+    {
+        name: '⚔️ Skills & Classes',
+        commands: ['skill', 'explain', 'classes', 'recruits']
+    },
+    {
+        name: '🎁 Items & Prizes',
+        commands: ['itemskill', 'itemprizes', 'prizes']
+    },
+    {
+        name: '📊 Leagues & Stats',
+        commands: ['stats']
+    },
+    {
+        name: '🛠️ Mods & Tools',
+        commands: ['modlist', 'cheats', 'updatemod', 'add_modder']
+    }
+];
+
+function shortDescription(description) {
+    const text = `${description || 'No description'}`.replace(/\s+/g, ' ').trim();
+    return text.length > 110 ? `${text.slice(0, 107)}...` : text;
+}
+
+const SUMMARIES = {
+    hello: 'Test that the bot responds',
+    skill: 'Find a skill',
+    explain: 'Explain a skill in plain language',
+    classes: 'Browse gladiator classes',
+    recruits: 'Find where to recruit a class',
+    itemskill: 'Find items and their skills',
+    itemprizes: 'Find where an item can be won',
+    prizes: 'Browse league and encounter prizes',
+    stats: 'Compare class stats by level',
+    modlist: 'List the installed mods',
+    cheats: 'Show Gladius cheat codes',
+    updatemod: 'Upload a mod patch (modder)',
+    add_modder: 'Manage modder access (admin)'
+};
+
+function commandLine(command) {
+    const name = command.data ? command.data.name : command.name;
+    const description = SUMMARIES[name] || (command.data ? command.data.description : command.description);
+    return `**\`/${name}\`** — ${shortDescription(description)}`;
+}
 
 module.exports = {
     needs_api: false,
     has_state: false,
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('Provides a list of commands'),
+        .setDescription('Lists the available commands by category'),
     async execute(interaction, extra) {
-        var mod_handler = extra.module_handler;
-        var gladius_module = mod_handler.modules.get('gladius');
+        const module = extra.module_handler?.modules?.get('gladius');
+        const commands = new Map();
+
+        if (module && module.commands) {
+            for (const [key, command] of module.commands) {
+                const name = command.data ? command.data.name : command.name;
+                if (typeof name !== 'string' || name.startsWith('h-')) continue;
+                commands.set(name, command);
+            }
+        }
 
         const embed = new EmbedBuilder()
-            .setTitle('Help - List of Commands')
+            .setTitle('UsusBot Commands')
+            .setDescription(`**${commands.size} commands**. Use the slash menu to see each command's options and autocomplete.`)
             .setColor(0x00AE86);
 
-        if (gladius_module && gladius_module.commands) {
-            const fields = [];
-            for (var current_command_name of Array.from(gladius_module.commands.keys())) {
-                var current_command = gladius_module.commands.get(current_command_name);
-
-                // Get name from data or legacy property
-                const name = current_command.data ? current_command.data.name : current_command.name;
-                
-                // Check if name is a string before calling startsWith
-                if (typeof name !== 'string' || name.startsWith('h-')) {
-                    continue;
-                }
-
-                const description = current_command.data ? current_command.data.description : (current_command.description || 'No description');
-                
-                // Try to construct syntax from options if available, else legacy syntax
-                let args = "";
-                if (current_command.data) {
-                     const jsonData = current_command.data.toJSON();
-                     if (jsonData.options && jsonData.options.length > 0) {
-                        args = jsonData.options.map(opt => `[${opt.name}]`).join(' ');
-                     }
-                } else if (current_command.syntax) {
-                     args = current_command.syntax.replace(name, '').trim();
-                } else {
-                     args = "[args]";
-                }
-
-                fields.push({
-                    name: `**${name}**`,
-                    value: `${args ? `**Inputs:** ${args}\n` : ''}${description.length > 85 ? description.substring(0, 82) + '...' : description}`,
-                    inline: true
-                });
-            }
-
-            // Reserve one field for the overflow note so a growing command list
-            // can never push the embed past Discord's field limit.
-            const dropped = addFieldsSafe(embed, fields, { max: LIMITS.fields - 1 });
-            if (dropped > 0) {
+        const grouped = new Set();
+        for (const group of GROUPS) {
+            const lines = group.commands
+                .map(name => commands.get(name))
+                .filter(Boolean)
+                .map(commandLine);
+            for (const name of group.commands) grouped.add(name);
+            if (lines.length) {
                 embed.addFields({
-                    name: '…and more',
-                    value: `${dropped} more command(s) are not shown here.`,
+                    name: group.name,
+                    value: lines.join('\n'),
                     inline: false
                 });
             }
+        }
+
+        const other = [...commands.entries()]
+            .filter(([name]) => !grouped.has(name))
+            .map(([, command]) => commandLine(command));
+        if (other.length) {
+            embed.addFields({
+                name: '📦 Other',
+                value: other.join('\n'),
+                inline: false
+            });
         }
 
         await interaction.reply({ embeds: [embed] });
