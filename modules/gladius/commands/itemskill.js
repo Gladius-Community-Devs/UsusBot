@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../functions');
+const { buildItemIndex } = require('../item_index');
 const siteLinks = require('../site_links');
 const { splitFieldValue, addFieldsSafe, batchEmbeds } = require('../../../core/js/text_utils.js');
 
@@ -52,17 +53,10 @@ module.exports = {
                 this.logger.error(`Failed to load itemskill lookup autocomplete data for ${modName}:`, error);
             }
 
-            // Collect item display names from items.tok (all items, with or without skills)
-            const itemsFilePath = filePaths.itemsFilePath;
+            // Collect both display and raw item names from the shared index.
             try {
-                const itemsContent = helpers.readTextFile(itemsFilePath);
-                for (const match of itemsContent.matchAll(/ITEMDISPLAYNAMEID:\s*(\d+)/g)) {
-                    const id = parseInt(match[1]);
-                    if (entryIdToName[id]) suggestions.add(entryIdToName[id]);
-                }
-                for (const match of itemsContent.matchAll(/^ITEMCREATE:\s*"?([^",\r\n]+)/gm)) {
-                    suggestions.add(match[1].trim().replace(/"/g, ''));
-                }
+                const itemIndex = buildItemIndex(modName);
+                for (const name of itemIndex.names) suggestions.add(name);
             } catch (error) {
                 this.logger.error(`Failed to load item autocomplete data for ${modName}:`, error);
             }
@@ -146,9 +140,8 @@ module.exports = {
             const skillsContent = helpers.readTextFile(skillsFilePath);
             const skillsChunks = helpers.splitSkillRecords(skillsContent);
 
-            // Read the items.tok file
-            const itemsContent = helpers.readTextFile(itemsFilePath);
-            const itemsChunks = helpers.splitItemRecords(itemsContent);
+            // Read the normalized item index (display + raw names, cached per mod)
+            const itemIndex = buildItemIndex(modName);
 
             // Function to parse a chunk into a key-value object
             const parseChunk = (chunk) => {
@@ -199,31 +192,25 @@ module.exports = {
             }
 
             // Associate items with skills
-            for (const chunk of itemsChunks) {
-                if (chunk.includes('ITEMCREATE:')) {
-                    const itemData = parseChunk(chunk);
-                    if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) {
-                        const itemSkillName = itemData['ITEMSKILL'][0].trim().replace(/"/g, '');
+            for (const record of itemIndex.records) {
+                const itemData = record.itemData;
+                if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) {
+                    const itemSkillName = itemData['ITEMSKILL'][0].trim().replace(/"/g, '');
 
-                        // The data is not case-consistent (Item BerserkON vs
-                        // Item BerserkOn), so the join must ignore case.
-                        const itemSkillKey = itemSkillName.toLowerCase();
-                        const matchingSkill = allItemSkills.find(skill =>
-                            skill.skillName.toLowerCase() === itemSkillKey ||
-                            skill.skillName.toLowerCase() === `item ${itemSkillKey}`
-                        );
-                        
-                        if (matchingSkill) {
-                            const displayNameId = itemData['ITEMDISPLAYNAMEID'] ? parseInt(itemData['ITEMDISPLAYNAMEID'][0]) : null;
-                            const itemName = displayNameId && entryIdToName[displayNameId] 
-                                ? entryIdToName[displayNameId] 
-                                : (itemData['ITEMCREATE'] ? itemData['ITEMCREATE'][0].split(',')[0].trim().replace(/"/g, '') : 'Unknown');
-                            
-                            matchingSkill.items.push({
-                                itemName,
-                                chunk
-                            });
-                        }
+                    // The data is not case-consistent (Item BerserkON vs
+                    // Item BerserkOn), so the join must ignore case.
+                    const itemSkillKey = itemSkillName.toLowerCase();
+                    const matchingSkill = allItemSkills.find(skill =>
+                        skill.skillName.toLowerCase() === itemSkillKey ||
+                        skill.skillName.toLowerCase() === `item ${itemSkillKey}`
+                    );
+
+                    if (matchingSkill) {
+                        matchingSkill.items.push({
+                            itemName: record.displayName,
+                            rawName: record.rawName,
+                            chunk: record.chunk
+                        });
                     }
                 }
             }
@@ -275,38 +262,15 @@ module.exports = {
                 await interaction.editReply({ embeds: [embed], components: [row] });
                 return;
             } else {
-                // Find items matching the search term (those with ITEMSKILL)
-                const matchingItems = [];
-                for (const chunk of itemsChunks) {
-                    if (chunk.includes('ITEMCREATE:')) {
-                        const itemData = parseChunk(chunk);
-                        
-                        // Skip if it doesn't have ITEMSKILL
-                        if (!itemData['ITEMSKILL'] || !itemData['ITEMSKILL'].length) continue;
-                        
-                        // Check if item name matches search term
-                        let itemName = '';
-                        if (itemData['ITEMDISPLAYNAMEID'] && itemData['ITEMDISPLAYNAMEID'].length) {
-                            const displayNameId = parseInt(itemData['ITEMDISPLAYNAMEID'][0]);
-                            if (entryIdToName[displayNameId]) {
-                                itemName = entryIdToName[displayNameId];
-                            }
-                        }
-                        
-                        // If no lookup name found, use the name from ITEMCREATE
-                        if (!itemName && itemData['ITEMCREATE'] && itemData['ITEMCREATE'].length) {
-                            itemName = itemData['ITEMCREATE'][0].split(',')[0].trim().replace(/"/g, '');
-                        }
-                        
-                        if (itemName.toLowerCase().includes(searchTerm)) {
-                            matchingItems.push({
-                                itemName,
-                                skillName: itemData['ITEMSKILL'][0].trim().replace(/"/g, ''),
-                                chunk: chunk
-                            });
-                        }
-                    }
-                }
+                // Find items matching the search term using both display and raw names.
+                const matchingItems = itemIndex.records
+                    .filter(record => record.itemData['ITEMSKILL']?.length && record.matches(searchTerm))
+                    .map(record => ({
+                        itemName: record.displayName,
+                        rawName: record.rawName,
+                        skillName: record.itemData['ITEMSKILL'][0].trim().replace(/"/g, ''),
+                        chunk: record.chunk
+                    }));
 
                 // Filter skills by search term
                 itemSkills = allItemSkills.filter(skill => {
@@ -323,30 +287,14 @@ module.exports = {
                 });
 
                 // Also search for plain items (no ITEMSKILL) matching the search term
-                const plainMatchingItems = [];
-                for (const chunk of itemsChunks) {
-                    if (!chunk.includes('ITEMCREATE:')) continue;
-                    const itemData = parseChunk(chunk);
-                    if (itemData['ITEMSKILL'] && itemData['ITEMSKILL'].length > 0) continue;
-
-                    let itemName = '';
-                    if (itemData['ITEMDISPLAYNAMEID'] && itemData['ITEMDISPLAYNAMEID'].length) {
-                        const displayNameId = parseInt(itemData['ITEMDISPLAYNAMEID'][0]);
-                        if (entryIdToName[displayNameId]) itemName = entryIdToName[displayNameId];
-                    }
-                    if (!itemName && itemData['ITEMCREATE'] && itemData['ITEMCREATE'].length) {
-                        itemName = itemData['ITEMCREATE'][0].split(',')[0].trim().replace(/"/g, '');
-                    }
-
-                    if (itemName && itemName.toLowerCase().includes(searchTerm)) {
-                        let rawName = itemName;
-                        if (itemData['ITEMCREATE'] && itemData['ITEMCREATE'].length) {
-                            const m = itemData['ITEMCREATE'][0].match(/^"?([^",\r\n]+)"?/);
-                            if (m) rawName = m[1].trim().replace(/"/g, '');
-                        }
-                        plainMatchingItems.push({ itemName, rawName, chunk, itemData });
-                    }
-                }
+                const plainMatchingItems = itemIndex.records
+                    .filter(record => !record.itemData['ITEMSKILL']?.length && record.matches(searchTerm))
+                    .map(record => ({
+                        itemName: record.displayName,
+                        rawName: record.rawName,
+                        chunk: record.chunk,
+                        itemData: record.itemData
+                    }));
 
                 if (itemSkills.length === 0 && plainMatchingItems.length === 0) {
                     await interaction.editReply({ content: `No items or item skills found matching '${searchTerm}' in '${modName}'.` });

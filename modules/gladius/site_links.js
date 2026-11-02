@@ -40,6 +40,10 @@ function prizeUrl(modName, name) {
     return pageUrl('/prizes', { mod: modName, name });
 }
 
+function itemPrizeUrl(modName, itemName) {
+    return pageUrl('/prizes', { mod: modName, item: itemName });
+}
+
 function itemSkillUrl(modName, query) {
     return pageUrl('/itemskills', { mod: modName, q: query });
 }
@@ -57,6 +61,7 @@ module.exports = {
     skillUrl,
     explainUrl,
     prizeUrl,
+    itemPrizeUrl,
     itemSkillUrl,
     modListUrl
 };
