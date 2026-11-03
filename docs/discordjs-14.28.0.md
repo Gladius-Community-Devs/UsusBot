@@ -1,7 +1,7 @@
 # discord.js 14.28.0 — research and plan
 
-Prepared 2026-11-03 against server HEAD `bfc1fe1`. Status: **awaiting owner approval**.
-Nothing in this document has been applied yet.
+Prepared 2026-11-03 against server HEAD `bfc1fe1`, approved and applied the same day.
+The plan below is what shipped; the outcome is in §10.
 
 ---
 
@@ -251,3 +251,31 @@ Commit 2 changes what modders see and is the only part with a failure mode (a re
 command registration). Ship it in the same round as the bump, or take the bump alone first and
 decide on `file_types` afterwards? My recommendation: bump alone, confirm a clean boot, then
 `file_types` — the two pushes are minutes apart and it keeps cause and effect separable.
+
+**Answered:** both in one push, as three commits (`550c698`, `03a3ed4`, this document).
+
+---
+
+## 10. Outcome (2026-11-03)
+
+Applied as approved and verified on the running service:
+
+- Preflight logged the drift (`@discordjs/builders: 1.14.1 installed, 1.15.0 locked`,
+  `discord.js: 14.27.0 installed, 14.28.0 locked`) and reinstalled in **10 seconds**; the boot
+  was a clean `Deactivated successfully.` → `Started`, `npm ci` did not delay the webhook poll
+  enough to matter this time.
+- On the server: `discord.js 14.28.0`, `@discordjs/builders 1.15.0`, `@discordjs/rest 2.6.3`,
+  `node tools/preflight.js --check` → 225 packages, clean.
+- `Successfully reloaded 16 application (/) commands` for both guilds — so the API accepted
+  `file_types` on an attachment option with non-media extensions. Confirmed by reading the
+  registered command back from Discord rather than trusting the PUT:
+  ```json
+  {"type":11,"name":"patch","description":"The .xdelta or .xdelta3 patch file to apply",
+   "required":true,"file_types":[".xdelta3",".xdelta"]}
+  ```
+  (Discord returns the list in its own order — not a problem, it is a set.)
+- The expected `DeprecationWarning` for `ready` appeared once per boot; commit 3 is still open.
+- Contracts probe reports 20 findings against the 7 stored in `.verify/contracts-result.json`.
+  That is **not** a regression: the extra 13 are `/help omits /X`, and a run with this change
+  reverted produces the identical 20. The stored fixture predates the `/help` rewrite
+  (`bfc1fe1`). Refreshing `.verify/contracts-result.json` is open work.
