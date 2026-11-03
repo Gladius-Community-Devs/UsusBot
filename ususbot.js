@@ -12,7 +12,7 @@ var axios = require('axios');
 var shell = require('shelljs');
 require('dotenv/config')
 
-const {Client, GatewayIntentBits, ActivityType} = require('discord.js');
+const {Client, Events, GatewayIntentBits, ActivityType} = require('discord.js');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent] });
 var config = JSON.parse(fs.readFileSync('ususbot.json'));
 
@@ -80,8 +80,8 @@ async function botInit () {
     client.user.setActivity(config.bot_activity.name, { type: activity_type(config.bot_activity.type) });
 }
 
-client.on('ready', () => {
-    botInit().catch((error) => reporter.report(error, { command: 'ready' }));
+client.on(Events.ClientReady, () => {
+    botInit().catch((error) => reporter.report(error, { command: 'clientReady' }));
 });
 
 function authClient() {
