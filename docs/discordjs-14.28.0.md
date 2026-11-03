@@ -274,8 +274,22 @@ Applied as approved and verified on the running service:
    "required":true,"file_types":[".xdelta3",".xdelta"]}
   ```
   (Discord returns the list in its own order — not a problem, it is a set.)
-- The expected `DeprecationWarning` for `ready` appeared once per boot; commit 3 is still open.
+- The expected `DeprecationWarning` for `ready` appeared once per boot. Closed in `e359d10`:
+  `ususbot.js` now listens on `Events.ClientReady`, which is emitted in the same tick of the
+  same `_ready()` path, and the warning is gone on the next boot.
 - Contracts probe reports 20 findings against the 7 stored in `.verify/contracts-result.json`.
   That is **not** a regression: the extra 13 are `/help omits /X`, and a run with this change
   reverted produces the identical 20. The stored fixture predates the `/help` rewrite
   (`bfc1fe1`). Refreshing `.verify/contracts-result.json` is open work.
+
+### Still wants a human
+
+The harness cannot see Discord's client, so two things are unverified by construction:
+
+1. That the upload picker actually filters to `.xdelta`, on desktop **and on mobile**.
+   Builders's own docs warn that extension-only filters behave differently on mobile ("include
+   `.jpg` for images and both `.mp4` and `.mov` for videos"). A custom extension has no such
+   companion, so if a modder on iOS/Android sees an empty picker, drop `file_types` and lean on
+   the runtime check again — that check is still there for exactly this reason.
+2. That a normal command still round-trips after the bump. The probes exercise payload
+   construction offline; the live read-back only proved registration.
