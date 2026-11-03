@@ -46,6 +46,10 @@ module.exports = {
         .addAttachmentOption(option =>
             option.setName('patch')
                 .setDescription('The .xdelta or .xdelta3 patch file to apply')
+                // Ask Discord to filter the upload picker rather than rejecting the file
+                // after the fact. The runtime check below stays the authority: this is a
+                // UI constraint on the client, not a guarantee about what arrives.
+                .setFileTypes('.xdelta', '.xdelta3')
                 .setRequired(true))
         .addBooleanOption(option =>
             option.setName('override')
