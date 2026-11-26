@@ -1,7 +1,23 @@
 const fs = require('fs');
 const path = require('path');
-const { EmbedBuilder } = require('discord.js');
-const { splitFieldValue, addFieldsSafe } = require('../../core/js/text_utils.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { splitFieldValue, addFieldsSafe, applyDescription, LIMITS } = require('../../core/js/text_utils.js');
+const siteLinks = require('./site_links');
+
+/**
+ * The game stores a class's weight class in one of two places: a normal
+ * `ATTRIBUTE` line (Light/Medium/Heavy) for most classes, or the
+ * `ROCKSCISSORSPAPER` field for beasts and a few others. `Plain` is a real
+ * weight class: it is neutral against every other weight class.
+ */
+const WEIGHT_CLASSES = ['Light', 'Medium', 'Heavy', 'Plain'];
+const WEIGHT_BY_LOWER = new Map(WEIGHT_CLASSES.map((name) => [name.toLowerCase(), name]));
+
+/** @param {*} value @returns {?string} canonical weight class or null */
+function normalizeWeightClass(value) {
+    const raw = String(value ?? '').replace(/"/g, '').trim().toLowerCase();
+    return WEIGHT_BY_LOWER.get(raw) || null;
+}
 
 /**
  * Safely sanitizes input to prevent path traversal
@@ -24,6 +40,8 @@ function parseClassChunk(chunk) {
         skillUseName: '',
         DISPLAYNAMEID: null,
         DESCRIPTIONID: null,
+        weightClass: null,
+        weightSource: null,
         attributes: [],
         weapons: [],
         armors: [],
@@ -31,6 +49,7 @@ function parseClassChunk(chunk) {
         shields: [],
         accessories: []
     };
+    let rockScissorsPaper = null;
 
     for (const line of lines) {
         if (!line || typeof line !== 'string') continue;
@@ -50,6 +69,8 @@ function parseClassChunk(chunk) {
         } else if (trimmedLine.startsWith('ATTRIBUTE:')) {
             const attribute = trimmedLine.split(':')[1]?.trim()?.replace(/"/g, '');
             if (attribute) classData.attributes.push(attribute);
+        } else if (trimmedLine.startsWith('ROCKSCISSORSPAPER:')) {
+            rockScissorsPaper = trimmedLine.split(':')[1]?.trim() || null;
         } else if (trimmedLine.startsWith('ITEMCAT:')) {
             try {
                 const parts = trimmedLine.split(',').map(s => s.trim());
@@ -83,52 +104,134 @@ function parseClassChunk(chunk) {
         }
     }
 
+    // The weight class is an attribute on most classes and a
+    // ROCKSCISSORSPAPER line on beasts. Keep it out of `attributes` so the
+    // renderer can show it once, under its own label.
+    const attributeWeight = classData.attributes
+        .map((attribute) => normalizeWeightClass(attribute))
+        .find(Boolean);
+    const rpsWeight = normalizeWeightClass(rockScissorsPaper);
+    classData.weightClass = attributeWeight || rpsWeight || null;
+    classData.weightSource = attributeWeight ? 'attribute' : (rpsWeight ? 'rockscissorspaper' : null);
+    if (classData.weightClass) {
+        classData.attributes = classData.attributes
+            .filter((attribute) => !normalizeWeightClass(attribute));
+    }
+
     return classData.className ? classData : null;  // Only return if we have a valid class name
 }
 
+const WEIGHT_COLORS = {
+    Light: 0x57F287,
+    Medium: 0xFEE75C,
+    Heavy: 0xED4245,
+    Plain: 0x99AAB5
+};
+
+const EQUIPMENT_SECTIONS = [
+    { label: 'Weapons', key: 'weapons' },
+    { label: 'Armor', key: 'armors' },
+    { label: 'Helmets', key: 'helmets' },
+    { label: 'Shields', key: 'shields' },
+    { label: 'Accessories', key: 'accessories' }
+];
+
 /**
- * Create an embed for a class
- * (From classes.js)
+ * The equipment section as one markdown block. Discord lays inline fields out
+ * in columns that wrap unevenly, which is what made the old five-field layout
+ * look ragged; one block stays readable on mobile and desktop.
+ * @param {object} classData
+ * @returns {string} '' when the class has no equipment at all
+ */
+function equipmentValue(classData) {
+    const sections = [];
+    for (const { label, key } of EQUIPMENT_SECTIONS) {
+        const items = classData[key] || [];
+        if (items.length > 0) sections.push(`**${label}**\n${items.join('\n')}`);
+    }
+    return sections.join('\n\n');
+}
+
+/**
+ * Create an embed for a class.
+ *
+ * Weight is its own field because the game does not put it in one place:
+ * `ATTRIBUTE: "Light"` for most classes, `ROCKSCISSORSPAPER: "Light"` for
+ * beasts. `Plain` is the neutral weight class and is shown as such.
  */
 function createClassEmbed(classData, currentPage, totalPages, modName) {
+    const title = classData.displayName || classData.className;
     const embed = new EmbedBuilder()
-        .setTitle(classData.displayName)
-        .setDescription(`Class in ${modName} (${currentPage + 1}/${totalPages})`)
-        .setColor(0x00FF00);
+        .setTitle(title)
+        .setURL(siteLinks.classUrl(modName, classData.className))
+        .setColor(WEIGHT_COLORS[classData.weightClass] || 0x00FF00)
+        .setFooter({ text: `${modName} · ${classData.className} · ${currentPage + 1}/${totalPages}` });
 
-    // Add description if available
-    if (classData.description) {
-        embed.addFields({ name: 'Description', value: classData.description });
+    if (classData.description) applyDescription(embed, classData.description);
+
+    const fields = [];
+    if (classData.weightClass) {
+        fields.push({
+            name: 'Weight Class',
+            value: classData.weightClass === 'Plain' ? 'Plain (neutral)' : classData.weightClass,
+            inline: true
+        });
     }
-
-    // Add attributes
-    if (classData.attributes.length > 0) {
-        embed.addFields({ 
-            name: 'Attributes', 
-            value: classData.attributes.join(', ') 
+    if (classData.attributes && classData.attributes.length > 0) {
+        fields.push({
+            name: 'Attributes',
+            value: classData.attributes.join(' · '),
+            inline: true
         });
     }
 
-    // Add equipment categories
-    const categories = [
-        { name: 'Weapons', items: classData.weapons },
-        { name: 'Armor', items: classData.armors },
-        { name: 'Helmets', items: classData.helmets },
-        { name: 'Shields', items: classData.shields },
-        { name: 'Accessories', items: classData.accessories }
-    ];
+    const equipment = equipmentValue(classData);
+    const equipmentFields = equipment
+        ? splitFieldValue(equipment, { label: 'Equipment' })
+        : [{ name: 'Equipment', value: 'None' }];
 
-    for (const category of categories) {
-        if (category.items.length > 0) {
-            embed.addFields({ 
-                name: category.name, 
-                value: category.items.join('\n'),
-                inline: true 
-            });
-        }
-    }
+    // applyDescription() may already have produced continuation fields, so the
+    // 25-field budget has to be counted across the whole embed. addFieldsSafe
+    // caps each call individually, which is not enough on its own.
+    addFieldsSafe(embed, [...fields, ...equipmentFields], {
+        max: Math.max(0, LIMITS.fields - (embed.data.fields || []).length)
+    });
 
     return embed;
+}
+
+/**
+ * The button row for one class page. Shared by /classes and the prev/next
+ * handler so both entry points always offer the same controls.
+ * @param {object} classData
+ * @param {number} currentPage
+ * @param {number} totalPages
+ * @param {string} modName
+ * @returns {ActionRowBuilder}
+ */
+function createClassComponents(classData, currentPage, totalPages, modName) {
+    const skillTarget = classData.skillUseName || classData.className;
+    return new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`class-prev|${modName}|${currentPage}`)
+                .setLabel('◀️ Previous')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(currentPage <= 0),
+            new ButtonBuilder()
+                .setCustomId(`class-next|${modName}|${currentPage}`)
+                .setLabel('Next ▶️')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(currentPage >= totalPages - 1),
+            new ButtonBuilder()
+                .setCustomId(`class-skills|${modName}|${encodeURIComponent(skillTarget)}`)
+                .setLabel('📚 Learnable Skills')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setLabel('🌐 Open on site')
+                .setStyle(ButtonStyle.Link)
+                .setURL(siteLinks.classUrl(modName, classData.className))
+        );
 }
 
 /**
@@ -579,6 +682,8 @@ module.exports = {
     sanitizeInput,
     parseClassChunk,
     createClassEmbed,
+    createClassComponents,
+    normalizeWeightClass,
     parseSkillChunk,
     parseChunk,
     findOriginalChunk,

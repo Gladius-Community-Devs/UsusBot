@@ -2,6 +2,7 @@ const { InteractionType, ButtonStyle, EmbedBuilder, ActionRowBuilder, ButtonBuil
 const fs = require('fs');
 const path = require('path');
 const helpers = require('./functions');  // Import the centralized helper functions
+const classCatalog = require('./class_catalog');
 const { addFieldsSafe, applyDescription, LIMITS } = require('../../core/js/text_utils.js');
 
 let logger;
@@ -1185,69 +1186,15 @@ async function onInteractionCreate(interaction) {
                 return;
             }
 
-            logger.debug(`Reading lookup file for mod "${modName}"`);
-            const lookupContent = helpers.readTextFile(filePaths.lookupFilePath);
-
-            logger.debug(`Reading class definitions file for mod "${modName}"`);
-            const classdefsContent = helpers.readTextFile(filePaths.classdefsPath);
-
-            // Build lookup table
-            logger.debug(`Building lookup table from ${filePaths.lookupFilePath}`);
-            const entryIdToText = {};
-            lookupContent.split(/\r?\n/).filter(line => line.trim()).forEach(line => {
-                if (!line.includes('^')) return;
-                const parts = line.split('^');
-                if (parts.length >= 2) {
-                    const id = parts[0].trim();
-                    const text = parts[parts.length - 1].trim();
-                    entryIdToText[id] = text;
-                }
-            });
-
-            // Split records at CREATECLASS: blank lines inside a class block are
-            // cosmetic and cannot be used as separators.
-            const classChunks = helpers.splitClassRecords(classdefsContent);
-            if (!classChunks || classChunks.length === 0) {
-                logger.warn(`No class definitions found in file`);
-                return;
-            }
-            logger.debug(`Found ${classChunks.length} class definition chunks`);
-
-            // Parse each class chunk into a structured object
-            let classesList = [];
-            for (let chunk of classChunks) {
-                chunk = chunk.trim();
-                if (!chunk || chunk.toLowerCase().includes('numclassdefs')) continue;
-
-                // Use the helper function to parse the class chunk
-                const classData = helpers.parseClassChunk(chunk);
-
-                if (classData && classData.className && !classData.className.includes('ClassDefs')) {
-                    const displayName = classData.DISPLAYNAMEID ? (entryIdToText[classData.DISPLAYNAMEID] || classData.className) : classData.className;
-                    const description = classData.DESCRIPTIONID ? (entryIdToText[classData.DESCRIPTIONID] || '') : '';
-
-                    classesList.push({
-                        ...classData,
-                        rawDisplayName: displayName,
-                        description
-                    });
-                    logger.debug(`Parsed class: ${displayName}`);
-                }
-            }
-
-            // Shared display names must carry the CREATECLASS code, or several
-            // pages end up titled "Hero" with no way to tell them apart.
-            const sharedNames = new Set(
-                [...classesList.reduce((counts, cls) => counts.set(cls.rawDisplayName, (counts.get(cls.rawDisplayName) || 0) + 1), new Map())]
-                    .filter(([, count]) => count > 1)
-                    .map(([name]) => name)
-            );
-            for (const cls of classesList) {
-                cls.displayName = helpers.labelClass(cls.rawDisplayName, cls.className, sharedNames);
-            }
-
-            classesList.sort((a, b) => a.displayName.localeCompare(b.displayName));
-            logger.debug(`Sorted ${classesList.length} classes alphabetically`);
+            // Reuse the mtime-cached catalog instead of re-reading and
+            // re-parsing classdefs.tok on every page click.
+            const catalog = classCatalog.getCatalog(modName);
+            const classesList = catalog.classes.map((cls) => ({
+                ...cls,
+                className: cls.code,
+                displayName: cls.label
+            }));
+            logger.debug(`Loaded ${classesList.length} classes from the catalog`);
 
             if (classesList.length === 0) {
                 logger.warn(`No classes found for mod "${modName}"`);
@@ -1273,23 +1220,7 @@ async function onInteractionCreate(interaction) {
 
             // Rebuild navigation buttons using totalPages instead of classesList.length
             logger.debug(`Creating navigation buttons for class page ${newPage + 1}/${totalPages}`);
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`class-prev|${modName}|${newPage}`)
-                        .setLabel('◀️ Previous')
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage <= 0),
-                    new ButtonBuilder()
-                        .setCustomId(`class-next|${modName}|${newPage}`)
-                        .setLabel('Next ▶️')
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(newPage >= totalPages - 1), // Use totalPages for validation
-                    new ButtonBuilder()
-                        .setCustomId(`class-skills|${modName}|${encodeURIComponent(classesList[startIndex].skillUseName)}`)
-                        .setLabel('📚 Learnable Skills')
-                        .setStyle(ButtonStyle.Secondary)
-                );
+            const row = helpers.createClassComponents(classesList[startIndex], newPage, totalPages, modName);
 
             logger.info(`Updating interaction with class information for "${classesList[startIndex].displayName}"`);
             await interaction.deferUpdate();

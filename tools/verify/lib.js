@@ -191,7 +191,14 @@ function validatePayload(payload) {
     }
     comps.forEach((component, j) => {
       const cw = `${where}.component[${j}]`;
-      if (!component.custom_id && !component.customId) errors.push(`${cw} has no custom_id`);
+      // Link buttons (style 5) are the one component that carries a URL instead
+      // of a custom_id.
+      const isLinkButton = component.type === 2 && component.style === 5;
+      if (isLinkButton) {
+        if (!component.url) errors.push(`${cw} link button has no url`);
+      } else if (!component.custom_id && !component.customId) {
+        errors.push(`${cw} has no custom_id`);
+      }
       const id = component.custom_id || component.customId || '';
       if (String(id).length > LIMITS.customId) errors.push(`${cw} custom_id is ${String(id).length} chars (max ${LIMITS.customId})`);
       if (component.type === 2) {

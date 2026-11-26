@@ -85,10 +85,17 @@ function build(modName) {
         classes.push({
             code: data.className,
             displayName: idToText[data.DISPLAYNAMEID] || data.className,
+            description: data.DESCRIPTIONID ? (idToText[data.DESCRIPTIONID] || '') : '',
             skillUseName: (data.skillUseName || '').replace(/"/g, '').trim(),
             itemCatCount: data.weapons.length + data.armors.length + data.helmets.length
                 + data.shields.length + data.accessories.length,
+            weightClass: data.weightClass,
             attributes: data.attributes,
+            weapons: data.weapons,
+            armors: data.armors,
+            helmets: data.helmets,
+            shields: data.shields,
+            accessories: data.accessories,
         });
     }
 
@@ -98,6 +105,7 @@ function build(modName) {
     }
     const sharedNames = new Set([...displayCounts].filter(([, count]) => count > 1).map(([name]) => name));
     for (const cls of classes) cls.label = helpers.labelClass(cls.displayName, cls.code, sharedNames);
+    classes.sort((a, b) => a.label.localeCompare(b.label));
 
     const units = [];
     for (const chunk of helpers.splitContentIntoChunks(helpers.readTextFile(paths.gladiatorsFilePath))) {

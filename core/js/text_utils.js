@@ -124,7 +124,7 @@ function splitFieldValue(text, options = {}) {
  * @returns {number} How many fields were dropped for lack of room.
  */
 function addFieldsSafe(embed, fields, options = {}) {
-    const max = options.max || LIMITS.fields;
+    const max = options.max ?? LIMITS.fields;
     let added = 0;
     let dropped = 0;
 
